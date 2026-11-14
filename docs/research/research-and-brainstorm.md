@@ -24,7 +24,6 @@ How to read the confidence labels used below:
 | Team plan (Alvin's Google Doc, "NASA Space Apps") | https://docs.google.com/document/d/1-S3vYRvTtv38bnKK7jxvQSae527k8ABZ_EpnV0i9bPY/edit | Goals, 9 sites, data sources, design idea, framework, references [checked tonight] |
 | The repo | `moon-planner/` (Next.js 16.4.6, React 19.3, Tailwind 4, three + react-three-fiber + drei) | Starter page only so far; 7 of 8 commits by Sri [checked tonight, commit `61ce6fd`] |
 | Full hackathon plan | `space-apps-plan.md` (copy in this folder) | Architecture, pipeline, features, timeline, submission checklist, open questions |
-| Two-machine workflow | `two-machine-workflow.md` (copy in this folder) | Mac + HP + cloud, branch rules, lanes (proposals) |
 | This doc | `research-and-brainstorm.md` | New research, a live Horizons test, prior art, brainstorm |
 
 ### Schedule (Arizona time, Phoenix virtual event)

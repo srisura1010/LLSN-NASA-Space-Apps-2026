@@ -12,7 +12,6 @@ Written Fri night Nov 13 (America/Denver). Everything here is a proposal. Anythi
 - The app is a **Next.js 16 starter in `moon-planner/`**, with **three.js and react-three** already added. So the 3D view direction is already started, and the plan should build on it.
 - **Most commits so far are Srivatsav's.** That makes the app scaffold and the 3D setup Srivatsav's work, and anything built on it should go through Srivatsav.
 - The latest commit when this was checked was `61ce6fd`.
-- Ryan has a separate two-machine workflow note (on his Mac, `~/Downloads/space-apps/two-machine-workflow.md`).
 
 **Alvin's team plan doc** ("NASA Space Apps" Google Doc) is the team's starting point, and this plan builds on it. It already sets:
 - the goal (the challenge statement) and the nine candidate sites
