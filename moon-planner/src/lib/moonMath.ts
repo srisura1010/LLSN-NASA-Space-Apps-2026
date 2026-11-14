@@ -1,5 +1,3 @@
-// Small geometry helpers for the Moon view.
-//
 // Frame: Moon-fixed, Y = north pole, +X = 0° longitude (the point facing Earth),
 // -Z = 90° E. This matches how three.js wraps an equirectangular texture
 // (like the NASA CGI Moon Kit map) onto a SphereGeometry.
@@ -27,11 +25,7 @@ export function elevationDeg(site: Vector3, bodyDirection: Vector3): number {
   return Math.asin(site.dot(bodyDirection)) / DEG;
 }
 
-// ---------------------------------------------------------------------------
-// PLACEHOLDER positions. These are a rough toy model so the UI has something
-// to move. Swap these two functions for real ephemeris data (JPL Horizons or
-// SPICE) before trusting any number they produce.
-// ---------------------------------------------------------------------------
+// Approximate Sun/Earth directions until JPL Horizons data is wired in.
 
 const SYNODIC_MONTH_DAYS = 29.530589;
 const KNOWN_NEW_MOON = Date.UTC(2000, 0, 6, 18, 14); // 6 Jan 2000, 18:14 UTC

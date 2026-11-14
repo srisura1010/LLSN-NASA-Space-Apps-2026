@@ -1,36 +1,29 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# moon-planner
 
-## Getting Started
+Web app for the Lunar Landing Site Navigator (NASA Space Apps 2026). It shows the
+nine Artemis III candidate regions on a 3D Moon and lets you scrub through a lunar
+day to see when each site is lit and when Earth is above the horizon.
 
-First, run the development server:
+## Running it
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then open http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Layout
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `src/components/MoonScene.tsx` – three.js scene (react-three-fiber)
+- `src/components/Sidebar.tsx`, `BottomBar.tsx` – site list and time controls
+- `src/lib/moonMath.ts` – Moon-fixed frame and Sun/Earth elevation
+- `src/lib/sites.ts` – region centres
 
-## Learn More
+## Data
 
-To learn more about Next.js, take a look at the following resources:
+- Moon colour and elevation maps: NASA SVS CGI Moon Kit (LRO LROC / LOLA).
+- Region centres: USGS Artemis III region outlines, McClernan 2024.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Sun and Earth directions are currently a simple periodic model (no libration or
+solar declination). Real ephemerides from JPL Horizons are next.

@@ -1,5 +1,3 @@
-// Bottom bar: the time scrubber and the Sun/Earth readouts for the selected site.
-
 type Props = {
   startDate: string; // yyyy-mm-dd
   onStartDateChange: (value: string) => void;
@@ -10,11 +8,11 @@ type Props = {
   earthElevation: number | null;
 };
 
-const HOURS_IN_LUNAR_DAY = 709; // ~29.5 days, so one sweep covers a full day/night cycle
+const HOURS_IN_LUNAR_DAY = 709;
 
 export default function BottomBar(props: Props) {
   return (
-    <footer className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/10 bg-zinc-950 px-4 py-3 text-sm">
+    <footer className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/10 px-4 py-3 text-sm">
       <label className="flex items-center gap-2">
         <span className="text-zinc-400">Start</span>
         <input

@@ -1,16 +1,13 @@
 "use client";
 
-// The 3D view: a textured Moon, a light coming from the Sun's direction,
-// clickable site markers, and a marker showing which way Earth is.
-
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Stars, useTexture } from "@react-three/drei";
 import { Suspense } from "react";
 import type { Vector3 } from "three";
 import { latLonToVector } from "@/lib/moonMath";
-import { hasCoords, type Site } from "@/lib/sites";
+import type { Site } from "@/lib/sites";
 
-const MOON_RADIUS = 1; // scene units; real radius is 1737.4 km
+const MOON_RADIUS = 1;
 
 type Props = {
   sites: Site[];
@@ -22,21 +19,20 @@ type Props = {
 
 export default function MoonScene({ sites, selectedId, onSelect, sunDir, earthDir }: Props) {
   return (
-    // Camera starts below the south pole looking up at it, where all the sites are.
+    // Start below the south pole, where all the regions are.
     <Canvas camera={{ position: [0.9, -3.8, 0.9], fov: 40 }}>
       <color attach="background" args={["#05060a"]} />
       <Stars radius={50} depth={20} count={3000} factor={2} fade />
 
-      {/* Sunlight: a directional light placed far away along the Sun direction. */}
       <directionalLight position={sunDir.clone().multiplyScalar(10)} intensity={3} />
-      {/* Faint fill so the night side isn't pure black (roughly like earthshine). */}
+      {/* Faint fill standing in for earthshine. */}
       <ambientLight intensity={0.15} />
 
       <Suspense fallback={null}>
         <Moon />
       </Suspense>
 
-      {sites.filter(hasCoords).map((site) => (
+      {sites.map((site) => (
         <SiteMarker
           key={site.id}
           position={latLonToVector(site.lat, site.lon).multiplyScalar(MOON_RADIUS * 1.003)}
@@ -45,7 +41,6 @@ export default function MoonScene({ sites, selectedId, onSelect, sunDir, earthDi
         />
       ))}
 
-      {/* Earth marker: a small blue ball out along the Earth direction. */}
       <mesh position={earthDir.clone().multiplyScalar(2.2)}>
         <sphereGeometry args={[0.08, 24, 24]} />
         <meshBasicMaterial color="#4a90e2" />
@@ -57,7 +52,7 @@ export default function MoonScene({ sites, selectedId, onSelect, sunDir, earthDi
 }
 
 function Moon() {
-  // NASA SVS CGI Moon Kit (LRO data): colour map + elevation map used as a bump map.
+  // NASA SVS CGI Moon Kit; the LOLA elevation map doubles as a bump map.
   const [color, height] = useTexture([
     "/textures/moon_color_2k.jpg",
     "/textures/moon_height_3ppd.jpg",
@@ -83,7 +78,7 @@ function SiteMarker({
     <mesh
       position={position}
       onClick={(e) => {
-        e.stopPropagation(); // don't let the click fall through to the Moon
+        e.stopPropagation();
         onClick();
       }}
     >
