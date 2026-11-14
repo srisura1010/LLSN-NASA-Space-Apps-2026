@@ -1,17 +1,38 @@
 # Lunar Landing Site Navigator: hackathon plan (draft for team review)
 
 NASA Space Apps 2026 · Team: Alvin Gao (owner), Benjamin Koh, Srivatsav Sura, Ryan
-Written Fri night Nov 13 (America/Denver). Everything here is a proposal. Anything touching shared design, stack, data, or who-does-what is listed in section 6 as a question for the team, not a decision.
+Written Fri night Nov 13, updated Sat Nov 14 at about 4:45 pm Arizona time to match and beat the 2021–2025 global winners (see `past-winners-research.md`). Everything here is a proposal. Anything touching shared design, stack, data, or who-does-what is listed in section 6 as a question for the team, not a decision.
+
+---
+
+## 0. How we match and beat the past winners (new, Sat afternoon)
+
+The 50 global winners from 2021 to 2025 share a few habits (full list in `past-winners-research.md`). Winners **end at an answer, not a picture**; they **back it with a number**; they have **one hook a judge can repeat**; and they **finish the demo and write-up properly**. 3D Moon tools have won five times (Selene 2022, Brute Force 2022, LunarTech Ensemble 2023, Spacebee 2023, plus Three.js and 3D tools in 2021 and 2025), so our format is right. What follows turns each lesson into concrete work, mapped onto the five judging criteria (**Influence, Creativity, Validity, Relevance, Presentation**; "Influence" is the current name for what this plan used to call Impact).
+
+| # | What winners did | What we build or do | Criterion | Feature (section 4) | Owner |
+|---|---|---|---|---|---|
+| W1 | Turned data into a decision ("2plant", SkySense's "safest time") | **Recommendation panel:** for a mission start date and length, rank the nine regions and name the best date window with reasons, e.g. "Region A, Dec 3–9: Sun up 92% of hours, Earth up 100%". The 3D view then explains the answer. | Relevance, Influence | 17 | open |
+| W2 | Quoted a measured figure (Storm Prophet's accuracy) | **Validation number:** compare our Sun and Earth elevation/azimuth with JPL Horizons at 3 regions × 3 dates, and show "agrees with JPL Horizons to within X°" in the app footer, the write-up and the demo. Only publish a number we actually computed. | Validity | 3, 18 | open |
+| W3 | Went one step past the brief (SkyShield, PureFlow) | **One named differentiator versus LunaNav** (the open-source tool for this same challenge, `yutuf/lmNasa`). Proposed: a **mission-window finder** that searches dates and answers "when should we land here?". LunaNav reports availability; ours picks the window. Credit LunaNav openly in the data list. Choosing it is question P4. | Creativity | 17 | team decision (P4) |
+| W4 | One six-word hook | Draft hook: **"Pick a region, get your landing window."** Use it as the first line of the summary, the title slide and the video. | Presentation | 16 | open |
+| W5 | Polished, short demo | **30-second video** (script in section 5) with English subtitles, or a **7-slide deck** as the fallback. Recorded Sun afternoon, not at 11 pm. | Presentation | 16 | open (P3) |
+| W6 | Listed NASA data precisely (required for any global award) | **`DATA_SOURCES.md`** in the repo plus credits in the app's footer: CGI Moon Kit (LRO LROC/LOLA), USGS Artemis III region outlines, JPL Horizons (and SPICE if used). | Validity, eligibility | 19 | open |
+| W7 | Declared AI use (required) | **AI-use statement** naming each tool and what it did (e.g. Claude helped write code and research notes; every number was checked against the cited source). No AI images or NASA logos. Each person adds their own use (T6). | Eligibility | 19 | everyone |
+| W8 | Small teams won by scoping hard | Cut to P0 + W1–W7. Heat map and 3D terrain shadows only if everything above is done by Sun 1 pm. | All | — | — |
+| W9 | Live link for all three judging rounds | Deploy to a public URL Sat night (needs Ryan's yes, S4). | Relevance | 12 | open (S4) |
+
+**Award fit to aim the write-up at:** Best Use of Data ("makes space data accessible") and Best Mission Concept ("most plausible concept and design"), with Best Use of Science as a stretch if the Horizons validation is solid. Teams don't pick the award, but the write-up can make the fit obvious.
+
+**What "beyond the winners" means for us:** the closest past winners (Selene, Spacebee, LunarTech Ensemble) visualized Moon data on a 3D globe. We'd be the first in that line to **answer a planning question with a validated number**: a 3D Moon, plus a ranked landing window, plus a stated error against JPL.
 
 ---
 
 ## 1. What's in the repo today
 
-**Early summary, secondhand.** This planning session still can't open the private repo (`srisura1010/LLSN-NASA-Space-Apps-2026`). The notes below come from a read-only clone on Ryan's own machines, and I haven't checked them myself:
-
-- The app is a **Next.js 16 starter in `moon-planner/`**, with **three.js and react-three** already added. So the 3D view direction is already started, and the plan should build on it.
-- **Most commits so far are Srivatsav's.** That makes the app scaffold and the 3D setup Srivatsav's work, and anything built on it should go through Srivatsav.
-- The latest commit when this was checked was `61ce6fd`.
+**Updated Sat ~4:45 pm.** On GitHub:
+- `main` (Srivatsav): the Next.js 16 starter in `moon-planner/` with three.js, react-three-fiber and drei installed (commit `61ce6fd`). Still the template page.
+- `ryan/3d-layout` (Ryan, not merged): a working 3D Moon (NASA CGI Moon Kit texture), all nine region centres as clickable markers, a left site list, and a bottom time bar with Sun and Earth elevation readouts. Sun/Earth directions there are an **approximate placeholder model**; real ephemerides (feature 3) replace them.
+- `ryan/research` (Ryan): these notes, `research-and-brainstorm.md`, and `past-winners-research.md`.
 
 **Alvin's team plan doc** ("NASA Space Apps" Google Doc) is the team's starting point, and this plan builds on it. It already sets:
 - the goal (the challenge statement) and the nine candidate sites
@@ -25,14 +46,7 @@ Where this plan differs from Alvin's doc, it's flagged in section 6 (questions S
 
 **Ryan's working rules:** Ryan works only on `ryan/<feature>` branches. Nothing gets pushed, merged, opened as a PR, or deployed without Ryan's explicit "yes".
 
-Still to check in a fuller read-only pass:
-
-- the directory tree, framework, and package files (is it already Next.js/Tailwind? any Python?)
-- `git shortlog -sne --all` and per-author file touches, to see who has worked on what
-- branches and open PRs, so no plan step collides with someone's in-progress work
-- any data files or notebooks already pulled (Horizons, LOLA, Quickmap exports)
-
-**Until then, sections 2 and 4 are written so they bend around whatever exists.** Wherever a teammate has already started a piece, that piece stays theirs and the plan adapts to it.
+Wherever a teammate has already started a piece, that piece stays theirs and the plan adapts to it.
 
 ---
 
@@ -89,30 +103,9 @@ Agreeing on this early lets frontend and pipeline people work in parallel agains
 
 ## 3. Data pipeline
 
-### 3.1 Site coordinates (researched, with the honest caveats)
+### 3.1 Site coordinates (done)
 
-**NASA has not published single center coordinates for the nine regions.** Each region is an area roughly 15 by 15 km, and the official geometry lives in shapefiles, not in a lat/lon table:
-
-- NASA's list of the nine regions (Oct 28, 2024): [NASA Artemis III landing regions update](https://www.nasa.gov/?p=748006). The same nine names are in the [LPSC 2026 site-selection update (George et al., NTRS 20250011660)](https://ntrs.nasa.gov/citations/20250011660), which gives no coordinates either.
-- **Authoritative geometry:** USGS data release *Down Selected Artemis III Candidate Landing Site Navigational Grids*, M. T. McClernan, Dec 2024, [doi:10.5066/P1MEQ6UK](https://doi.org/10.5066/P1MEQ6UK) ([USGS page](https://www.usgs.gov/data/down-selected-artemis-iii-candidate-landing-site-navigational-grids), [ScienceBase](https://sciencebase.gov/catalog/item/671a6fa8d34efed5620f89f8)). Shapefiles at 1 km / 100 m / 10 m for all nine regions, CC0, in custom polar stereographic (LPS) projections, datum DE421 Mean Earth. Region outlines originally came from LROC QuickMap.
-
-**Recommendation for Saturday morning (a data task, see question D1):** download the 1 km grid for each region, take the polygon centroid (or the extent's center), and convert it to lat/lon. That gives defensible "region center" coordinates with a citation. I couldn't download the files from this session because of a network restriction, so those numbers aren't here yet.
-
-**Meanwhile, these are the named features each region is named after.** They are *nearby features*, not region centers, and are good enough for a placeholder:
-
-| Region | Named feature | Feature coordinates | Source | Note |
-|---|---|---|---|---|
-| Peak near Cabeus B | Cabeus B (crater) | 82.4°S, 53.0°W | [Wikipedia, Cabeus satellite craters](https://en.wikipedia.org/wiki/Cabeus_(crater)) | Region is a *peak near* the crater, not the crater |
-| Haworth | Haworth (crater) | 86.9°S, 4.0°W | [Wikipedia, Haworth](https://en.wikipedia.org/wiki/Haworth_(crater)) | Check against the IAU Gazetteer |
-| Malapert Massif | Malapert Mountain | ~86°S, ~0°E | [Wikipedia, Malapert](https://en.wikipedia.org/wiki/Malapert_(crater)) (peak "almost exactly along 0° longitude") | Approximate only, no official center |
-| Mons Mouton Plateau | Mons Mouton | 84.6°S, 31.0°E | [Wikipedia, Mons Mouton](https://en.wikipedia.org/wiki/Mons_Mouton) (no source cited for the value), [NASA SVS 5074](https://svs.gsfc.nasa.gov/cgi-bin/details.cgi?aid=5074) | Plateau is the flat top of the ~100 km-wide mountain |
-| Mons Mouton | Mons Mouton | 84.6°S, 31.0°E | same | Separate region from the Plateau; IM-2 landed at 84.79°S, 29.20°E |
-| Nobile Rim 1 | Nobile (crater) | 85.28°S, 53.27°E (79 km wide) | [IAU Gazetteer, Nobile](https://planetarynames.wr.usgs.gov/Feature/4321) | Region is on the rim, so up to ~40 km from this center |
-| Nobile Rim 2 | Nobile (crater) | same | same | Different rim segment |
-| de Gerlache Rim 2 | de Gerlache (crater) | 88.5°S, 87.1°W | [Wikipedia, de Gerlache](https://en.wikipedia.org/wiki/De_Gerlache_(crater)) | Region is on the rim |
-| Slater Plain | Slater (crater) | 88.08°S, 111.29°E | [Wikipedia, Slater](https://en.wikipedia.org/wiki/Slater_(crater)) | Plain is next to the crater |
-
-Notes: the [IAU Gazetteer](https://planetarynames.wr.usgs.gov/) is the primary source for feature centers; most Wikipedia values above should be cross-checked against it. Gazetteer longitudes are east-positive, −180 to 180. A rim region can sit tens of km from the crater center, and at 85–88°S that's enough to change the horizon, so **don't use these placeholders for any final numbers**.
+**Verified region centres for all nine regions** are in `research-and-brainstorm.md` section 3.1, computed from the USGS outline file *A3_9regions-lonlat-simplified* (McClernan 2024, [doi:10.5066/P1MEQ6UK](https://doi.org/10.5066/P1MEQ6UK)), and are already in the app on `ryan/3d-layout` (`moon-planner/src/lib/sites.ts`). A region centre is not a landing point, so the UI should say what the marker is (question D1).
 
 ### 3.2 Sun and Earth az/el at a lunar site: Horizons vs SPICE
 
@@ -190,6 +183,9 @@ Estimates are for one person focused on the task, and assume the per-site JSON f
 | 14 | 3D terrain with live shadows | P2 | 6+ h | DEM tiles |
 | 15 | "Explain mode" for educators and the public (tooltips, glossary), possibly as the "additional info" tab from Alvin's doc | P2 | 1–2 h | 6 |
 | 16 | Demo (30 s video with English subtitles, or ≤7 slides) + submission text | P0 | 3–4 h | everything above |
+| 17 | **Recommendation panel + mission-window finder** (W1, W3): rank regions for a start date and length, name the best window with reasons | P0 | 3–4 h | 3 (works on the placeholder model first, real data drops in) |
+| 18 | **Horizons validation** (W2): 3 regions × 3 dates, compute max error, show it in the app and write-up | P0 | 1–2 h | 3 |
+| 19 | **Credits and AI-use** (W6, W7): `DATA_SOURCES.md`, footer credits, AI-use statement | P0 | 1 h | none |
 
 ### Suggested split (roles to map onto people; edit freely)
 
@@ -197,39 +193,41 @@ Each role should go to whoever already has related work in the repo. I've left o
 
 | Role | Covers features | Owner |
 |---|---|---|
-| A. Frontend shell + compare | 1 (with B), 6, 9, 12 | ? |
-| B. Visualization | 7, 8, 14 (stretch) | ? |
-| C. Ephemeris + validation | 3, 5, 11 | ? |
+| A. Frontend shell + compare + recommendation | 1 (with B), 6, 9, 12, **17** | ? |
+| B. Visualization | 7, 8, 14 (stretch) | ? (Ryan's `ryan/3d-layout` is a starting point, if the team wants it) |
+| C. Ephemeris + validation | 3, 5, 11, **18** | ? |
 | D. Terrain (LOLA) | 2, 4, 10, 13 (stretch) | ? |
-| E. Story + submission (can be shared, or a 5th person, e.g. Ansh if they join in time) | 15, 16, data-source and AI-use write-up | ? |
+| E. Story + submission (can be shared, or a 5th person, e.g. Ansh if they join in time) | 15, 16, **19** | ? |
+
+**If time is short, the minimum winning set is:** 3, 5, 6, 7 (the 3D view already exists), 12, 16, 17, 18, 19. Terrain horizon masks (4) make the numbers better but the recommendation and validation still work on a smooth-Moon model, as long as the UI says so.
 
 ---
 
-## 5. Timeline: Sat Nov 14, 9:00 am → Sun Nov 15, 11:59 pm
+## 5. Timeline: rest of Saturday → Sun Nov 15, 11:59 pm
 
-All times are **Arizona time** (MST, UTC−7, which matches Denver in November). The team is registered at the **Phoenix, AZ (virtual)** local event, and the guide puts the deadline in the Local Event's time zone, so the deadline is 11:59 pm Arizona time.
+All times are **Arizona time** (MST, UTC−7). The team is at the **Phoenix, AZ (virtual)** event, so the deadline is **Sun 11:59 pm Arizona time**. About **31 hours** were left when this was updated (Sat ~4:45 pm). Fixed slots: **Sat 6 pm** mentor Zoom, **Sun 3 pm and 6 pm** judges' Q&A.
 
-Fixed event slots: **Sat 9:00 am** judge intros + livestream (submission opens), **Sat 3 pm and 6 pm** mentor Zooms, **Sun 3 pm and 6 pm** judges available for questions. Winners are emailed by Nov 22.
-
-**Saturday**
-- **9:00–9:45** Kickoff: confirm answers to section 6, assign roles, agree the JSON contract (feature 1). Register the project page.
-- **9:45–12:30** In parallel: site coordinates + DEM download (D), kernels + first ephemeris output (C), app shell with the fake JSON (A), horizon-view prototype (B).
-- **12:30** Checkpoint 1 (15 min): one real site's JSON loads in the app.
-- **15:00** Mentor Zoom. Bring the Horizons-vs-SPICE choice and the coordinate question (D1) if they're still open.
-- **13:00–18:00** All nine sites through the pipeline, Horizons cross-check, horizon masks, compare table, scrubber.
-- **18:00** Mentor Zoom, then Checkpoint 2: end-to-end with real data for all nine sites. Deploy a first public URL now, even if it's rough (with Ryan's yes, and whoever owns deploys, question S4).
-- **18:30–23:00** P1 features (filters, slope, custom lat/lon). Start writing the summary/description text in a shared doc.
-- **23:00** Freeze for the night or keep going by choice. Note blockers in the group chat.
+**Saturday evening**
+- **5:00–6:00** Settle P4 (differentiator), S4 (deploy) and the role owners (T2). Start feature 19 (credits, AI-use): it needs no code.
+- **6:00** Mentor Zoom: ask whether "recommend a landing window" plus a Horizons error figure is what judges want for this challenge.
+- **6:30–10:30** In parallel: ephemeris for the nine regions (3) and the Horizons check (18); recommendation panel (17) on the current placeholder model; compare table (6).
+- **10:30** Checkpoint: real Sun/Earth data drives the 3D view and the recommendation. Deploy a first public URL (needs Ryan's yes).
+- **Sleep.** Past winners say it matters more than one more feature.
 
 **Sunday**
-- **9:00–13:00** Finish P1, fix numbers that failed validation, start one P2 stretch only if P0/P1 are solid.
-- **13:00** Feature freeze for anything risky.
-- **13:00–17:00** Polish, explain mode, test on another laptop/phone, cross-check every data citation. **15:00**: judges' Q&A, a good time to show a rough run-through and ask what they'd want to see.
-- **18:00** Second judges' Q&A slot.
-- **17:00–20:00** Make the demo: either a **≤30 s video with English subtitles** or a **≤7-slide deck** (title slide counts; show team name, member names, and the challenge). Host it publicly (YouTube/Drive/GitHub), with no login required.
-- **20:00–22:00** Fill in the submission form (list below). Test every link in a private window.
-- **22:00** **Target submit time**: click "Submit for Judging." That leaves about 2 hours of buffer.
-- **23:59** Hard close. Late submissions aren't judged, and no edits are allowed after the deadline.
+- **9:00–1:00** Validation number final; fix anything that failed it. Slope (10) and filters (9) if on track. Write the project page text (summary with the hook first; then challenge, what it does, how it works, data and validation, what's next).
+- **1:00** **Feature freeze.** Anything unfinished is cut, not rushed.
+- **1:00–3:00** Polish, test on another laptop and a phone, check every credit.
+- **3:00** Judges' Q&A: show a run-through, ask what they'd want to see.
+- **3:30–6:00** **Make the demo.** 30-second script:
+  - 0–5 s: the problem: "Where and when do you land at the lunar south pole?"
+  - 5–22 s: screen recording: pick two regions, scrub the date, Sun and Earth move, the recommendation appears.
+  - 22–30 s: "Agrees with JPL Horizons to within X°" plus NASA data credits and the hook.
+  - English subtitles, aim for 29 s, unlisted YouTube, test in a private window. Fallback: 7 slides (title, problem, demo screenshot, how it works, validation, data, team).
+- **6:00** Second judges' Q&A.
+- **6:00–9:00** Fill the submission form (one editor at a time), **Save Progress early** as a draft.
+- **9:00** **Target submit.** Leaves about 3 hours of buffer.
+- **11:59** Hard close. Late saves aren't judged.
 
 ### Submission requirements (from the [project submission guide](https://www.spaceappschallenge.org/resources/project-submission-guide/))
 
@@ -246,7 +244,7 @@ Required form fields, all in English:
 8. Use of AI: name the tools and how they were used. AI images/videos need a visible watermark. AI-generated code and data must be acknowledged in text and metadata. No AI-modified NASA logos or mission identifiers.
 9. Verification: tick terms and originality, then **Submit for Judging**.
 
-Other rules worth knowing: images on the project page are JPG/PNG/GIF up to 10 MB, and videos/docs have to be linked, not uploaded. "Save Progress" changes are publicly visible. The editing "Lock" can be overridden by a teammate, so agree on one person editing the form at a time. Judging criteria are Impact, Creativity, Validity, Relevance, and Presentation. Everyone must be confirmed at the same Local Event to be eligible for awards.
+Other rules worth knowing: images on the project page are JPG/PNG/GIF up to 10 MB, and videos/docs have to be linked, not uploaded. "Save Progress" changes are publicly visible. The editing "Lock" can be overridden by a teammate, so agree on one person editing the form at a time. Judging criteria are Influence (formerly Impact), Creativity, Validity, Relevance, and Presentation. Everyone must be confirmed at the same Local Event to be eligible for awards.
 
 ---
 
@@ -275,6 +273,9 @@ Other rules worth knowing: images on the project page are JPG/PNG/GIF up to 10 M
 - P1. Who is the primary audience for the demo: mission planners (numbers first) or educators/public (visuals first)?
 - P2. Which stretch goal do we go for if there's time: heat map or 3D terrain shadows?
 - P3. Video or slide deck for the demo, and who makes it?
+- P4. Which one differentiator versus LunaNav do we commit to? Proposed: the mission-window finder (W3). Alternatives: side-by-side comparison on the same dates, a shareable link, or local terrain horizon effects.
+- P5. Is the hook "Pick a region, get your landing window." or something better?
+- P6. Do we show the Horizons validation number in the app itself, or only in the write-up and demo?
 
 **Team and logistics**
 - T1. Answered: we're at the Phoenix, AZ (virtual) event, so the deadline is 11:59 pm Arizona time. Worth a one-line confirmation with the Local Lead, since the guide page still shows last year's dates.
@@ -288,20 +289,14 @@ Other rules worth knowing: images on the project page are JPG/PNG/GIF up to 10 M
 
 ## 7. Message to paste in the group chat
 
-> Hey team! I put together a draft plan for tomorrow: architecture, data pipeline (SPICE vs Horizons for Sun/Earth positions, LOLA horizon masks and slope), a prioritized feature list with time estimates, a Sat 9am → Sun 11:59pm timeline, and the submission checklist. It builds on Alvin's doc and Sri's Next.js + three.js setup. Nothing's decided; there's a list of open questions at the end for us to settle at kickoff.
+> Hey team! I updated the plan in `docs/research/space-apps-plan.md` (branch `ryan/research`) after looking at all 50 global winners from 2021–2025. The short version: winners end with an answer, not just a visual, and back it with a number. So I'm proposing we add (1) a recommendation panel that ranks the nine regions and names the best landing window, (2) a "matches JPL Horizons to within X°" check, (3) one named thing LunaNav doesn't do, and (4) start the 30-second video and the NASA-data and AI-use credits early, since those are required. Section 0 has the table and section 5 has the timeline from now to Sun 11:59 pm.
 >
-> A few things that would help before 9am:
-> 1. Skim section 6 (open questions) and add your take.
-> 2. Pick which role(s) in section 4 you'd like. Ideally whatever you've already started on.
-> 3. Can everyone confirm they're registered at the Phoenix event? (Deadline is Sun 11:59pm Arizona time.)
->
-> One finding: NASA hasn't published single center coordinates for the nine Artemis III regions. The official outlines are USGS shapefiles (doi:10.5066/P1MEQ6UK), so I'm proposing we compute centers from those first thing.
->
-> Plan attached. Edit away!
+> Nothing's decided. Could everyone look at questions P4–P6 and T2 (who owns what) before the 6 pm mentor call?
 
 ---
 
 ### Sources consulted
+- `past-winners-research.md` in this folder (2021–2025 global winners, judging criteria, submission rules)
 - NASA Space Apps [Project Submission Guide](https://www.spaceappschallenge.org/resources/project-submission-guide/)
 - NASA, [Artemis III candidate landing regions update](https://www.nasa.gov/?p=748006) (Oct 2024)
 - George, Rubio, Lawrence, Curell, [Artemis III Site Selection Update: Downselection From Thirteen to Nine Candidate Regions](https://ntrs.nasa.gov/citations/20250011660), LPSC 2026
