@@ -441,8 +441,11 @@ These add to section 6 of `space-apps-plan.md`. They don't replace it.
 ## 8. What I couldn't do tonight, and what I need from Ryan
 
 - **USGS outline file not downloaded.** Verifying the centres needs
-  `A3_9regions-lonlat-simplified.zip` (637 KB, USGS ScienceBase, public domain). I hold off on file
-  downloads without a yes.
+  `A3_9regions-lonlat-simplified.zip` (637 KB, USGS ScienceBase, public domain). Ryan approved the
+  download, but ScienceBase puts that one file behind a **CAPTCHA**, which a person has to complete
+  in a browser: open the [item page](https://www.sciencebase.gov/catalog/item/671a6fa8d34efed5620f89f8)
+  and click the file name. The per-region zips on the same page download without a CAPTCHA, but they
+  are 68 MB to 1.2 GB each (about 2.1 GB for all nine).
 - **Nothing was pushed.** The branch `ryan/research` exists only on the Mac.
 - The official 2025 winners list and the challenge's Resources tab didn't load without a browser.
 - The LOLA polar gridded DEM file names and sizes on PDS were not re-checked tonight.
