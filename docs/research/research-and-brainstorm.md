@@ -91,32 +91,50 @@ USGS grids: McClernan 2024, *Down Selected Artemis III Candidate Landing Site Na
 [doi:10.5066/P1MEQ6UK](https://doi.org/10.5066/P1MEQ6UK). I confirmed tonight [checked tonight] that
 the ScienceBase item lists one zip per region (68 MB to 1.2 GB each) plus a small
 **`A3_9regions-lonlat-simplified.zip` (637 KB)** that holds all nine outlines in lon/lat. That small
-file is the one to use. I have **not downloaded it** (see section 8).
+file is the one used below.
 
-**Region centres below are [third-party].** They come from an open-source project, LunaNav
-([`data/sites.yaml`](https://github.com/yutuf/lmNasa/blob/HEAD/data/sites.yaml), MIT license), which
-says each is the area-weighted centre of the USGS 1 km grid. They pass my sanity checks against the
-named craters (for example, Nobile Rim 1 lands about 39 km west of Nobile's centre, which is on its
-79 km-wide rim). Treat them as placeholders until we recompute them from the USGS file ourselves.
+**Region centres below are verified [checked Sat Nov 14].** Computed from the USGS outline file
+`A3_9regions-lonlat-simplified` (McClernan 2024, doi:10.5066/P1MEQ6UK). Each region in that file is
+a four-corner square. Method: project the corners to south polar stereographic (sphere of 1737.4 km,
+true scale at the pole), take the polygon centroid, convert back to lat/lon. The projected side
+lengths and areas reproduce the file's own `Area_km2` values exactly, which confirms the projection.
+Frame: `GCS_Moon_2000`, sphere 1737.4 km, planetocentric, east-positive.
 
-| Region | Lat (°, south negative) | Lon (°E, −180..180) | Lon (°E, 0..360, Horizons style) | Region area [third-party] | Notes |
+The earlier placeholders from LunaNav [third-party] all fall within 0.1 to 0.5 km of these.
+
+| Region | Lat (°, south negative) | Lon (°E, −180..180) | Lon (°E, 0..360, Horizons style) | Size (from the USGS file) | Notes |
 |---|---|---|---|---|---|
-| Peak near Cabeus B | −83.6514 | −68.7263 | 291.2737 | 441 km² | Farthest from the pole (~193 km) |
-| Haworth | −86.7661 | −22.6199 | 337.3801 | 930 km² | |
-| Malapert Massif | −86.0 | 0.0 | 0.0 | 462 km² | Not a computed centre. LROC describes "the relatively flat area (86°S, 0°E)" as the heart of the region ([LROC post 1294](https://lroc.im-ldi.com/images/1294)). Whole degrees only, so ±15 km in latitude. |
-| Mons Mouton Plateau | −84.3375 | 30.6186 | 30.6186 | 4524 km² | By far the largest region |
-| Mons Mouton | −85.4218 | 31.6755 | 31.6755 | 289 km² | Overlaps the Plateau region |
-| Nobile Rim 1 | −85.4338 | 37.3276 | 37.3276 | 441 km² | |
-| Nobile Rim 2 | −83.9545 | 58.7938 | 58.7938 | 420 km² | |
-| de Gerlache Rim 2 | −88.2263 | −65.1126 | 294.8874 | 441 km² | Closest to the pole (~54 km) |
-| Slater Plain | −87.1697 | 125.4596 | 125.4596 | 441 km² | Leans toward the far side |
+| Peak near Cabeus B | −83.6375 | −68.7495 | 291.2505 | 20 × 20 km, 399.8 km² | Farthest from the pole (~193 km) |
+| Haworth | −86.7639 | −22.7770 | 337.2230 | 29.8 × 29.8 km, 888.0 km² | |
+| Malapert Massif | −85.9948 | −0.2358 | 359.7642 | 21 × 21 km, 441.0 km² | Matches LROC's "86°S, 0°E" description ([post 1294](https://lroc.im-ldi.com/images/1294)) |
+| Mons Mouton Plateau | −84.3347 | 30.5923 | 30.5923 | 57.9 × 76.9 km, 4451.8 km² | By far the largest region |
+| Mons Mouton | −85.4266 | 31.7428 | 31.7428 | 16 × 16 km, 256.0 km² | Overlaps the Plateau region |
+| Nobile Rim 1 | −85.4364 | 37.3470 | 37.3470 | 20 × 20 km, 400.0 km² | |
+| Nobile Rim 2 | −83.9541 | 58.8215 | 58.8215 | 20 × 20 km, 400.0 km² | |
+| de Gerlache Rim 2 | −88.2300 | −64.6284 | 295.3716 | 20 × 20 km, 400.0 km² | Closest to the pole (~54 km) |
+| Slater Plain | −87.1637 | 125.5377 | 125.5377 | 20 × 20 km, 399.8 km² | Leans toward the far side |
+
+Region corners (lon °E, lat °), straight from the USGS file, for drawing outlines:
+
+| Region | Corner 1 | Corner 2 | Corner 3 | Corner 4 |
+|---|---|---|---|---|
+| Peak near Cabeus B | −67.1667, −83.2095 | −72.4735, −83.4364 | −70.5595, −84.0600 | −64.7999, −83.8100 |
+| Haworth | −26.6520, −86.1124 | −34.9818, −86.9578 | −16.9908, −87.3935 | −12.3618, −86.4428 |
+| Malapert Massif | −4.7636, −85.6339 | −5.6595, −86.3228 | 5.1479, −86.3259 | 4.3323, −85.6366 |
+| Mons Mouton Plateau | 15.4942, −83.9502 | 22.3928, −85.7556 | 46.6120, −84.2893 | 35.4425, −82.8467 |
+| Mons Mouton | 27.2880, −85.3271 | 30.5792, −85.7883 | 36.3666, −85.4974 | 32.7352, −85.0633 |
+| Nobile Rim 1 | 31.6437, −85.3514 | 36.4800, −85.8975 | 43.2066, −85.4748 | 38.0547, −84.9746 |
+| Nobile Rim 2 | 54.4618, −84.0480 | 59.9616, −84.4047 | 63.0242, −83.8264 | 57.8402, −83.5016 |
+| de Gerlache Rim 2 | −60.5725, −87.7853 | −77.4712, −88.0239 | −71.3421, −88.6600 | −49.3987, −88.3279 |
+| Slater Plain | 123.6906, −87.6222 | 134.9976, −87.2023 | 126.8696, −86.7032 | 116.5672, −87.0511 |
 
 Things to keep straight:
 
 - **A region centre is not a landing point.** LunaNav reports that Sun-plus-Earth availability at the
   centres ranges from 2% (Slater Plain) to 28% (Nobile Rim 2), while the best ground inside each
   region reaches 35% to 84% [third-party]. Whichever point we show, the UI should say what it is.
-- Regions are roughly 21 × 21 km (441 km²), not the "15 × 15 km" of the 2022 announcement.
+- Most regions are 20 × 20 km squares, not the "15 × 15 km" of the 2022 announcement. The shifts
+  from the placeholders (under 0.5 km) do not change the cheat sheet in 3.5 at the precision shown.
 - Frame for all of the above: planetocentric, Moon Mean Earth (ME).
 - The named-crater coordinates in `space-apps-plan.md` section 3.1 are *nearby features*, kept there
   as a cross-check only.
@@ -405,8 +423,7 @@ Every number has a source line under it.
 
 ## 6. First steps once Ryan says "begin" (not before 9am Saturday)
 
-1. Recompute the nine region centres from the USGS lon/lat outline file and compare them with the
-   table in 3.1. Record the method next to the numbers.
+1. ~~Recompute the nine region centres from the USGS outline file.~~ Done, see 3.1.
 2. Get a site height for each point from LOLA so Horizons gets a real height, not 0.
 3. One site end to end (suggest Malapert Massif, since tonight's test already covers it): Horizons
    series → small JSON → shown in the app → checked against the cheat sheet in 3.5.
@@ -440,12 +457,9 @@ These add to section 6 of `space-apps-plan.md`. They don't replace it.
 
 ## 8. What I couldn't do tonight, and what I need from Ryan
 
-- **USGS outline file not downloaded.** Verifying the centres needs
-  `A3_9regions-lonlat-simplified.zip` (637 KB, USGS ScienceBase, public domain). Ryan approved the
-  download, but ScienceBase puts that one file behind a **CAPTCHA**, which a person has to complete
-  in a browser: open the [item page](https://www.sciencebase.gov/catalog/item/671a6fa8d34efed5620f89f8)
-  and click the file name. The per-region zips on the same page download without a CAPTCHA, but they
-  are 68 MB to 1.2 GB each (about 2.1 GB for all nine).
+- **Done Sat Nov 14:** Ryan downloaded the USGS outline file by hand (it sits behind a CAPTCHA).
+  It is kept outside the repo at `~/Downloads/space-apps/data/usgs-artemis3-regions/`. The centres
+  in 3.1 are computed from it.
 - **Nothing was pushed.** The branch `ryan/research` exists only on the Mac.
 - The official 2025 winners list and the challenge's Resources tab didn't load without a browser.
 - The LOLA polar gridded DEM file names and sizes on PDS were not re-checked tonight.
