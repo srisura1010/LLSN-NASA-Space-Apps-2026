@@ -954,7 +954,8 @@ function Navigator() {
 
       {note && (
         <div className="pointer-events-none fixed top-16 right-3 z-50 max-sm:top-auto max-sm:right-2 max-sm:bottom-2 max-sm:left-2">
-          <Toast>{note}</Toast>
+          {/* From xl it fits over the 340 px inspector rail, clear of the viewer's toolbar. */}
+          <Toast className="xl:w-[316px]">{note}</Toast>
         </div>
       )}
 

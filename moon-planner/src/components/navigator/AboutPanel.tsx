@@ -19,6 +19,7 @@ const SECTIONS = [
   ["about-ranking", "How regions are ranked"],
   ["about-limits", "Limits"],
   ["about-moon", "Moon level"],
+  ["about-point", "Any point on the Moon"],
   ["about-system", "System level"],
   ["about-check", "Checked against NASA"],
   ["about-credits", "NASA data and credits"],
@@ -61,7 +62,7 @@ const CREDITS: { name: string; use: string; who: string; href: string; link: str
   },
   {
     name: "JPL Horizons vector tables",
-    use: "Heliocentric positions of Earth and the Moon (ecliptic J2000, hourly through 2027) behind the System tab's diagram, distances, Moon phase and light time.",
+    use: "Heliocentric positions of Earth and the Moon (ecliptic J2000, hourly through 2027) behind the System level's diagram, distances, Moon phase and light time.",
     who: "NASA Jet Propulsion Laboratory, Solar System Dynamics",
     href: "https://ssd-api.jpl.nasa.gov/doc/horizons.html",
     link: "ssd-api.jpl.nasa.gov/doc/horizons.html",
@@ -89,7 +90,7 @@ const CREDITS: { name: string; use: string; who: string; href: string; link: str
   },
   {
     name: "NASA Moon Trek",
-    use: "The Open in Moon Trek link for each site, the LRO LOLA 30 m south pole DEM that gives custom sites their nearby terrain, and the LOLA global 128 px/deg and polar 100 m mosaics behind the site level of any other point.",
+    use: "The Open in Moon Trek link for each site, the LRO LOLA 30 m south pole DEM that gives custom sites their nearby terrain, the LOLA global 128 px/deg and polar 100 m mosaics behind the site level of any other point, and the LROC wide-angle camera map tiles for the Moon globe zoomed in.",
     who: "NASA Solar System Treks Project",
     href: "https://trek.nasa.gov/moon/",
     link: "trek.nasa.gov/moon",
@@ -103,10 +104,17 @@ const CREDITS: { name: string; use: string; who: string; href: string; link: str
   },
   {
     name: "CGI Moon Kit",
-    use: "Moon colour texture from the LROC wide-angle camera mosaic.",
+    use: "The Moon globe's colour and elevation maps, from the LROC wide-angle camera mosaic and LOLA.",
     who: "NASA Scientific Visualization Studio",
     href: "https://svs.gsfc.nasa.gov/4720",
     link: "svs.gsfc.nasa.gov/4720",
+  },
+  {
+    name: "Blue Marble Next Generation",
+    use: "The Earth globe at the System level (July 2004, with topography and bathymetry; Reto Stöckli).",
+    who: "NASA Earth Observatory",
+    href: "https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/",
+    link: "science.nasa.gov (Blue Marble)",
   },
 ];
 
@@ -227,7 +235,10 @@ function AboutPanel({ entries, loading }: Props) {
               regions appear here as a well-studied set of south pole candidates, not as the landing sites of any
               scheduled mission.
             </p>
-            <p>Each region is measured at its centre point. You can add any other point from 80&deg; S to the pole as a custom site.</p>
+            <p>
+              Each region is measured at its centre point. You can add any other point on the Moon as a custom site
+              (see Any point on the Moon below).
+            </p>
           </Section>
 
           <Section id="about-method" title="How the numbers are made">
@@ -274,7 +285,10 @@ function AboutPanel({ entries, loading }: Props) {
 
           <Section id="about-limits" title="Limits">
             <ul className="list-disc space-y-2 pl-5 marker:text-ink-2">
-              <li>Horizons stop at 80&deg; S, where the elevation model ends; terrain further north is not included.</li>
+              <li>
+                For the regions, horizons stop at 80&deg; S, where the south pole elevation model ends; terrain further
+                north is not included.
+              </li>
               <li>Beyond about 5 km the 320 m grid smooths distant ridges and peaks.</li>
               <li>Sampling is hourly, so a spell shorter than an hour can be missed and shares count whole hours.</li>
               <li>
@@ -282,18 +296,19 @@ function AboutPanel({ entries, loading }: Props) {
                 the best spot in it.
               </li>
               <li>
-                The precomputed tracks cover 2027. Custom sites fetch Horizons tracks live for the window in use, with a
-                horizon from the 640 m heightmap and, when NASA Moon Trek is reachable, 80 m terrain within 5 km.
+                The precomputed tracks cover 2027. Custom sites from 80&deg; S to the pole fetch Horizons tracks live
+                for the window in use, with a horizon from the 640 m heightmap and, when NASA Moon Trek is reachable,
+                80 m terrain within 5 km. Points elsewhere are covered under Any point on the Moon.
               </li>
             </ul>
           </Section>
 
           <Section id="about-moon" title="Moon level">
             <p>
-              The Moon tab shows the whole Moon as a globe, between the System level and the site-level terrain plate.
+              The Moon level shows the whole Moon as a globe, between the System level and the site-level terrain plate.
               The globe is turned with the IAU/WGCCRE rotation model for the Moon (pole direction and prime meridian
               with its thirteen periodic terms; Archinal and colleagues, 2018) and lit from the Sun&apos;s direction in
-              the same JPL Horizons vectors the System tab uses, so the terminator, the sub-solar point and the
+              the same JPL Horizons vectors the System level uses, so the terminator, the sub-solar point and the
               sub-Earth point (the libration) are computed for the time shown. Sun and Earth elevations from this
               model, over a smooth sphere, agree with the Horizons observer tracks at the nine region centres to
               within 0.01° at every hour of 2027. The surface is the colour and elevation maps of the NASA Scientific
@@ -337,7 +352,7 @@ function AboutPanel({ entries, loading }: Props) {
 
           <Section id="about-system" title="System level">
             <p>
-              The System tab steps back from the surface to the geometry that causes everything else: where Earth is on
+              The System level steps back from the surface to the geometry that causes everything else: where Earth is on
               its orbit, where the Moon is around Earth, and which way the sunlight falls. It draws heliocentric
               positions of Earth and the Moon from JPL Horizons vector tables, hourly through 2027 in the ecliptic J2000
               frame, and shares the Navigator&apos;s clock. Distances, the Moon&apos;s illuminated fraction and light

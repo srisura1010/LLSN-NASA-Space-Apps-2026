@@ -27,6 +27,54 @@ the United States; Space Apps asks that each source is credited.
 - **Credit line:** NASA's Scientific Visualization Studio. LRO LROC and LOLA
   data courtesy NASA/GSFC/Arizona State University.
 
+## JPL Horizons observer tables (Sun and Earth from each region)
+
+- **Files:**
+  - `moon-planner/data/horizons-cache/*.json`: raw Horizons answers, one per
+    body and site, written by `moon-planner/scripts/precompute-horizons.ts`
+    (`npm run precompute`).
+  - `moon-planner/public/data/sky/<region>.json`: the same tracks packed for
+    the browser by `moon-planner/scripts/build-sky.ts` (`npm run build-sky`).
+- **Source:** NASA/JPL Solar System Dynamics, Horizons API,
+  https://ssd.jpl.nasa.gov/api/horizons.api (observer table, `CENTER`
+  `coord@301` at each region centre, `QUANTITIES 4`: apparent azimuth and
+  elevation), Sun (10) and Earth (399), hourly from 2027-01-01 to 2028-01-01.
+  Custom sites from 80 S to the pole fetch the same table live through
+  `moon-planner/src/app/api/horizons/route.ts` for the window in use.
+- **Credit line:** Ephemeris data from NASA/JPL Horizons, Solar System
+  Dynamics Group, Jet Propulsion Laboratory.
+
+## LOLA south pole elevation model (terrain horizons and the terrain plate)
+
+- **Files:** `moon-planner/data/raw/ldem80s_*` (80 m windows around each
+  region and 320 m / 640 m reductions), `moon-planner/public/data/terrain/heightmap.*`
+  (the 640 m plate heightmap) and `moon-planner/public/data/horizon/<region>.json`
+  (the traced horizons), built by `moon-planner/scripts/process-dem.ts`
+  (`npm run process-dem`).
+- **Source:** LRO LOLA `LDEM_80S_80MPP_ADJ.TIF`, NASA GSFC Planetary Geodesy
+  Data Archive product 90, https://pgda.gsfc.nasa.gov/products/90
+  (download https://pgda.gsfc.nasa.gov/data/LOLA_20mpp/LDEM_80S_80MPP_ADJ.TIF).
+- **Near field for custom sites from 80 S to the pole (fetched at run time):**
+  `LRO_LOLA_DEM_SPole75_30mp_v04` from NASA Moon Trek,
+  https://trek.nasa.gov/moon/trekarcgis/rest/services/LRO_LOLA_DEM_SPole75_30mp_v04/ImageServer ,
+  resampled to 80 m within 5 km of the point (`src/lib/horizonFromGrid.ts`).
+- **Credit line:** Elevation: NASA/GSFC LRO LOLA (Planetary Geodesy Data
+  Archive).
+
+## LOLA illumination and Earth visibility maps (Checked against NASA)
+
+- **Files:** `moon-planner/src/lib/validation.ts` (the values read at each
+  region centre) and `moon-planner/public/data/validation.json`, built by
+  `moon-planner/scripts/build-validation.ts` (`npm run build-validation`).
+- **Source:** Mazarico, E., Neumann, G. A., Smith, D. E., Zuber, M. T.,
+  Torrence, M. H. (2011), "Illumination conditions of the lunar polar regions
+  using LOLA topography", Icarus 211, 1066-1081,
+  doi:10.1016/j.icarus.2010.10.030. Maps: NASA GSFC Planetary Geodesy Data
+  Archive product 69 (release 201608, 120 m),
+  https://pgda.gsfc.nasa.gov/products/69
+- **Credit line:** Illumination reference: Mazarico et al. (2011), NASA GSFC
+  PGDA.
+
 ## USGS Artemis III candidate landing regions (site outlines and centres)
 
 - **Files:**
@@ -131,7 +179,7 @@ the United States; Space Apps asks that each source is credited.
 
 - **Files:** `moon-planner/src/lib/localTerrain.ts` (fetch, projection,
   horizon), checked by `moon-planner/scripts/check-global-site.ts`. Nothing
-  is stored in the repo; two rasters of about 1 to 3 MB are requested per
+  is stored in the repo; one or two rasters (a few MB) are requested per
   point when its site level is opened.
 - **Source:** NASA Solar System Treks (Moon Trek) ArcGIS image services,
   `exportImage` (float32 BSQ, metres above the 1737.4 km sphere, served with
@@ -147,9 +195,11 @@ the United States; Space Apps asks that each source is credited.
     https://trek.nasa.gov/moon/trekarcgis/rest/services/LRO_LOLA_DEM_SPole45_100mp_v04/ImageServer
 - **Underlying data:** LRO Lunar Orbiter Laser Altimeter gridded data
   records (LDEM), NASA Planetary Data System Geosciences Node.
-- **Use:** resampled in the browser to a 600 m grid (512 x 512, 154 km each
-  way) in an azimuthal equidistant projection centred on the point, plus a
-  240 m (global) or 120 m (polar) grid for the near horizon.
+- **Use:** resampled in the browser, in an azimuthal equidistant projection
+  centred on the point, to a grid reaching about 123 km each way: 240 m
+  (1024 x 1024) from the global mosaic or 300 m (820 x 820) from the polar
+  mosaics, plus a 120 m grid (512 x 512, about 30 km each way) for the near
+  horizon with the polar mosaics.
 - **Check (2026-11-15):** horizon from these grids against
   `public/data/horizon/<id>.json` at Malapert, Haworth, Nobile 1 and Mouton
   plateau: mean absolute difference 0.17 to 0.41 degrees, largest 1.79
@@ -244,3 +294,10 @@ the United States; Space Apps asks that each source is credited.
 - **Blue Marble Next Generation with Topography and Bathymetry, July 2004** (`world.topo.bathy.200407.3x5400x2700.jpg`). NASA Earth Observatory (Reto Stöckli); public domain. Source: https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-topography-bathymetry/july/world.topo.bathy.200407.3x5400x2700.jpg. Resized to `moon-planner/public/textures/earth_color_2k.jpg` and `earth_color_4k.jpg`.
 - Earth's orientation uses the Earth Rotation Angle (IAU 2000, UT1 taken as UTC) about the mean pole; see `moon-planner/src/lib/earthFrame.ts` and `npx tsx scripts/check-earth-frame.ts`.
 
+
+## Landing page picture
+
+- **File:** `moon-planner/public/landing/moon.jpg` (the Moon behind the
+  landing page heading, `src/components/landing/MoonSky.tsx`).
+- **Source:** not yet recorded. To be confirmed by the team before
+  submission.
