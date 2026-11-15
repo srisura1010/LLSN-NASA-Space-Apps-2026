@@ -10,26 +10,16 @@
 export type ShaderDefines = {
   half: number; // m
   pixel: number; // m
+  /** Highest terrain on the plate, m. Default 7100 (the south polar plate). */
+  hMax?: number;
+  /**
+   * A plate around any point: azimuthal equidistant, x east and y north of
+   * the centre. lonStep is the meridian spacing of its graticule, degrees.
+   */
+  local?: { lat0: number; lon0: number; lonStep: number };
 };
 
-const common = ({ half, pixel }: ShaderDefines) => /* glsl */ `
-#define R_MOON 1737400.0
-#define HALF ${half.toFixed(1)}
-#define PX ${pixel.toFixed(1)}
-#define SUN_R 0.0046513
-#define H_MAX 7100.0
-
-uniform sampler2D uHeight;
-
-vec2 mapUv(vec2 p) {
-  return vec2((p.x + HALF) / (2.0 * HALF), (HALF - p.y) / (2.0 * HALF));
-}
-
-float heightAt(vec2 p) {
-  vec2 t = texture(uHeight, mapUv(p)).rg;
-  return t.r + t.g;
-}
-
+const polarSky = /* glsl */ `
 // A body's unit vector s (plate frame) seen from map point p: xy is the
 // horizontal direction in map x/y, z is the sine of its elevation. Same
 // frame as localFrameAt() in geo.ts.
@@ -45,6 +35,41 @@ vec3 localSky(vec2 p, vec3 s) {
   vec3 U = vec3(sc * sl, sc * cl, cc);
   return vec3(dot(s, E) * vec2(cl, -sl) + dot(s, N) * vec2(sl, cl), dot(s, U));
 }
+`;
+
+// Local plate: the frame at p is the centre's frame turned by the arc r / R
+// about the horizontal axis across p, and bearings from the centre are true.
+const localSkyLocal = /* glsl */ `
+vec3 localSky(vec2 p, vec3 s) {
+  float r = length(p);
+  vec2 rad = r > 1.0 ? p / r : vec2(0.0, 1.0);
+  vec2 tg = vec2(-rad.y, rad.x);
+  float c = r / R_MOON;
+  float sr = dot(s.xy, rad);
+  float st = dot(s.xy, tg);
+  return vec3((sr * cos(c) - s.z * sin(c)) * rad + st * tg, sr * sin(c) + s.z * cos(c));
+}
+`;
+
+const common = ({ half, pixel, hMax, local }: ShaderDefines) => /* glsl */ `
+#define R_MOON 1737400.0
+#define HALF ${half.toFixed(1)}
+#define PX ${pixel.toFixed(1)}
+#define SUN_R 0.0046513
+#define H_MAX ${(hMax ?? 7100).toFixed(1)}
+
+uniform sampler2D uHeight;
+
+vec2 mapUv(vec2 p) {
+  return vec2((p.x + HALF) / (2.0 * HALF), (HALF - p.y) / (2.0 * HALF));
+}
+
+float heightAt(vec2 p) {
+  vec2 t = texture(uHeight, mapUv(p)).rg;
+  return t.r + t.g;
+}
+
+${local ? localSkyLocal : polarSky}
 `;
 
 export const lightVertex = /* glsl */ `
@@ -131,7 +156,52 @@ void main() {
 }
 `;
 
+/** Local plates carry each vertex's latitude and longitude offset from the centre (degrees) for the graticule. */
+export const surfaceVertexLocal = /* glsl */ `
+attribute vec2 geo;
+varying vec2 vMap;
+varying vec3 vWorld;
+varying vec2 vGeo;
+
+void main() {
+  vec4 wp = modelMatrix * vec4(position, 1.0);
+  vWorld = wp.xyz;
+  vMap = vec2(position.x, -position.z) * 1000.0;
+  vGeo = geo;
+  gl_Position = projectionMatrix * viewMatrix * wp;
+}
+`;
+
 export const REGION_COUNT = 9;
+
+const polarGraticule = /* glsl */ `
+  // Graticule: 1 degree of latitude, 30 degrees of longitude.
+  float r = length(p);
+  float colat = degrees(2.0 * atan(r / (2.0 * R_MOON)));
+  float ringPx = abs(colat - floor(colat + 0.5)) / (max(fwidth(colat), 1e-7) * uDpr);
+  float ring = lineMask(ringPx, 0.5) * step(0.5, colat);
+  float lon = r > 1.0 ? degrees(atan(p.x, p.y)) : 0.0;
+  float mer = floor(lon / 30.0 + 0.5) * 30.0;
+  vec2 md = vec2(sin(radians(mer)), cos(radians(mer)));
+  vec2 mn = vec2(md.y, -md.x);
+  float merA = lineMask(abs(dot(p, mn)) * pxPerM(mn, dx, dy), 0.5) * step(0.0, dot(p, md)) * smoothstep(15000.0, 35000.0, r);
+  col = mix(col, line, mix(0.22, 0.13, lit) * max(ring, merA));
+`;
+
+// Whole degrees of latitude and every lonStep degrees of longitude, from the
+// per-vertex offsets (small numbers, so the lines stay sharp close in).
+const localGraticule = (l: { lat0: number; lon0: number; lonStep: number }) => {
+  const frac = (v: number, step: number) => (v / step - Math.round(v / step)).toFixed(7);
+  return /* glsl */ `
+  float gLat = vGeo.x + (${frac(l.lat0, 1)});
+  float ring = lineMask(abs(gLat - floor(gLat + 0.5)) / (max(fwidth(vGeo.x), 1e-9) * uDpr), 0.5);
+  float gLon = vGeo.y / ${l.lonStep.toFixed(1)} + (${frac(l.lon0, l.lonStep)});
+  float gw = fwidth(vGeo.y) / ${l.lonStep.toFixed(1)};
+  float merA = lineMask(abs(gLon - floor(gLon + 0.5)) / (max(gw, 1e-9) * uDpr), 0.5) * (1.0 - step(0.25, gw));
+  col = mix(col, line, mix(0.22, 0.13, lit) * max(ring, merA));
+
+`;
+};
 
 export const surfaceFragment = (d: ShaderDefines) => /* glsl */ `
 ${common(d)}
@@ -172,6 +242,7 @@ uniform vec3 uFade;
 
 varying vec2 vMap;
 varying vec3 vWorld;
+${d.local ? "varying vec2 vGeo;" : ""}
 
 float lineMask(float distPx, float halfWidth) {
   return 1.0 - smoothstep(halfWidth - 0.5, halfWidth + 0.5, distPx);
@@ -237,18 +308,7 @@ void main() {
   }
   vec3 line = mix(uPaper, uInk, lit);
 
-  // Graticule: 1 degree of latitude, 30 degrees of longitude.
-  float r = length(p);
-  float colat = degrees(2.0 * atan(r / (2.0 * R_MOON)));
-  float ringPx = abs(colat - floor(colat + 0.5)) / (max(fwidth(colat), 1e-7) * uDpr);
-  float ring = lineMask(ringPx, 0.5) * step(0.5, colat);
-  float lon = r > 1.0 ? degrees(atan(p.x, p.y)) : 0.0;
-  float mer = floor(lon / 30.0 + 0.5) * 30.0;
-  vec2 md = vec2(sin(radians(mer)), cos(radians(mer)));
-  vec2 mn = vec2(md.y, -md.x);
-  float merA = lineMask(abs(dot(p, mn)) * pxPerM(mn, dx, dy), 0.5) * step(0.0, dot(p, md)) * smoothstep(15000.0, 35000.0, r);
-  col = mix(col, line, mix(0.22, 0.13, lit) * max(ring, merA));
-
+${d.local ? localGraticule(d.local) : polarGraticule}
   // Region outlines, with a tinted ribbon inside when scores are given.
   for (int i = 0; i < REGIONS; i++) {
     float sd = -1.0e9;

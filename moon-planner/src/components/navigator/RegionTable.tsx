@@ -19,6 +19,8 @@ export type RankedRow = {
   id: string;
   name: string;
   custom?: boolean;
+  /** A custom site's terrain source when it is not the polar LOLA grids, shown after "Custom". */
+  tag?: string;
   score: MissionScore;
   /** Shared rank for ties (1, 2, 3, 3, 5). */
   rank: number;
@@ -192,6 +194,7 @@ function RegionTable({
                           Custom
                         </span>
                       )}
+                      {r.tag && <span className="block text-[0.75rem] font-normal text-ink-2">Terrain: {r.tag}</span>}
                     </span>
                     <ShareBar sun={r.score.sunlit} earth={r.score.earthVisible} />
                   </span>
@@ -322,18 +325,14 @@ function validate(latText: string, lonText: string): { lat: number; lon: number 
   if (lat > 0)
     return { field: "lat", message: "The terrain covers the south pole only. Use a negative latitude between −80 and −90." };
   if (lat < -90) return { field: "lat", message: "Latitude stops at −90, the pole. Enter a value between −80 and −90." };
-  if (lat > -80)
-    return {
-      field: "lat",
-      message: `${lat.toFixed(2)}° is outside the terrain, which ends at 80° S. Enter a latitude between −80 and −90.`,
-    };
   if (lonText.trim() === "") return { field: "lon", message: "Enter a longitude, for example 30 (east positive) or 45 W." };
   const lon = parseAngle(lonText, "W");
   if (lon === null) return { field: "lon", message: "Longitude must be a number of degrees, for example 30 or 45 W." };
   if (lon < -180 || lon > 360)
     return { field: "lon", message: "Longitude runs from −180 to 180 degrees east. Enter a value in that range." };
   const lonNorm = lon > 180 ? lon - 360 : lon;
-  const supported = isCustomSiteSupported(lat, lonNorm);
+  // North of 80° S the terrain comes from NASA Moon Trek and any point works.
+  const supported = lat > -80 ? { ok: true as const, reason: undefined } : isCustomSiteSupported(lat, lonNorm);
   if (!supported.ok)
     return {
       field: "lat",
@@ -366,8 +365,9 @@ export function CustomSiteForm({ state, onSubmit, onRemove, className = "" }: Cu
         Add a custom site
       </h3>
       <p className="mt-1 max-w-[42ch] text-[0.844rem] leading-snug text-ink-2">
-        Any point from 80&deg; S to the pole. Its horizon comes from the LOLA heightmap and its Sun and Earth tracks from
-        JPL Horizons, so it takes a few seconds.
+        Any point on the Moon; it takes a few seconds. From 80&deg; S to the pole the horizon comes from the LOLA 80 m
+        and 640 m grids and the tracks from JPL Horizons. Elsewhere the terrain is fetched from NASA Moon Trek on a
+        coarser 600 m grid, so times near a grazing Sun are approximate.
       </p>
       <form
         noValidate
@@ -430,7 +430,8 @@ export function CustomSiteForm({ state, onSubmit, onRemove, className = "" }: Cu
         )}
         {!problem && busy && (
           <p className="mt-2 text-[0.844rem] text-ink-2">
-            Computing the terrain horizon and fetching Sun and Earth tracks for {state.lat.toFixed(2)}, {state.lon.toFixed(2)}.
+            {state.lat > -80 ? "Fetching the terrain from NASA Moon Trek and tracing the horizon for" : "Computing the terrain horizon and fetching Sun and Earth tracks for"}{" "}
+            {state.lat.toFixed(2)}, {state.lon.toFixed(2)}.
           </p>
         )}
         {!problem && state?.status === "error" && (

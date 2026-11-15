@@ -142,7 +142,9 @@ export default function PointPanel({
     const earthUp = isUpAt(site, "earth", nowMs);
     return { s, sunUp, earthUp, sunNext: nextContact(site, "sun", nowMs), earthNext: nextContact(site, "earth", nowMs) };
   }, [site, nowMs]);
-  const terrain = point ? isCustomSiteSupported(point.lat, point.lon) : null;
+  // South of 80° S the site level uses the polar LOLA grids; anywhere else it fetches terrain from NASA Moon Trek.
+  const polar = !!point && point.lat <= -80;
+  const terrain = point ? (polar ? isCustomSiteSupported(point.lat, point.lon) : { ok: true, reason: undefined }) : null;
   const year = site ? new Date(site.sky.startMs).getUTCFullYear() : 2027;
 
   return (
@@ -228,7 +230,7 @@ export default function PointPanel({
           <div className="mt-3 flex flex-wrap gap-2">
             {terrain?.ok && onTerrain && (
               <button type="button" onClick={() => onTerrain(point.lat, point.lon)} className={primaryButton}>
-                Use LOLA terrain
+                {polar ? "Use LOLA terrain" : "Open site level"}
               </button>
             )}
             {onCompare && (
@@ -241,11 +243,11 @@ export default function PointPanel({
             </button>
           </div>
           <p data-pt="site-level" className="mt-2 text-[0.8rem] leading-snug text-ink-2">
-            {terrain?.ok
-              ? "Use LOLA terrain opens this point at the site level, measured against the real horizon."
-              : point.lat > -80
-                ? "The site level is not available here: its LOLA terrain covers 80° S to the pole only."
-                : `The site level is not available for this point. ${terrain?.reason ?? ""}`}
+            {!terrain?.ok
+              ? `The site level is not available for this point. ${terrain?.reason ?? ""}`
+              : polar
+                ? "Use LOLA terrain opens this point at the site level, measured against the real horizon."
+                : "Open site level fetches the LOLA terrain around this point from NASA Moon Trek (a 600 m grid, 150 km each way) and measures the Sun and Earth against its horizon. The grid is coarse, so times near a grazing Sun are approximate."}
           </p>
         </>
       )}

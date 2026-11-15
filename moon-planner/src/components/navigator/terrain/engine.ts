@@ -28,7 +28,7 @@ import {
 import { EXAGGERATION, hexToRgb, RELIEF, TOKENS, type RGB } from "./constants";
 import type { TerrainData } from "./data";
 import type { RegionShape, V2, V3 } from "./geo";
-import { lightFragment, lightVertex, opennessFragment, REGION_COUNT, surfaceFragment, surfaceVertex } from "./shaders";
+import { lightFragment, lightVertex, opennessFragment, REGION_COUNT, surfaceFragment, surfaceVertex, surfaceVertexLocal } from "./shaders";
 
 const K = EXAGGERATION / 1000; // metres of height to scene units (km)
 const vec3 = (c: RGB) => new Vector3(c[0], c[1], c[2]);
@@ -52,7 +52,15 @@ export class PlateRenderer {
   private bakeDirty = true;
 
   constructor(data: TerrainData, range: { min: number; max: number }) {
-    const defs = { half: data.half, pixel: data.meta.pixelSize };
+    const local = data.local;
+    const defs = local
+      ? {
+          half: data.half,
+          pixel: data.meta.pixelSize,
+          hMax: Math.max(1000, local.maxHeight + 100),
+          local: { lat0: local.lat, lon0: local.lon, lonStep: localLonStep(local.lat) },
+        }
+      : { half: data.half, pixel: data.meta.pixelSize };
     const { width, height } = data.meta;
 
     this.heightTex = new DataTexture(data.texData, width, height, RGFormat, HalfFloatType);
@@ -96,7 +104,7 @@ export class PlateRenderer {
     this.openScene.add(openQuad);
 
     this.material = new ShaderMaterial({
-      vertexShader: surfaceVertex,
+      vertexShader: local ? surfaceVertexLocal : surfaceVertex,
       fragmentShader: surfaceFragment(defs),
       uniforms: {
         uHeight: { value: this.heightTex },
@@ -233,6 +241,13 @@ export class PlateRenderer {
   }
 }
 
+/** Meridian spacing (degrees) of a local plate's graticule: about 25 km or more between lines. */
+export function localLonStep(lat: number): number {
+  const kmPerDeg = 30.32 * Math.cos((lat * Math.PI) / 180);
+  for (const s of [1, 2, 5, 10]) if (s * kmPerDeg >= 25) return s;
+  return 30;
+}
+
 function buildRelief(data: TerrainData): BufferGeometry {
   const { n, spacing, x0, y0, heights } = data.grid;
   const pos = new Float32Array(n * n * 3);
@@ -264,6 +279,18 @@ function buildRelief(data: TerrainData): BufferGeometry {
   const g = new BufferGeometry();
   g.setAttribute("position", new BufferAttribute(pos, 3));
   g.setIndex(new BufferAttribute(idx, 1));
+  if (data.local) {
+    const { projection: pr, lat, lon } = data.local;
+    const geo = new Float32Array(n * n * 2);
+    for (let j = 0; j < n; j++) {
+      for (let i = 0; i < n; i++) {
+        const q = pr.unproject(x0 + i * spacing, y0 - j * spacing);
+        geo[(j * n + i) * 2] = q.lat - lat;
+        geo[(j * n + i) * 2 + 1] = ((q.lon - lon + 540) % 360) - 180;
+      }
+    }
+    g.setAttribute("geo", new BufferAttribute(geo, 2));
+  }
   g.computeBoundingSphere();
   return g;
 }

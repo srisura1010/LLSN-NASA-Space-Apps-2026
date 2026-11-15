@@ -19,15 +19,17 @@ type Props = {
   earthBearing: V2 | null;
   tints: (string | null)[] | null;
   half: number;
+  /** A plate that is not the south polar one: no polar rings, meridians or landmarks. */
+  plain?: boolean;
 };
 
 const X = (p: V2) => p.x / 1000;
 const Y = (p: V2) => -p.y / 1000;
 
-export default function PlanView({ regions, names, selectedIndex, onSelect, site, siteLabel, sunBearing, earthBearing, tints, half }: Props) {
-  const view = 215;
-  const rings = Array.from({ length: 8 }, (_, i) => 2 * MOON_RADIUS_M * Math.tan((((i + 1) / 2) * Math.PI) / 180) / 1000);
-  const meridians = Array.from({ length: 12 }, (_, i) => (i * 30 * Math.PI) / 180);
+export default function PlanView({ regions, names, selectedIndex, onSelect, site, siteLabel, sunBearing, earthBearing, tints, half, plain }: Props) {
+  const view = plain ? Math.ceil(half / 1000) + 8 : 215;
+  const rings = plain ? [] : Array.from({ length: 8 }, (_, i) => 2 * MOON_RADIUS_M * Math.tan((((i + 1) / 2) * Math.PI) / 180) / 1000);
+  const meridians = plain ? [] : Array.from({ length: 12 }, (_, i) => (i * 30 * Math.PI) / 180);
   const bearingEnd = (b: V2) => {
     if (!site) return null;
     const t = Math.min(exitDistance(site, b, view * 1000 - 6000), 260000);
@@ -131,7 +133,7 @@ export default function PlanView({ regions, names, selectedIndex, onSelect, site
         );
       })}
 
-      {LANDMARKS.map((m) => (
+      {(plain ? [] : LANDMARKS).map((m) => (
         <g key={m.id} className="fill-ink-2 stroke-ink-2">
           <path d={`M${X(m) - 3} ${Y(m)}h6M${X(m)} ${Y(m) - 3}v6`} strokeWidth="1" vectorEffect="non-scaling-stroke" />
           <text x={X(m) + 5} y={Y(m) + (m.id === "pole" ? -4 : 11)} fontSize="9" stroke="none" className="uppercase" letterSpacing="0.06em">

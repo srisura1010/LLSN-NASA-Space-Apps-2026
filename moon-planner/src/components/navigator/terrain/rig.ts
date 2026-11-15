@@ -9,7 +9,16 @@ import { EXAGGERATION } from "./constants";
 const K = EXAGGERATION / 1000;
 const PITCH = (36 * Math.PI) / 180;
 
-export type SiteView = { x: number; y: number; h: number; spanM: number } | null;
+export type SiteView = {
+  x: number;
+  y: number;
+  h: number;
+  spanM: number;
+  /** Map-plane side the default view looks from. Default: the site's outward side (away from the pole). */
+  from?: { x: number; y: number };
+  /** Width of ground (km) the default view takes in. Default: four region spans, at least 220 km. */
+  widthKm?: number;
+} | null;
 export type View = { target: Vector3; position: Vector3 };
 
 type Fly = { t0: number; dur: number; fromT: Vector3; toT: Vector3; fromS: Spherical; toS: Spherical; arc: number };
@@ -79,11 +88,11 @@ export class CameraRig {
       const p = (52 * Math.PI) / 180;
       return { target: new Vector3(0, 0, 0), position: new Vector3(0, dist * Math.sin(p), dist * Math.cos(p)) };
     }
-    const widthKm = Math.max(220, (site.spanM / 1000) * 4);
+    const widthKm = site.widthKm ?? Math.max(220, (site.spanM / 1000) * 4);
     const dist = Math.min(600, Math.max(45, widthKm / (2 * tanV * a)));
     const r = Math.hypot(site.x, site.y);
-    const ux = r > 1 ? site.x / r : 0;
-    const uy = r > 1 ? site.y / r : 1;
+    const ux = site.from ? site.from.x : r > 1 ? site.x / r : 0;
+    const uy = site.from ? site.from.y : r > 1 ? site.y / r : 1;
     const target = new Vector3(site.x / 1000, site.h * K, -site.y / 1000);
     const position = new Vector3(
       target.x + ux * dist * Math.cos(PITCH),

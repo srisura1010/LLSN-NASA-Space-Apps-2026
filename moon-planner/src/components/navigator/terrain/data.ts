@@ -3,6 +3,7 @@
 // for the shaders and a 2x downsampled grid for the mesh and picking.
 
 import { DataUtils } from "three";
+import type { LocalTerrain } from "@/lib/localTerrain";
 import { parseRegions, type RegionShape } from "./geo";
 
 export type HeightMeta = {
@@ -36,6 +37,11 @@ export type TerrainData = {
    */
   texData: Uint16Array;
   grid: Grid;
+  /**
+   * Set for a plate around any point (azimuthal equidistant, x east, y north
+   * of its centre) instead of the south polar plate.
+   */
+  local?: LocalTerrain;
 };
 
 type Progress = (fraction: number | null) => void;
@@ -82,10 +88,9 @@ async function fetchBinary(url: string): Promise<ArrayBuffer> {
   return out.buffer;
 }
 
-function build(meta: HeightMeta, buf: ArrayBuffer): TerrainData {
+function build(meta: HeightMeta, heights: Float32Array): TerrainData {
   const { width: w, height: h, pixelSize: px } = meta;
-  if (buf.byteLength !== w * h * 4) throw new Error("The heightmap file is not the expected size.");
-  const heights = new Float32Array(buf);
+  if (heights.length !== w * h) throw new Error("The heightmap file is not the expected size.");
 
   const texData = new Uint16Array(w * h * 2);
   for (let i = 0; i < w * h; i++) {
@@ -122,13 +127,39 @@ export function loadTerrain(): Promise<TerrainData> {
       if (!metaRes.ok) throw new Error(`The heightmap description failed to load (HTTP ${metaRes.status}).`);
       const meta = (await metaRes.json()) as HeightMeta;
       const buf = await fetchBinary("/data/terrain/heightmap.bin");
-      return build(meta, buf);
+      if (buf.byteLength % 4 !== 0) throw new Error("The heightmap file is not the expected size.");
+      return build(meta, new Float32Array(buf));
     })();
     terrainPromise.catch(() => {
       terrainPromise = null;
     });
   }
   return terrainPromise;
+}
+
+const localCache = new WeakMap<LocalTerrain, TerrainData>();
+
+/** The plate data for a terrain fetched around any point (src/lib/localTerrain.ts). */
+export function localTerrainData(t: LocalTerrain): TerrainData {
+  let d = localCache.get(t);
+  if (!d) {
+    const { grid, half } = t;
+    d = build(
+      {
+        source: t.label,
+        width: grid.width,
+        height: grid.height,
+        pixelSize: grid.pixelSize,
+        extent: { minX: -half, maxX: half, minY: -half, maxY: half },
+        minHeight: t.minHeight,
+        maxHeight: t.maxHeight,
+      },
+      grid.data,
+    );
+    d.local = t;
+    localCache.set(t, d);
+  }
+  return d;
 }
 
 export function loadRegions(): Promise<Map<string, RegionShape>> {

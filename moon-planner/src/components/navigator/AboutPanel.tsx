@@ -88,7 +88,7 @@ const CREDITS: { name: string; use: string; who: string; href: string; link: str
   },
   {
     name: "NASA Moon Trek",
-    use: "The Open in Moon Trek link for each site, and the LRO LOLA 30 m south pole DEM that gives custom sites their nearby terrain.",
+    use: "The Open in Moon Trek link for each site, the LRO LOLA 30 m south pole DEM that gives custom sites their nearby terrain, and the LOLA global 128 px/deg and polar 100 m mosaics behind the site level of any other point.",
     who: "NASA Solar System Treks Project",
     href: "https://trek.nasa.gov/moon/",
     link: "trek.nasa.gov/moon",
@@ -314,8 +314,22 @@ function AboutPanel({ entries, loading }: Props) {
               centres to within 0.01°. The limit is the horizon: it is that of a smooth sphere of radius 1,737.4 km
               seen from a 2 m mast, 0.087° below level, so hills and crater rims are not included. That matters
               little at low latitudes, where the Sun and Earth climb high, and a great deal near the poles, where
-              they graze the horizon. For a point between 80° S and 89.9° S, Use LOLA terrain reopens it at the site
-              level with a terrain horizon. In Compare, a picked point is marked No terrain and is not ranked.
+              they graze the horizon. In Compare, a picked point is marked No terrain and is not ranked.
+            </p>
+            <p>
+              Any picked point can also be opened at the site level, with terrain. From 80° S to 89.9° S, Use LOLA
+              terrain uses the same LOLA grids as the nine regions. Anywhere else, Open site level fetches LRO LOLA
+              elevations around the point from NASA Moon Trek when you ask: the global 128 pixel per degree mosaic
+              (237 m at the equator) between 55° S and 55° N, and the 100 m polar mosaics beyond. They are resampled
+              to a 600 m grid reaching 154 km each way, centred on the point, with a finer 240 m or 120 m grid for the
+              first 15 to 30 km. The horizon is traced on those grids along 720 bearings from a 2 m mast with lunar
+              curvature, the same method as the regions, and the plate&apos;s shadows are traced on the 600 m grid at
+              true scale. The limits: this terrain is three to eight times coarser than the 80 m near field of the
+              regions, so sharp rims and ridges are smoothed and sunrise, sunset and Earth contact times are approximate
+              where the Sun or Earth grazes the horizon; terrain beyond 154 km is not included; and nothing here
+              is checked against a NASA illumination map. At four region centres the horizon from these grids differs
+              from the regions&apos; own by 0.2° to 0.4° on average and 1.8° at most (scripts/check-global-site.ts).
+              If Moon Trek cannot be reached, the point opens on the smooth horizon and says so.
             </p>
           </Section>
 

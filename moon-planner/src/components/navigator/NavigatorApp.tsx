@@ -17,7 +17,8 @@ import {
 import { loadSite, rankSites, sampleAt, type MissionScore, type SiteData } from "@/lib/sky";
 import { formatLatLon, sites } from "@/lib/sites";
 import { customHorizonMethod, loadCustomSite } from "@/lib/customSite";
-import { POINT_SITE_ID, buildSmoothSite } from "@/lib/anySite";
+import { POINT_SITE_ID, SMOOTH_METHOD, buildSmoothSite, isSmoothSite } from "@/lib/anySite";
+import { buildGlobalSite, isGlobalSite, loadLocalTerrain } from "@/lib/localTerrain";
 import { loadSystem, type SystemData } from "@/lib/system";
 import HorizonPlot from "./HorizonPlot";
 import RegionTable, { CustomSiteForm, GAP_LIMITS, type CustomSiteState, type RankedRow } from "./RegionTable";
@@ -112,7 +113,8 @@ function readUrl(p: URLSearchParams): UrlState {
   if (c) {
     const lat = Number(c[1]);
     const lon = Number(c[2]);
-    if (lat <= -80 && lat >= -90 && lon >= -180 && lon <= 360) custom = { lat, lon };
+    // South of 80° S the custom site uses the polar LOLA grids; anywhere else, the Moon Trek mosaics.
+    if (lat <= 90 && lat >= -90 && lon >= -180 && lon <= 360) custom = { lat, lon: lat > POLAR_CUSTOM_LAT && lon > 180 ? lon - 360 : lon };
   }
   let pt: UrlState["pt"] = null;
   const q = /^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/.exec(p.get("pt") ?? "");
@@ -379,7 +381,17 @@ export function NavigatorSkeleton() {
 // ---------- The app ----------
 
 type Load = { status: "loading" } | { status: "ready"; data: SiteData } | { status: "error"; message: string };
-type CustomRecord = { lat: number; lon: number; status: "loading" | "ready" | "error"; data?: SiteData; message?: string };
+type CustomRecord = {
+  lat: number;
+  lon: number;
+  status: "loading" | "ready" | "error";
+  data?: SiteData;
+  message?: string;
+  /** Why the terrain around a point north of 80° S did not load; its data then has a smooth horizon. */
+  terrainError?: string;
+};
+/** Custom sites north of this latitude take their terrain from NASA Moon Trek (src/lib/localTerrain.ts). */
+const POLAR_CUSTOM_LAT = -80;
 /** A custom-site load: the point and the window it must cover. Each new object starts a load. */
 type CustomRequest = { lat: number; lon: number; fromMs: number; toMs: number };
 
@@ -484,6 +496,32 @@ export default function NavigatorApp() {
     if (!customReq) return;
     let alive = true;
     const { lat, lon, fromMs, toMs } = customReq;
+    if (lat > POLAR_CUSTOM_LAT) {
+      // Anywhere north of 80° S: tracks from the packed ephemeris, terrain from NASA Moon Trek.
+      // If the terrain does not load the site still opens, on a smooth horizon, and says so.
+      Promise.all([
+        loadSystem(),
+        loadLocalTerrain(lat, lon).then(
+          (terrain) => ({ terrain, error: null }),
+          (err) => ({ terrain: null, error: errorText(err) }),
+        ),
+      ]).then(
+        ([sys, t]) => {
+          if (!alive) return;
+          if (t.terrain) setCustom({ lat, lon, status: "ready", data: buildGlobalSite(t.terrain, sys, CUSTOM_ID) });
+          else {
+            const smooth = buildSmoothSite(lat, lon, sys);
+            setCustom({ lat, lon, status: "ready", data: { ...smooth, sky: { ...smooth.sky, siteId: CUSTOM_ID } }, terrainError: t.error ?? "" });
+          }
+        },
+        (err) => {
+          if (alive) setCustom({ lat, lon, status: "error", message: `The 2027 ephemeris did not load (${errorText(err)}). Check the connection, then try again.` });
+        },
+      );
+      return () => {
+        alive = false;
+      };
+    }
     loadCustomSite(lat, lon, fromMs, Math.min(DATA_END_MS, toMs + CUSTOM_MARGIN_MS)).then(
       (data) => {
         if (alive) setCustom({ lat, lon, status: "ready", data });
@@ -817,17 +855,31 @@ export default function NavigatorApp() {
 
   // ---- Derived props for panels ----
 
+  // How the custom site's horizon was made, for its row in the ranking and the bulletin.
+  const customTerrainError = custom?.terrainError;
+  const customTag = isGlobalSite(customData)
+    ? `LOLA global, ${customData.horizon.gridResolutionM} m grid`
+    : isSmoothSite(customData)
+      ? "Smooth horizon"
+      : undefined;
+  const customNote = isGlobalSite(customData)
+    ? `Custom site. Terrain: ${customData.terrainLabel}`
+    : isSmoothSite(customData)
+      ? "Custom site on a smooth horizon: its terrain did not load"
+      : undefined;
+
   const rows: RankedRow[] = useMemo(
     () =>
       ranking.map((r) => ({
         id: r.siteId,
         name: nameOf(r.siteId),
         custom: r.siteId === CUSTOM_ID,
+        tag: r.siteId === CUSTOM_ID ? customTag : undefined,
         score: r,
         rank: ranks.get(r.siteId) ?? 0,
         prevRank: baseline?.ranks.get(r.siteId) ?? null,
       })),
-    [ranking, ranks, baseline, nameOf],
+    [ranking, ranks, baseline, nameOf, customTag],
   );
 
   const pending = useMemo(
@@ -889,10 +941,9 @@ export default function NavigatorApp() {
     return other ? [effectiveId, other] : [effectiveId];
   }, [picked, ranking, effectiveId]);
 
-  /** Hand a picked point to the terrain-aware custom-site path and open it at the site level. The site level covers 80° S to the pole only. */
+  /** Hand a picked point to the terrain-aware custom-site path and open it at the site level. */
   const pointToTerrain = useCallback(
     (lat: number, lon: number) => {
-      if (lat > -80) return;
       addCustom(lat, lon);
       changeView("navigator");
     },
@@ -919,7 +970,33 @@ export default function NavigatorApp() {
     () => (customLat !== undefined && customLon !== undefined ? { lat: customLat, lon: customLon } : null),
     [customLat, customLon],
   );
-  const methodNote = meta.custom && selectedData ? customHorizonMethod(selectedData.horizon) : undefined;
+  const methodNote = !meta.custom || !selectedData
+    ? undefined
+    : isGlobalSite(selectedData)
+      ? selectedData.method
+      : isSmoothSite(selectedData)
+        ? `The terrain around this point did not load from NASA Moon Trek${customTerrainError ? ` (${customTerrainError})` : ""}, so these numbers use a smooth horizon. Press Replace site to try again. ${SMOOTH_METHOD}`
+        : customHorizonMethod(selectedData.horizon);
+  const customTerrainData = custom?.data;
+  const retryCustom = useCallback(() => {
+    if (customLat !== undefined && customLon !== undefined) addCustom(customLat, customLon);
+  }, [customLat, customLon, addCustom]);
+  const customStatus = custom?.status;
+  const customMessage = custom?.message;
+  // The plate around a custom site north of 80° S; the south polar plate serves the rest.
+  const plateLocal = useMemo(() => {
+    if (customLat === undefined || customLat <= POLAR_CUSTOM_LAT) return null;
+    return {
+      terrain: isGlobalSite(customTerrainData) ? customTerrainData.local : null,
+      error:
+        customStatus === "error"
+          ? (customMessage ?? "The custom site did not load.")
+          : customStatus === "ready" && !isGlobalSite(customTerrainData)
+            ? customTerrainError || "The terrain around this point did not load from NASA Moon Trek."
+            : null,
+      onRetry: retryCustom,
+    };
+  }, [customLat, customTerrainData, customStatus, customMessage, customTerrainError, retryCustom]);
   const windowLabel = `${fmtSpan(startMs, endMs)}, ${fmtLength(durationHours)}`;
   const plotHeight = usePlotHeight();
   // The Sun's and Earth's bearing paths on the plate cover the same window as Fig. 2.
@@ -983,6 +1060,7 @@ export default function NavigatorApp() {
                     earth={earth}
                     regionValues={regionValues}
                     customSite={customPoint}
+                    local={plateLocal}
                     track={plateTrack}
                     caption={<PlateTitle meta={meta} />}
                     onZoomOut={zoomToMoon}
@@ -1033,6 +1111,7 @@ export default function NavigatorApp() {
               lat={meta.lat}
               lon={meta.lon}
               custom={meta.custom}
+              customNote={meta.custom ? customNote : undefined}
               methodNote={methodNote}
               status={selectedStatus}
               error={selectedError}

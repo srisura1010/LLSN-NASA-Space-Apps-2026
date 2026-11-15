@@ -17,10 +17,12 @@ import {
 } from "react";
 import { Vector3 } from "three";
 import { EARTH_RADIUS_DEG, SUN_RADIUS_DEG, type SiteData } from "@/lib/sky";
+import type { LocalTerrain } from "@/lib/localTerrain";
 import { formatLatLon, sites } from "@/lib/sites";
 import { horizonElevationAt, latLonToXY } from "@/lib/terrain";
 import { EXAGGERATION, RELIEF, rgbToHex, scoreTint, TOKENS, type RGB } from "./terrain/constants";
-import { gridHeight, gridRange, loadRegions, loadTerrain, subscribeTerrainProgress, type TerrainData } from "./terrain/data";
+import { gridHeight, gridRange, loadRegions, loadTerrain, localTerrainData, subscribeTerrainProgress, type TerrainData } from "./terrain/data";
+import { localLonStep } from "./terrain/engine";
 import { bearingAt, bodyVector, exitDistance, LANDMARKS, type RegionShape } from "./terrain/geo";
 import { PlateBridge } from "./terrain/bridge";
 import { MinusIcon, PlusIcon, RecentreIcon } from "./terrain/icons";
@@ -46,6 +48,12 @@ export type TerrainPlateProps = {
    * the plate flies to it, flags it and lights the terrain for it.
    */
   customSite?: { lat: number; lon: number } | null;
+  /**
+   * Terrain around the custom site when it lies off the south polar plate
+   * (north of 80° S): the plate then shows this terrain, centred on the site,
+   * instead of the polar one. Ignored while one of the nine regions is selected.
+   */
+  local?: { terrain: LocalTerrain | null; error?: string | null; onRetry?: () => void } | null;
   /** The selected site's tracks over the mission window, for its Sun and Earth bearing paths. */
   track?: { site: SiteData; startMs: number; endMs: number } | null;
   /** Figure title, shown in the caption bar above the plate with the legend. */
@@ -62,6 +70,32 @@ type Focus = { id: string; name: string; lat: number; lon: number; custom: boole
 const K = EXAGGERATION / 1000;
 /** Camera distance, km, past which the whole plate is in view and zooming out leaves the site level. */
 const LEVEL_OUT_KM = 1100;
+/** The same for a plate around any point, which is half the size. */
+const LOCAL_LEVEL_OUT_KM = 700;
+const NO_REGIONS: null[] = sites.map(() => null);
+
+const latText = (v: number) => (v === 0 ? "0°" : `${Math.abs(v)}° ${v < 0 ? "S" : "N"}`);
+const lonText = (v: number) => {
+  const w = ((v + 540) % 360) - 180;
+  return w === 0 ? "0°" : Math.abs(w) === 180 ? "180°" : `${Math.abs(w)}° ${w < 0 ? "W" : "E"}`;
+};
+
+/** Where f crosses `target` on a..b, or null when the ends do not bracket it. */
+function crossing(f: (t: number) => number, a: number, b: number, target: number): number | null {
+  let fa = f(a) - target;
+  const fb = f(b) - target;
+  if (!(fa * fb <= 0)) return null;
+  for (let i = 0; i < 30; i++) {
+    const m = 0.5 * (a + b);
+    const fm = f(m) - target;
+    if (fa * fm <= 0) b = m;
+    else {
+      a = m;
+      fa = fm;
+    }
+  }
+  return 0.5 * (a + b);
+}
 
 // ---------- Environment ----------
 
@@ -124,6 +158,7 @@ export default function TerrainPlate({
   earth,
   regionValues,
   customSite,
+  local,
   track,
   caption,
   onZoomOut,
@@ -132,9 +167,9 @@ export default function TerrainPlate({
 }: TerrainPlateProps) {
   const gl = useWebGL2();
   const [glFailed, setGlFailed] = useState<"lost" | "error" | null>(null);
-  const [terrain, setTerrain] = useState<TerrainData | null>(null);
+  const [polarTerrain, setTerrain] = useState<TerrainData | null>(null);
   const [regionMap, setRegionMap] = useState<Map<string, RegionShape> | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [polarError, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [ready, setReady] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -149,11 +184,29 @@ export default function TerrainPlate({
     return () => bridge.setRose(null);
   }, [bridge, rose]);
 
+  const selectedIndex = sites.findIndex((s) => s.id === selectedId);
+  // A plate around the custom site, in place of the south polar one.
+  const localMode = selectedIndex < 0 && !!local;
+  const localTerrain = localMode ? (local?.terrain ?? null) : null;
+  const terrain = useMemo(
+    () => (localMode ? (localTerrain ? localTerrainData(localTerrain) : null) : polarTerrain),
+    [localMode, localTerrain, polarTerrain],
+  );
+  const error = localMode ? (local?.error ?? null) : polarError;
+  const plateKey = localMode ? `local:${localTerrain ? `${localTerrain.lat},${localTerrain.lon}` : ""}` : "polar";
+  const [readyKey, setReadyKey] = useState(plateKey);
+  if (readyKey !== plateKey) {
+    setReadyKey(plateKey);
+    setReady(false);
+    setHovered(-1);
+  }
+
   const { setHost, report, hint: zoomHint, progress: zoomProgress } = useZoomGate({ onOut: onZoomOut });
+  const outKm = localMode ? LOCAL_LEVEL_OUT_KM : LEVEL_OUT_KM;
   useEffect(() => {
-    bridge.setOnDistance((d) => report(d, 0, LEVEL_OUT_KM));
+    bridge.setOnDistance((d) => report(d, 0, outKm));
     return () => bridge.setOnDistance(null);
-  }, [bridge, report]);
+  }, [bridge, report, outKm]);
   const stageRef = useCallback(
     (el: HTMLDivElement | null) => {
       bridge.attachStage(el);
@@ -173,7 +226,7 @@ export default function TerrainPlate({
   }, [attempt]);
 
   useEffect(() => {
-    if (gl !== "ok") return;
+    if (gl !== "ok" || localMode) return;
     let alive = true;
     const unsub = subscribeTerrainProgress((f) => alive && setProgress(f));
     loadTerrain()
@@ -183,20 +236,21 @@ export default function TerrainPlate({
       alive = false;
       unsub();
     };
-  }, [gl, attempt]);
+  }, [gl, attempt, localMode]);
 
+  const localRetry = local?.onRetry;
   const retry = useCallback(() => {
     setError(null);
     setReady(false);
     setGlFailed(null);
     setAttempt((a) => a + 1);
-  }, []);
+    if (localMode) localRetry?.();
+  }, [localMode, localRetry]);
 
   // ---------- Derived geometry ----------
 
-  const regions = useMemo(() => sites.map((s) => regionMap?.get(s.id) ?? null), [regionMap]);
+  const regions = useMemo(() => (localMode ? NO_REGIONS : sites.map((s) => regionMap?.get(s.id) ?? null)), [regionMap, localMode]);
   const names = useMemo(() => sites.map((s) => s.name), []);
-  const selectedIndex = sites.findIndex((s) => s.id === selectedId);
   const customLat = selectedIndex < 0 ? customSite?.lat : undefined;
   const customLon = selectedIndex < 0 ? customSite?.lon : undefined;
   const selected = useMemo<Focus | null>(() => {
@@ -208,6 +262,10 @@ export default function TerrainPlate({
 
   const site = useMemo(() => {
     if (!selected) return null;
+    if (localMode) {
+      // The plate is centred on the site; the default view looks north across about two thirds of it.
+      return { x: 0, y: 0, h: terrain ? gridHeight(terrain.grid, 0, 0) : 0, spanM: 20000, from: { x: 0, y: -1 }, widthKm: 200 };
+    }
     const p = latLonToXY(selected.lat, selected.lon);
     const c = regions[selectedIndex]?.corners ?? [];
     let span = 20000;
@@ -216,24 +274,29 @@ export default function TerrainPlate({
       span = Math.max(span, Math.hypot(b.x - a.x, b.y - a.y));
     });
     return { x: p.x, y: p.y, h: terrain ? gridHeight(terrain.grid, p.x, p.y) : 0, spanM: span };
-  }, [selected, selectedIndex, regions, terrain]);
+  }, [selected, selectedIndex, regions, terrain, localMode]);
 
   const sunAz = sun?.az;
   const sunEl = sun?.el;
   const earthAz = earth?.az;
-  const sunVec = useMemo(
-    () => (site && sunAz !== undefined && sunEl !== undefined ? bodyVector(site.x, site.y, sunAz, sunEl) : null),
-    [site, sunAz, sunEl],
-  );
-  const sunBearing = useMemo(() => (selected && sunAz !== undefined ? bearingAt(selected.lon, sunAz) : null), [selected, sunAz]);
-  const earthBearing = useMemo(() => (selected && earthAz !== undefined ? bearingAt(selected.lon, earthAz) : null), [selected, earthAz]);
+  // On a local plate x is east and y north at the site, which is the polar frame at longitude 0 on the pole.
+  const frameLon = localMode ? 0 : selected?.lon;
+  const sunVec = useMemo<[number, number, number] | null>(() => {
+    if (!site || sunAz === undefined || sunEl === undefined) return null;
+    if (!localMode) return bodyVector(site.x, site.y, sunAz, sunEl);
+    const a = (sunAz * Math.PI) / 180;
+    const e = (sunEl * Math.PI) / 180;
+    return [Math.cos(e) * Math.sin(a), Math.cos(e) * Math.cos(a), Math.sin(e)];
+  }, [site, sunAz, sunEl, localMode]);
+  const sunBearing = useMemo(() => (frameLon !== undefined && sunAz !== undefined ? bearingAt(frameLon, sunAz) : null), [frameLon, sunAz]);
+  const earthBearing = useMemo(() => (frameLon !== undefined && earthAz !== undefined ? bearingAt(frameLon, earthAz) : null), [frameLon, earthAz]);
 
   // ---------- Bearing rose ----------
 
   const roseSite = track?.site ?? null;
   const roseStart = track?.startMs ?? 0;
   const roseEnd = track?.endMs ?? 0;
-  const selectedLon = selected?.lon;
+  const selectedLon = frameLon;
   const roseData = useMemo(
     () =>
       site && selectedLon !== undefined
@@ -296,6 +359,41 @@ export default function TerrainPlate({
         srText: isSel ? ", selected. Re-centre the view" : undefined,
       });
     });
+    if (localMode && localTerrain) {
+      if (selected && site) {
+        out.push({
+          id: "custom-site",
+          kind: "flag",
+          anchor: scenePoint(site.x, site.y),
+          priority: 0,
+          text: selected.name,
+          detail: formatLatLon(selected.lat, selected.lon),
+          onActivate: recentre,
+          srText: ", selected. Re-centre the view",
+        });
+      }
+      // Graticule labels where the drawn parallels meet the west side and the meridians the south side.
+      const pr = localTerrain.projection;
+      const e = terrain.half * 0.86;
+      const step = localLonStep(localTerrain.lat);
+      const latAt = (y: number) => pr.unproject(-e, y).lat;
+      for (let lat = Math.ceil(Math.min(latAt(-e), latAt(e))); lat <= Math.max(latAt(-e), latAt(e)); lat++) {
+        const y = crossing(latAt, -e, e, lat);
+        if (y !== null) out.push({ id: `lat${lat}`, kind: "quiet", anchor: scenePoint(-e, y, 1), priority: 5, text: latText(lat) });
+      }
+      const dlonAt = (x: number) => ((pr.unproject(x, -e).lon - localTerrain.lon + 540) % 360) - 180;
+      const d0 = dlonAt(-e);
+      const d1 = dlonAt(e);
+      if (d1 > d0 && d1 - d0 < 180) {
+        for (let lon = Math.ceil((localTerrain.lon + d0) / step) * step; lon <= localTerrain.lon + d1; lon += step) {
+          const x = crossing(dlonAt, -e, e, lon - localTerrain.lon);
+          if (x !== null) out.push({ id: `lon${lon}`, kind: "quiet", anchor: scenePoint(x, -e, 1), priority: 5, text: lonText(lon) });
+        }
+      }
+      const edge = terrain.half - 4000;
+      out.push({ id: "north", kind: "quiet", anchor: scenePoint(0, edge, 1), priority: 4, text: "North" });
+      return out;
+    }
     if (selected?.custom && site) {
       out.push({
         id: "custom-site",
@@ -328,7 +426,7 @@ export default function TerrainPlate({
     ];
     for (const m of meridians) out.push({ id: m.id, kind: "quiet", anchor: scenePoint(m.x, m.y, 1), priority: 4, text: m.text });
     return out;
-  }, [terrain, regionMap, regions, selectedIndex, selected, site, hovered, scenePoint, tintHex, recentre, onSelect]);
+  }, [terrain, regionMap, regions, selectedIndex, selected, site, hovered, scenePoint, tintHex, recentre, onSelect, localMode, localTerrain]);
 
   useEffect(() => {
     const place = (bearing: { x: number; y: number } | null) => {
@@ -419,7 +517,7 @@ export default function TerrainPlate({
               {sun ? "No site selected: relief only" : "No Sun position for this time: relief only"}
             </span>
           )}
-          {regionValues && (
+          {regionValues && !localMode && (
             <span className="flex items-center gap-1.5">
               <span aria-hidden className="block h-2.5 w-6" style={{ background: `linear-gradient(90deg, ${TOKENS.umbra}, ${TOKENS.sun})` }} />
               Score
@@ -443,7 +541,7 @@ export default function TerrainPlate({
         tabIndex={showCanvas ? 0 : -1}
         role="group"
         aria-roledescription="3D terrain view"
-        aria-label="Terrain plate of the lunar south pole"
+        aria-label={localMode ? "Terrain plate around the custom site" : "Terrain plate of the lunar south pole"}
         aria-describedby={descId}
         onKeyDown={onKeyDown}
       >
@@ -465,12 +563,16 @@ export default function TerrainPlate({
                     setGlFailed("error");
                   };
                   renderer.domElement.addEventListener("webglcontextlost", (ev) => {
+                    // A canvas taken off the page (the plate changed while its terrain loads) loses its context on purpose.
+                    if (!renderer.domElement.isConnected) return;
                     ev.preventDefault();
                     setGlFailed("lost");
                   });
                 }}
               >
+                {/* Keyed inside the one canvas: a new plate gets a new scene, camera rig and first view, on the same GL context. */}
                 <TerrainScene
+                  key={plateKey}
                   data={terrain}
                   range={range}
                   regions={regions}
@@ -502,7 +604,9 @@ export default function TerrainPlate({
             <p className="border-b border-rule bg-paper-2 px-3 py-2 text-[0.79rem] text-ink-2">
               {glFailed === "lost"
                 ? "The 3D view stopped because the graphics context was lost. "
-                : "This browser cannot draw the 3D terrain (WebGL 2 is off or unavailable), so this is a flat plan of the regions. "}
+                : localMode
+                  ? "This browser cannot draw the 3D terrain (WebGL 2 is off or unavailable), so this is a flat plan with the site's Sun and Earth bearings; north is up. "
+                  : "This browser cannot draw the 3D terrain (WebGL 2 is off or unavailable), so this is a flat plan of the regions. "}
               {glFailed && (
                 <button type="button" onClick={retry} className="font-semibold text-earth underline underline-offset-2 hover:text-ink">
                   Restart the 3D view
@@ -520,7 +624,8 @@ export default function TerrainPlate({
                 sunBearing={sunBearing}
                 earthBearing={earthBearing}
                 tints={tintHex}
-                half={304000}
+                half={localMode ? 153600 : 304000}
+                plain={localMode}
               />
             </div>
           </div>
@@ -535,7 +640,9 @@ export default function TerrainPlate({
                   ? "Checking graphics support"
                   : terrain
                     ? "Tracing shadows for the current Sun"
-                    : `South polar heightmap, 3.6 MB${pct !== null ? `, ${pct}%` : ""}`}
+                    : localMode
+                      ? "Fetching the terrain around this point from NASA Moon Trek, about 2 MB"
+                      : `South polar heightmap, 3.6 MB${pct !== null ? `, ${pct}%` : ""}`}
               </p>
               <div className="mt-2 h-px w-full bg-rule">
                 {(terrain || pct !== null) && (
@@ -550,8 +657,8 @@ export default function TerrainPlate({
         <div className="pointer-events-none absolute inset-x-2 bottom-2 z-10 flex items-end justify-between gap-3">
           <div ref={(el) => bridge.attachReserved("scale", el)} className="flex flex-wrap items-end gap-x-3 gap-y-1">
             {showCanvas && <ScaleBar drawer={rose} />}
-            <p className="bg-paper/85 px-1.5 py-0.5 text-[0.702rem] leading-snug text-ink-2">
-              LOLA 640 m grid, relief ×{EXAGGERATION}
+            <p className={`bg-paper/85 px-1.5 py-0.5 text-[0.702rem] leading-snug text-ink-2 ${localMode && error ? "hidden" : ""}`}>
+              {localMode ? (localTerrain ? `${localTerrain.label}; ±${Math.round(localTerrain.half / 1000)} km` : "LOLA terrain from NASA Moon Trek") : "LOLA 640 m grid"}, relief ×{EXAGGERATION}
               {lit ? "; shadows traced at true scale" : ""}
             </p>
           </div>
@@ -582,7 +689,10 @@ export default function TerrainPlate({
           <div className="absolute inset-0 flex items-end bg-paper-2 p-4" role="alert">
             <div className="max-w-[26rem]">
               <p className="text-[0.79rem] font-semibold uppercase tracking-[0.06em] text-ink">Terrain unavailable</p>
-              <p className="mt-0.5 text-[0.79rem] text-ink-2">{error} Check the connection, then try again.</p>
+              <p className="mt-0.5 text-[0.79rem] text-ink-2">
+                {error}
+                {localMode ? " Until it loads, the numbers beside this plate use a smooth horizon." : " Check the connection, then try again."}
+              </p>
               <button
                 type="button"
                 onClick={retry}

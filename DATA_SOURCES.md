@@ -126,3 +126,40 @@ the United States; Space Apps asks that each source is credited.
   Moon Kit (LRO/LROC and LOLA). Rotation model: IAU WGCCRE (Archinal et al.
   2018). Landing coordinates: NASA NSSDCA; NASA/GSFC/Arizona State
   University (LROC) for the 2023 and 2024 landers.
+
+## Site level for any point (terrain fetched at run time)
+
+- **Files:** `moon-planner/src/lib/localTerrain.ts` (fetch, projection,
+  horizon), checked by `moon-planner/scripts/check-global-site.ts`. Nothing
+  is stored in the repo; two rasters of about 1 to 3 MB are requested per
+  point when its site level is opened.
+- **Source:** NASA Solar System Treks (Moon Trek) ArcGIS image services,
+  `exportImage` (float32 BSQ, metres above the 1737.4 km sphere, served with
+  `Access-Control-Allow-Origin: *`), checked 2026-11-15:
+  - `LRO_LOLA_DEM_Global_128ppd_v04`, equirectangular, 128 pixels per degree
+    (237 m at the equator), used between 55 S and 55 N:
+    https://trek.nasa.gov/moon/trekarcgis/rest/services/LRO_LOLA_DEM_Global_128ppd_v04/ImageServer
+  - `LRO_LOLA_DEM_NPole45_100mp_v04` and `LRO_LOLA_DEM_SPole45_100mp_v04`,
+    polar stereographic, 100 m, 45 degrees to each pole, used poleward of
+    55 degrees (the south one only as far as 80 S, where the existing
+    80 m / 640 m grids take over):
+    https://trek.nasa.gov/moon/trekarcgis/rest/services/LRO_LOLA_DEM_NPole45_100mp_v04/ImageServer
+    https://trek.nasa.gov/moon/trekarcgis/rest/services/LRO_LOLA_DEM_SPole45_100mp_v04/ImageServer
+- **Underlying data:** LRO Lunar Orbiter Laser Altimeter gridded data
+  records (LDEM), NASA Planetary Data System Geosciences Node.
+- **Use:** resampled in the browser to a 600 m grid (512 x 512, 154 km each
+  way) in an azimuthal equidistant projection centred on the point, plus a
+  240 m (global) or 120 m (polar) grid for the near horizon.
+- **Check (2026-11-15):** horizon from these grids against
+  `public/data/horizon/<id>.json` at Malapert, Haworth, Nobile 1 and Mouton
+  plateau: mean absolute difference 0.17 to 0.41 degrees, largest 1.79
+  degrees. Global and polar mosaics agree to 2 m (55 N) and 18 m (55 S) mean
+  on the 600 m grid.
+- **Citation:** Smith, D. E., et al. (2010), "The Lunar Orbiter Laser
+  Altimeter investigation on the Lunar Reconnaissance Orbiter mission",
+  Space Science Reviews 150, 209-241, doi:10.1007/s11214-009-9512-y. Smith,
+  D. E., et al. (2017), "Summary of the results from the Lunar Orbiter Laser
+  Altimeter after seven years in lunar orbit", Icarus 283, 70-91,
+  doi:10.1016/j.icarus.2016.06.006.
+- **Credit line:** Elevation: NASA/GSFC LRO LOLA, served by NASA Solar System
+  Treks (NASA/JPL-Caltech).

@@ -200,6 +200,8 @@ type Props = {
   custom?: boolean;
   /** How a custom site's terrain horizon was made (customHorizonMethod). */
   methodNote?: string;
+  /** Replaces the line under a custom site's name (its terrain source, when not the polar LOLA grids). */
+  customNote?: string;
   status: "loading" | "ready" | "error";
   error?: string;
   site: SiteData | null;
@@ -323,6 +325,7 @@ function SiteBulletin({
   lat,
   lon,
   custom,
+  customNote,
   methodNote,
   status,
   error,
@@ -363,7 +366,7 @@ function SiteBulletin({
           {name}
         </h2>
         <p className="mt-1 text-[0.844rem] text-ink-2">
-          {custom ? "Custom site, tracks fetched live from JPL Horizons" : formatLatLon(lat, lon)}
+          {custom ? (customNote ?? "Custom site, tracks fetched live from JPL Horizons") : formatLatLon(lat, lon)}
         </p>
         <a
           href={moonTrekUrl(lat, lon)}
