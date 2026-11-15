@@ -1,9 +1,13 @@
-// Server-side client for the JPL Horizons API.
+// Server-side client for the JPL Horizons API, with a file + memory cache.
 // Docs: https://ssd-api.jpl.nasa.gov/doc/horizons.html
 //
 // NOTE: Elevation is relative to a smooth-sphere horizon (the plane
 // perpendicular to the local zenith on a 1737.4 km sphere). It ignores
 // terrain; compare against a LOLA horizon mask for real visibility.
+
+import { createHash } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
 
 const HORIZONS_URL = "https://ssd.jpl.nasa.gov/api/horizons.api";
 
@@ -23,7 +27,77 @@ export type SkyTrackParams = {
   step?: string; // e.g. "1 h"
 };
 
-export async function getSkyTrack({
+// ---------- Cache ----------
+
+// Committed to git so teammates and the deployed demo don't need JPL.
+export const CACHE_DIR = path.join(process.cwd(), "data", "horizons-cache");
+
+const memoryCache = new Map<string, SkyPoint[]>();
+
+export function cacheKey({
+  target,
+  lat,
+  lon,
+  altKm = 0,
+  start,
+  stop,
+  step = "1 h",
+}: SkyTrackParams): string {
+  const latR = lat.toFixed(4);
+  const lonR = lon.toFixed(4);
+  const raw = [target, latR, lonR, altKm, start, stop, step].join("|");
+  const hash = createHash("sha1").update(raw).digest("hex").slice(0, 10);
+  // Readable prefix for browsing the folder; the hash makes it unique.
+  return `${target}_${latR}_${lonR}_${hash}`;
+}
+
+function cacheFile(key: string): string {
+  return path.join(CACHE_DIR, `${key}.json`);
+}
+
+export async function writeCache(
+  params: SkyTrackParams,
+  points: SkyPoint[],
+): Promise<void> {
+  const key = cacheKey(params);
+  memoryCache.set(key, points);
+  try {
+    await mkdir(CACHE_DIR, { recursive: true });
+    await writeFile(cacheFile(key), JSON.stringify(points));
+  } catch (err) {
+    // e.g. read-only filesystem on a serverless host: keep serving.
+    console.warn(`[horizons] could not write cache ${key}:`, err);
+  }
+}
+
+/** Cached lookup: memory -> file -> live Horizons call. */
+export async function getSkyTrack(params: SkyTrackParams): Promise<SkyPoint[]> {
+  const key = cacheKey(params);
+
+  const inMemory = memoryCache.get(key);
+  if (inMemory) {
+    console.log(`[horizons] HIT memory ${key}`);
+    return inMemory;
+  }
+
+  try {
+    const points: SkyPoint[] = JSON.parse(await readFile(cacheFile(key), "utf8"));
+    memoryCache.set(key, points);
+    console.log(`[horizons] HIT file ${key}`);
+    return points;
+  } catch {
+    // Not cached yet (or unreadable): fall through to a live call.
+  }
+
+  console.log(`[horizons] MISS ${key}, calling JPL`);
+  const points = await fetchSkyTrack(params); // throws on error, so errors are never cached
+  await writeCache(params, points);
+  return points;
+}
+
+// ---------- Live Horizons call (uncached) ----------
+
+export async function fetchSkyTrack({
   target,
   lat,
   lon,
