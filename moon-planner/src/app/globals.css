@@ -5,7 +5,12 @@
   --font-mono: var(--font-geist-mono);
 }
 
+html,
 body {
-  background: #09090b;
-  color: #f4f4f5;
+  background-color: #0a0a0f;
+  color: #e5e7eb;
+}
+
+body {
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
 }

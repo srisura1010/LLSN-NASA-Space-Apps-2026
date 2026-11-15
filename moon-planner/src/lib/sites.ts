@@ -1,15 +1,9 @@
+import type { LandingSite } from "@/types";
+
 // The nine Artemis III candidate regions. Centres are computed from the USGS
 // region outlines (McClernan 2024, doi:10.5066/P1MEQ6UK); planetocentric,
 // east-positive longitude.
-
-export type Site = {
-  id: string;
-  name: string;
-  lat: number;
-  lon: number;
-};
-
-export const SITES: Site[] = [
+export const sites: LandingSite[] = [
   { id: "cabeus-b", name: "Peak near Cabeus B", lat: -83.6375, lon: -68.7495 },
   { id: "haworth", name: "Haworth", lat: -86.7639, lon: -22.777 },
   { id: "malapert", name: "Malapert Massif", lat: -85.9948, lon: -0.2358 },
@@ -20,6 +14,10 @@ export const SITES: Site[] = [
   { id: "de-gerlache-2", name: "de Gerlache Rim 2", lat: -88.23, lon: -64.6284 },
   { id: "slater", name: "Slater Plain", lat: -87.1637, lon: 125.5377 },
 ];
+
+// Names the 3D view already uses.
+export type Site = LandingSite;
+export const SITES = sites;
 
 export function formatLatLon(lat: number, lon: number): string {
   const ns = lat < 0 ? "S" : "N";

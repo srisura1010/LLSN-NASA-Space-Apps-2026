@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "precompute": "tsx scripts/precompute-horizons.ts",
+    "process-dem": "tsx scripts/process-dem.ts"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",
@@ -21,9 +23,12 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "^0.187.0",
     "eslint": "^9",
     "eslint-config-next": "16.4.6",
+    "geotiff": "^3.0.5",
     "tailwindcss": "4.3.3",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }

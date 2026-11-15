@@ -4,6 +4,11 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   agentRules: false,
+  // The Horizons cache is read with fs at runtime, so tell the bundler to
+  // ship it with the API route when deployed.
+  outputFileTracingIncludes: {
+    "/api/horizons": ["./data/horizons-cache/**/*"],
+  },
   turbopack: {
     rules: {
       "*.css": {

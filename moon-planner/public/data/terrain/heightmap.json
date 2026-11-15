@@ -1,0 +1,17 @@
+{
+  "source": "https://pgda.gsfc.nasa.gov/data/LOLA_20mpp/LDEM_80S_80MPP_ADJ.TIF",
+  "format": "float32 little-endian, row-major; row 0 = +y edge (lon 0 side), col 0 = -x edge",
+  "width": 950,
+  "height": 950,
+  "pixelSize": 640,
+  "extent": {
+    "minX": -304000,
+    "maxX": 304000,
+    "minY": -304000,
+    "maxY": 304000
+  },
+  "minHeight": -7254,
+  "maxHeight": 7006.9,
+  "heightUnits": "meters above 1737.4 km sphere",
+  "projection": "south polar stereographic, sphere R=1737400 m, scale true at pole"
+}
