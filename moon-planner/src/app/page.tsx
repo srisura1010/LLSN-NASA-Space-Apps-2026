@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Answers } from "@/components/landing/Answers";
 import { HorizonPlate } from "@/components/landing/HorizonPlate";
 import { LandingProvider } from "@/components/landing/LandingState";
+import { MoonSky } from "@/components/landing/MoonSky";
 import { NasaCheck } from "@/components/landing/NasaCheck";
 import { StartForm } from "@/components/landing/StartForm";
 
@@ -14,39 +15,44 @@ export const metadata: Metadata = {
 };
 
 const wrap = "mx-auto w-full max-w-[84rem] px-4 sm:px-8 lg:px-12";
-const capsLabel = "text-[0.79rem] font-semibold tracking-[0.08em] text-ink-2 uppercase";
 const textLink =
   "font-semibold text-ink underline decoration-rule decoration-1 underline-offset-[4px] transition-colors duration-150 hover:decoration-ink";
 
 export default function Home() {
   return (
     <LandingProvider>
-      <header className={`${wrap} grid gap-8 pt-9 pb-8 lg:pt-11 lg:pb-9 xl:grid-cols-12 xl:gap-x-10`}>
-        <div className="xl:col-span-8">
-          <h1 className="text-[2.281rem] leading-[1.04] font-extrabold tracking-[-0.025em] text-ink sm:text-[2.887rem] lg:text-[3.247rem] xl:text-[3.653rem]">
-            <span className="block">Pick a region,</span>
-            <span className="block">get your landing window.</span>
-          </h1>
-          <p className="mt-5 max-w-[58ch] text-[1.125rem] leading-[1.55] text-ink-2">
-            For the nine south-pole regions NASA named for Artemis III in October 2024: when the Sun clears the real
-            terrain horizon for power, and when Earth is in view for direct-to-Earth radio, hour by hour through 2027.
-          </p>
-        </div>
-        <dl className="hidden self-end border-t border-ink xl:col-span-4 xl:block">
-          {[
-            ["Ephemeris", "JPL Horizons, hourly"],
-            ["Terrain", "LOLA, 80 m near each site"],
-            ["Coverage", "1 Jan 2027 to 1 Jan 2028, UTC"],
-            ["Regions", "Nine, from USGS outlines"],
-          ].map(([k, v]) => (
-            <div key={k} className="flex items-baseline justify-between gap-6 border-b border-rule py-2">
-              <dt className={capsLabel}>{k}</dt>
-              <dd className="text-right text-[0.889rem] text-ink">{v}</dd>
-            </div>
-          ))}
-        </dl>
-      </header>
+      <div className="relative isolate">
+        <MoonSky />
+        <header
+          className={`${wrap} relative z-10 grid min-h-[calc(100svh-2.75rem)] content-center gap-8 py-12 xl:grid-cols-12 xl:gap-x-10`}
+        >
+          <div className="xl:col-span-8">
+            <h1 className="text-[2.281rem] leading-[1.04] font-extrabold tracking-[-0.025em] text-[#f3f0e8] sm:text-[2.887rem] lg:text-[3.247rem] xl:text-[3.653rem]">
+              <span className="block">Pick a region,</span>
+              <span className="block">get your landing window.</span>
+            </h1>
+            <p className="mt-5 max-w-[58ch] text-[1.125rem] leading-[1.55] text-[#c9c3b6]">
+              For the nine south-pole regions NASA named for Artemis III in October 2024: when the Sun clears the real
+              terrain horizon for power, and when Earth is in view for direct-to-Earth radio, hour by hour through 2027.
+            </p>
+          </div>
+          <dl className="hidden self-end border-t border-white/30 xl:col-span-4 xl:block">
+            {[
+              ["Ephemeris", "JPL Horizons, hourly"],
+              ["Terrain", "LOLA, 80 m near each site"],
+              ["Coverage", "1 Jan 2027 to 1 Jan 2028, UTC"],
+              ["Regions", "Nine, from USGS outlines"],
+            ].map(([k, v]) => (
+              <div key={k} className="flex items-baseline justify-between gap-6 border-b border-white/20 py-2">
+                <dt className="text-[0.79rem] font-semibold tracking-[0.08em] text-[#c9c3b6] uppercase">{k}</dt>
+                <dd className="text-right text-[0.889rem] text-[#f3f0e8]">{v}</dd>
+              </div>
+            ))}
+          </dl>
+        </header>
+      </div>
 
+      <div className="relative bg-paper">
       <section aria-labelledby="plate-title" className={`${wrap} pb-16 lg:pb-24`}>
         <h2 id="plate-title" className="sr-only">
           Landing window for the chosen region and start date
@@ -143,7 +149,7 @@ export default function Home() {
             <a className={textLink} href="https://svs.gsfc.nasa.gov/4720">
               NASA SVS CGI Moon Kit
             </a>{" "}
-            (LRO LROC and LOLA).
+            (LRO LROC and LOLA). Earth imagery: NASA Blue Marble.
           </p>
           <p className="mt-2">
             Built for the NASA Space Apps Challenge 2026. Not a NASA product. How the team used Super Intelligence (AI)
@@ -155,6 +161,7 @@ export default function Home() {
           </p>
         </footer>
       </section>
+      </div>
     </LandingProvider>
   );
 }

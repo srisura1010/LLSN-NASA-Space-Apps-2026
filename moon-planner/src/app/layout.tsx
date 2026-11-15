@@ -19,7 +19,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en" className={`${publicSans.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <Navbar />
-        <main className="flex flex-1 flex-col">{children}</main>
+        <main className="relative z-0 flex flex-1 flex-col">{children}</main>
       </body>
     </html>
   );
