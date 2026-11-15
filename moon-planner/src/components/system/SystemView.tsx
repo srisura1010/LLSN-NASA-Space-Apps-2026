@@ -87,6 +87,19 @@ type Scale = "display" | "true";
 type FramingId = "system" | "pair" | "earth";
 /** start: where the camera opens. "near" and "far" sit just inside a zoom limit. */
 type Framing = { id: FramingId; start: "default" | "near" | "far" };
+/** What the Earth–Moon framing turns about and zooms towards: the middle of the line between the two, or one of them. */
+type Focus = "both" | "earth" | "moon";
+/** auto: chosen by zooming in on the pair, and given up again by zooming back out. */
+type FocusState = { id: Focus; auto: boolean };
+/** How far along the line from Earth to the Moon each focus stands. */
+const FOCUS_AT: Record<Focus, number> = { earth: 0, both: 0.5, moon: 1 };
+type Preset = "top" | "side" | "reset";
+/** What the view's buttons and keys ask of the camera. zoom answers with the limit it already rests on, if any. */
+type RigApi = { preset: (kind: Preset) => void; orbit: (azimuth: number, polar: number) => void; zoom: (factor: number) => "in" | "out" | null };
+/** Earth's and the Moon's discs on screen, in pixels from the view's top left. */
+type Discs = { ex: number; ey: number; er: number; mx: number; my: number; mr: number };
+const GLIDE_MS = 520;
+const reducedMotion = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -248,14 +261,19 @@ type SysLabel = Label & { anchor: Anchor };
 const ORIGIN: Vec3 = [0, 0, 0];
 
 /** A body's name on a short leader from its limb; a ring marks a body too small to see. */
-function BodyTag({ text, speck, below = false, sub }: { text: string; speck: boolean; below?: boolean; sub?: string }) {
+function BodyTag({ text, speck, below = false, sub, onPick }: { text: string; speck: boolean; below?: boolean; sub?: string; onPick?: () => void }) {
   const lead = below ? (speck ? "top-[6px] h-6" : "top-0 h-5") : speck ? "bottom-[6px] h-6" : "bottom-0 h-5";
   const name = below ? (speck ? "top-[30px]" : "top-5") : speck ? "bottom-[30px]" : "bottom-5";
   return (
     <div aria-hidden="true" className="relative">
       {speck && <span className="absolute -top-[6px] -left-[6px] block size-[12px] rounded-full border border-ink" />}
       <span className={`absolute left-0 block w-px bg-ink ${lead}`} />
-      <span data-box className={`absolute left-0 block border-l border-ink bg-paper/90 px-1.5 text-ink ${LABEL_TEXT} ${name}`}>
+      <span
+        data-box
+        onClick={onPick}
+        title={onPick ? "Centre the view here" : undefined}
+        className={`absolute left-0 block border-l border-ink bg-paper/90 px-1.5 text-ink ${LABEL_TEXT} ${name} ${onPick ? "pointer-events-auto cursor-pointer hover:bg-paper-3" : ""}`}
+      >
         {text}
         {sub && <span className="-mx-1.5 mt-0.5 block bg-ink px-1.5 py-0.5 text-paper">{sub}</span>}
       </span>
@@ -338,21 +356,42 @@ type Metrics = { moonPx: number; earthPx: number; sunPx: number; pairPx: number;
 type OnView = (distance: number, min: number, max: number, m: Metrics) => void;
 
 /** Tilt of the opening views above the ecliptic, in degrees. */
-const TILT = { system: 50, pair: 56, earth: 24 };
+const TILT = { system: 50, pair: 46, earth: 24 };
 
 /** Which way the Earth framing looks: a direction in Earth's body-fixed scene axes, and a key that changes when it should be applied again. */
 type Facing = { dir: Vec3 | null; key: string };
 
+/** A camera move in progress: the direction turns and the distance closes together, easing out. */
+type CamGlide = { from: Vector3; to: Vector3; fromD: number; toD: number; t0: number; dur: number };
+
+/** The margin kept around what a framing has to hold, as a share of the view. */
+const FIT = 0.93;
+
+/**
+ * The distance from which the Earth–Moon framing holds the whole pair at any time of the month, looking down at
+ * the given angle above the ecliptic at the middle of the line between them: Earth, the Moon, and the Moon's
+ * path, which reaches one and a half Earth–Moon distances from that middle.
+ */
+function pairFit(geo: Geometry, aspect: number, tiltDeg: number) {
+  const tanV = Math.tan((FOV * RAD) / 2) * FIT;
+  const t = tiltDeg * RAD;
+  const reach = geo.pairReach * 1.06 * 1.5 + geo.moonR;
+  return reach * Math.max(Math.cos(t) + Math.sin(t) / tanV, 1 / (tanV * aspect));
+}
+
 /**
  * Camera placement and limits for each framing. The scene keeps the framed
- * point at the origin, and that point glides as the camera closes in: from the
- * Sun to Earth in the Sun–Earth–Moon framing, from Earth to the Moon in the
- * Earth–Moon framing. The inner limit of one framing meets the outer limit of
- * the next, so zooming through them reads as one move. Closing on the Moon,
- * the camera also swings to the view from below the south pole that the Moon
- * level opens with, and swings back above the ecliptic on the way out. The
- * Earth framing stands apart from that chain: it orbits Earth, close enough to
- * read the continents, and can be turned to stand over a chosen point.
+ * point at the origin. In the Sun–Earth–Moon framing that point glides from
+ * the Sun to Earth as the camera closes in. The Earth–Moon framing turns about
+ * and zooms towards its focus: the middle of the line between the two bodies,
+ * which holds both in view all month, or either body. Zooming in on the pair
+ * moves the focus to the body nearer the pointer, so the wheel alone still
+ * arrives somewhere: on the Moon the camera swings to the view from below the
+ * south pole that the Moon level opens with, and on Earth it stops where the
+ * Earth framing takes over. The inner limit of one framing meets the outer
+ * limit of the next, so zooming through them reads as one move. The Earth
+ * framing orbits Earth, close enough to read the continents, and can be
+ * turned to stand over a chosen point.
  */
 function Rig({
   framing,
@@ -363,6 +402,11 @@ function Rig({
   facing,
   earthPxRef,
   onView,
+  focus,
+  onFocus,
+  apiRef,
+  onDiscs,
+  pointer,
 }: {
   framing: Framing;
   geo: Geometry;
@@ -373,50 +417,138 @@ function Rig({
   /** Receives Earth's radius on screen, in pixels. */
   earthPxRef: { current: number };
   onView: OnView;
+  focus: FocusState;
+  onFocus: (id: Focus, auto: boolean) => void;
+  apiRef: { current: RigApi | null };
+  onDiscs: (ex: number, ey: number, er: number, mx: number, my: number, mr: number) => void;
+  pointer: { current: { x: number; y: number } | null };
 }) {
+  const discs = useRef<Discs>({ ex: 0, ey: 0, er: 0, mx: 0, my: 0, mr: 0 });
   const camera = useThree((s) => s.camera);
+  const dom = useThree((s) => s.gl.domElement);
   const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
   const invalidate = useThree((s) => s.invalidate);
   const controls = useRef<OrbitControlsImpl>(null);
   const narrow = Math.max(1, 1.35 / aspect);
-  const pairBase = geo.pairReach * 3.6;
-  const pairMax = pairBase * narrow * 1.5;
+  const fit = pairFit(geo, aspect, TILT.pair);
+  const topFit = pairFit(geo, aspect, 90);
+  const pairMax = fit * 1.5;
+  // Close enough that the Moon is the size the Moon level opens it at; in true scale the limit stays further out.
+  const moonMin = Math.max(geo.moonR * 5.1, geo.pairReach * 0.144);
+  // Where Earth is about the size the Earth framing shows it from its outer limit.
+  const earthMin = Math.max(geo.earthR * 6, geo.pairReach * 0.144);
+  // Inside this the pair no longer fits about its middle, and the focus goes to one body.
+  const bothMin = geo.pairReach * 1.9;
   const system = framing.id === "system";
   const pair = framing.id === "pair";
   const onEarthOnly = framing.id === "earth";
-  const base = system ? 352 : onEarthOnly ? geo.earthR * 4 : pairBase;
-  // Close enough that the Moon is the size the Moon level opens it at; in true scale the limit stays further out.
-  const min = system ? pairMax * 0.9 : onEarthOnly ? geo.earthR * 1.7 : Math.max(geo.moonR * 5.1, geo.pairReach * 0.144);
-  const max = system ? base * narrow * 1.5 : onEarthOnly ? geo.earthR * 9 : pairMax;
+  const base = system ? 352 : onEarthOnly ? geo.earthR * 4 : fit;
+  const min = system ? pairMax * 0.9 : onEarthOnly ? geo.earthR * 1.7 : focus.id === "moon" ? moonMin : focus.id === "earth" ? earthMin : Math.min(moonMin, earthMin);
+  const max = system ? Math.max(base * narrow * 1.5, pairMax * 1.4) : onEarthOnly ? geo.earthR * 9 : pairMax;
+  const minPolar = pair ? 0.02 : 0.08;
+  const maxPolar = system ? Math.PI / 2 - 0.06 : Math.PI - 0.08;
   const q = useRef(moonQ);
-  const live = useRef({ earthQ, facing, onEarthOnly, min, max });
+  const live = useRef({ earthQ, facing, onEarthOnly, pair, min, max, minPolar, maxPolar, focus, fit, topFit, pairMax, moonMin, earthMin, bothMin, geo, aspect });
   useEffect(() => {
     q.current = moonQ;
-    live.current = { earthQ, facing, onEarthOnly, min, max };
-  }, [moonQ, earthQ, facing, onEarthOnly, min, max]);
+    live.current = { earthQ, facing, onEarthOnly, pair, min, max, minPolar, maxPolar, focus, fit, topFit, pairMax, moonMin, earthMin, bothMin, geo, aspect };
+  }, [moonQ, earthQ, facing, onEarthOnly, pair, min, max, minPolar, maxPolar, focus, fit, topFit, pairMax, moonMin, earthMin, bothMin, geo, aspect]);
   const last = useRef(0);
+  const at = useRef(FOCUS_AT[focus.id]);
+  const atGlide = useRef<{ from: number; to: number; t0: number; dur: number } | null>(null);
+  const camGlide = useRef<CamGlide | null>(null);
+  const moved = useRef(0);
   const scratch = useRef<{ a: Vector3; b: Vector3; m: Metrics } | null>(null);
 
+  const glideTo = useCallback(
+    (to: Vector3 | null, toD: number, ms = GLIDE_MS) => {
+      const d = camera.position.length();
+      const from = camera.position.clone().divideScalar(d);
+      camGlide.current = { from, to: to ?? from, fromD: d, toD, t0: performance.now(), dur: reducedMotion() ? 0 : ms };
+      invalidate();
+    },
+    [camera, invalidate],
+  );
+
+  // Taking hold of the view ends a glide; the wheel does not, so the wheel's own momentum cannot cut one short.
   useEffect(() => {
-    if (framing.start === "default") {
+    const stop = () => {
+      camGlide.current = null;
+    };
+    dom.addEventListener("pointerdown", stop);
+    return () => dom.removeEventListener("pointerdown", stop);
+  }, [dom]);
+
+  const scaleKey = geo.pairReach;
+  useEffect(() => {
+    const now = live.current;
+    camGlide.current = null;
+    atGlide.current = null;
+    if (now.pair) {
+      const tilt = TILT.pair * RAD;
+      if (framing.start === "near" && now.focus.id === "moon") {
+        // From the Moon level: the same face of the Moon, at the size it had there, then back far enough to show Earth beside it.
+        const dir = handoff.moonDir ?? POLE_DIR;
+        camera.position.set(dir[0], dir[1], dir[2]).applyQuaternion(q.current).setLength(now.moonMin * 1.35);
+        at.current = 1;
+        const { earth, moon, earthR } = now.geo;
+        const lx = moon[0] - earth[0];
+        const lz = moon[2] - earth[2];
+        const span = Math.hypot(lx, moon[1] - earth[1], lz);
+        const side = new Vector3(-lz, 0, lx).normalize();
+        if (side.dot(camera.position) < 0) side.negate();
+        side.multiplyScalar(Math.cos(tilt)).setY(Math.sin(tilt));
+        const d = (span + earthR * 1.3) / (Math.tan((FOV * RAD) / 2) * now.aspect * 0.8);
+        glideTo(side, Math.min(now.pairMax * 0.8, Math.max(now.moonMin * 1.35, d)), 900);
+      } else if (framing.start === "near") {
+        // From the Earth framing: the same side of Earth, a little further off.
+        camera.position.setLength(now.earthMin * 1.35);
+        at.current = 0;
+      } else if (framing.start === "far") {
+        // From the Sun–Earth–Moon framing, which rests on Earth: the focus glides out from there.
+        camera.position.setLength(now.pairMax * 0.8);
+        at.current = 0;
+      } else {
+        camera.position.set(0, now.fit * Math.sin(tilt), now.fit * Math.cos(tilt));
+        at.current = FOCUS_AT[now.focus.id];
+      }
+    } else if (framing.start === "default") {
       const d = base * narrow;
       const tilt = TILT[framing.id] * RAD;
       camera.position.set(0, d * Math.sin(tilt), d * Math.cos(tilt));
       // The Earth framing keeps facing its chosen point when the scale changes under it.
-      const dir = onEarthOnly ? live.current.facing.dir : null;
-      if (dir) camera.position.set(dir[0], dir[1], dir[2]).applyQuaternion(live.current.earthQ).setLength(d);
-    } else if (framing.start === "near" && !system) {
-      // From the Moon level: the same face of the Moon, at the size it had there.
-      const dir = handoff.moonDir ?? POLE_DIR;
-      camera.position.set(dir[0], dir[1], dir[2]).applyQuaternion(q.current).setLength(min * 1.35);
+      const dir = now.onEarthOnly ? now.facing.dir : null;
+      if (dir) camera.position.set(dir[0], dir[1], dir[2]).applyQuaternion(now.earthQ).setLength(d);
     } else {
-      camera.position.setLength(framing.start === "near" ? min * 1.35 : max * 0.8);
+      camera.position.setLength(framing.start === "near" ? now.min * 1.35 : now.max * 0.8);
     }
     last.current = 0;
     controls.current?.target.set(0, 0, 0);
-    controls.current?.update();
+    if (!camGlide.current) controls.current?.update();
     invalidate();
-  }, [camera, base, narrow, min, max, system, onEarthOnly, framing, invalidate]);
+  }, [camera, base, narrow, scaleKey, framing, glideTo, invalidate]);
+
+  // A change of focus glides the framed point along the line between the bodies, keeping the direction of view.
+  const lastFocus = useRef(focus.id);
+  useEffect(() => {
+    const changed = lastFocus.current !== focus.id;
+    lastFocus.current = focus.id;
+    const now = live.current;
+    if (!now.pair) return;
+    const to = FOCUS_AT[focus.id];
+    if (Math.abs(to - at.current) > 1e-6) atGlide.current = { from: at.current, to, t0: performance.now(), dur: reducedMotion() ? 0 : GLIDE_MS };
+    // Chosen by hand from closer than the new focus allows: draw back to where it reads.
+    if (changed && !focus.auto && !camGlide.current) {
+      const d = camera.position.length();
+      if (focus.id === "both") {
+        if (d < now.bothMin * 1.2) glideTo(null, now.fit);
+      } else {
+        const limit = focus.id === "moon" ? now.moonMin : now.earthMin;
+        if (d < limit * 1.3) glideTo(null, limit * 1.35);
+      }
+    }
+    invalidate();
+  }, [focus, framing, camera, glideTo, invalidate]);
 
   // The Earth framing turns to stand over the chosen point, at the distance it has; Earth goes on turning under it.
   useEffect(() => {
@@ -430,20 +562,102 @@ function Rig({
     invalidate();
   }, [camera, facing.key, framing, invalidate]);
 
+  // What the view's buttons and keys do.
+  useEffect(() => {
+    apiRef.current = {
+      preset(kind) {
+        const now = live.current;
+        if (!now.pair) return;
+        const p = camera.position;
+        const d = p.length();
+        const both = now.focus.id === "both" || kind === "reset";
+        const tilt = TILT.pair * RAD;
+        if (kind === "reset") glideTo(new Vector3(0, Math.sin(tilt), Math.cos(tilt)), now.fit);
+        else if (kind === "top") {
+          // The plan of the orbit, from ecliptic north, turned as the view already is.
+          const az = Math.atan2(p.x, p.z);
+          glideTo(new Vector3(Math.sin(0.02) * Math.sin(az), Math.cos(0.02), Math.sin(0.02) * Math.cos(az)), both ? Math.min(now.max, now.topFit) : d);
+        } else {
+          // Edge-on to the ecliptic, square to the line between the bodies, from the nearer side.
+          const { earth, moon } = now.geo;
+          const side = new Vector3(-(moon[2] - earth[2]), 0, moon[0] - earth[0]).normalize();
+          if (side.dot(p) < 0) side.negate();
+          glideTo(side.setY(Math.tan(0.05)).normalize(), both ? now.fit : d);
+        }
+      },
+      orbit(azimuth, polar) {
+        const now = live.current;
+        const p = camera.position;
+        const d = p.length();
+        const pol = Math.min(now.maxPolar, Math.max(now.minPolar, Math.acos(Math.min(1, Math.max(-1, p.y / d))) + polar));
+        const az = Math.atan2(p.x, p.z) + azimuth;
+        camGlide.current = null;
+        p.set(d * Math.sin(pol) * Math.sin(az), d * Math.cos(pol), d * Math.sin(pol) * Math.cos(az));
+        last.current = 0;
+        controls.current?.update();
+        invalidate();
+      },
+      zoom(factor) {
+        const now = live.current;
+        const p = camera.position;
+        const d = p.length();
+        if (factor < 1 && d <= now.min * 1.01) return "in";
+        if (factor > 1 && d >= now.max * 0.99) return "out";
+        camGlide.current = null;
+        p.setLength(Math.min(now.max, Math.max(now.min, d * factor)));
+        controls.current?.update();
+        invalidate();
+        return null;
+      },
+    };
+    return () => {
+      apiRef.current = null;
+    };
+  }, [apiRef, camera, glideTo, invalidate]);
+
   const { focusFrom: a, focusTo: b } = geo;
   useFrame(({ camera: cam, size }) => {
     const tmp = (scratch.current ??= { a: new Vector3(), b: new Vector3(), m: { moonPx: 0, earthPx: 0, sunPx: 0, pairPx: 0, moonRadii: 0, poleSeen: false } });
+    const t = performance.now();
+    let gliding = false;
+    let placed = false;
+    const cg = camGlide.current;
+    if (cg) {
+      const k = cg.dur > 0 ? clamp01((t - cg.t0) / cg.dur) : 1;
+      const e = 1 - (1 - k) ** 3;
+      const dir = tmp.a.copy(cg.from);
+      const angle = cg.from.angleTo(cg.to);
+      if (angle > 1e-4) {
+        const axis = tmp.b.crossVectors(cg.from, cg.to);
+        if (axis.lengthSq() > 1e-10) dir.applyAxisAngle(axis.normalize(), angle * e);
+      }
+      cam.position.copy(dir).multiplyScalar(cg.fromD * (cg.toD / cg.fromD) ** e);
+      cam.lookAt(0, 0, 0);
+      placed = true;
+      if (k >= 1) {
+        camGlide.current = null;
+        controls.current?.update();
+      } else gliding = true;
+    }
+    const ag = atGlide.current;
+    if (ag) {
+      const k = ag.dur > 0 ? clamp01((t - ag.t0) / ag.dur) : 1;
+      at.current = ag.from + (ag.to - ag.from) * (1 - (1 - k) ** 3);
+      if (k >= 1) atGlide.current = null;
+      else gliding = true;
+    }
+    if (gliding) invalidate();
     const d = cam.position.length();
-    const prev = last.current;
+    const prev = placed ? 0 : last.current;
     last.current = d;
     if (pair && prev > 0 && Math.abs(d - prev) > 1e-7 * d) {
-      const zone = pairBase * 0.5;
+      const zone = geo.pairReach * 1.8;
       const below = Math.PI / 2 - 0.06;
       const polar = Math.acos(Math.min(1, Math.max(-1, cam.position.y / d)));
-      if (d < prev && d < zone) {
+      if (d < prev && d < zone && focus.id === "moon") {
         // Closing on the Moon: turn towards the view from below its south pole, arriving there at the limit.
         const from = Math.min(prev, zone);
-        const k = from <= min * 1.0001 ? 1 : clamp01(Math.log(from / d) / Math.log(from / min));
+        const k = from <= moonMin * 1.0001 ? 1 : clamp01(Math.log(from / d) / Math.log(from / moonMin));
         const to = tmp.a.set(POLE_DIR[0], POLE_DIR[1], POLE_DIR[2]).applyQuaternion(q.current);
         const dir = tmp.b.copy(cam.position).divideScalar(d);
         const angle = dir.angleTo(to);
@@ -463,30 +677,61 @@ function Rig({
         cam.position.set(d * Math.sin(next) * Math.sin(az), d * Math.cos(next), d * Math.sin(next) * Math.cos(az));
         controls.current?.update();
       }
+      if (t - moved.current > 400) {
+        if (focus.id === "both" && d < prev && d < bothMin) {
+          // Zooming in on the pair: carry on towards the body nearer the pointer, or with none the view's centre.
+          moved.current = t;
+          const s = discs.current;
+          const px = pointer.current?.x ?? size.width / 2;
+          const py = pointer.current?.y ?? size.height / 2;
+          onFocus(Math.hypot(s.mx - px, s.my - py) <= Math.hypot(s.ex - px, s.ey - py) * 1.05 ? "moon" : "earth", true);
+        } else if (focus.id !== "both" && focus.auto && d > prev && d > bothMin * 1.25) {
+          moved.current = t;
+          onFocus("both", true);
+        }
+      }
     }
-    const f = clamp01(Math.log(base / d) / Math.log(base / (min * 1.4)));
-    const e = f * f * (3 - 2 * f);
     const g = group.current?.position;
-    g?.set(-(a[0] + (b[0] - a[0]) * e), -(a[1] + (b[1] - a[1]) * e), -(a[2] + (b[2] - a[2]) * e));
+    if (pair) {
+      const k = at.current;
+      g?.set(-(geo.earth[0] + (geo.moon[0] - geo.earth[0]) * k), -(geo.earth[1] + (geo.moon[1] - geo.earth[1]) * k), -(geo.earth[2] + (geo.moon[2] - geo.earth[2]) * k));
+    } else {
+      const f = clamp01(Math.log(base / d) / Math.log(base / (min * 1.4)));
+      const e = f * f * (3 - 2 * f);
+      g?.set(-(a[0] + (b[0] - a[0]) * e), -(a[1] + (b[1] - a[1]) * e), -(a[2] + (b[2] - a[2]) * e));
+    }
     cam.near = d / 200;
     cam.far = d * 50 + 250;
     cam.updateProjectionMatrix();
     if (!g) return;
+    cam.updateMatrixWorld();
     const perPx = (2 * Math.tan((FOV * RAD) / 2)) / size.height;
+    const s = discs.current;
     const moonAt = tmp.a.set(geo.moon[0] + g.x, geo.moon[1] + g.y, geo.moon[2] + g.z);
     const moonD = Math.max(cam.position.distanceTo(moonAt), 1e-9);
     const m = tmp.m;
     m.moonPx = geo.moonR / (moonD * perPx);
     m.moonRadii = moonD / geo.moonR;
+    tmp.b.copy(moonAt).project(cam);
+    s.mx = ((tmp.b.x + 1) / 2) * size.width;
+    s.my = ((1 - tmp.b.y) / 2) * size.height;
+    s.mr = m.moonPx;
     // The nine regions are on the side of the Moon towards the camera.
     const pole = tmp.b.set(CLUSTER_AT[0], CLUSTER_AT[1], CLUSTER_AT[2]).applyQuaternion(q.current);
     m.poleSeen = pole.dot(moonAt.sub(cam.position).negate()) / moonD > 0.3;
-    const earthD = Math.max(cam.position.distanceTo(tmp.a.set(geo.earth[0] + g.x, geo.earth[1] + g.y, geo.earth[2] + g.z)), 1e-9);
+    const earthAt = tmp.a.set(geo.earth[0] + g.x, geo.earth[1] + g.y, geo.earth[2] + g.z);
+    const earthD = Math.max(cam.position.distanceTo(earthAt), 1e-9);
     m.earthPx = geo.earthR / (earthD * perPx);
     m.pairPx = (geo.pairRadii * geo.moonR) / (earthD * perPx);
+    tmp.b.copy(earthAt).project(cam);
+    s.ex = ((tmp.b.x + 1) / 2) * size.width;
+    s.ey = ((1 - tmp.b.y) / 2) * size.height;
+    s.er = m.earthPx;
     m.sunPx = geo.sunR / (Math.max(cam.position.distanceTo(tmp.a.set(g.x, g.y, g.z)), 1e-9) * perPx);
     earthPxRef.current = m.earthPx;
-    onView(d, min, max, m);
+    onDiscs(s.ex, s.ey, s.er, s.mx, s.my, s.mr);
+    // With the pair framed there is no inner limit to rest on: zooming in moves the focus instead.
+    onView(d, pair && focus.id === "both" ? 0 : min, max, m);
   }, -1);
 
   return (
@@ -496,8 +741,8 @@ function Rig({
       enableDamping={false}
       minDistance={min}
       maxDistance={max}
-      minPolarAngle={0.08}
-      maxPolarAngle={system ? Math.PI / 2 - 0.06 : Math.PI - 0.08}
+      minPolarAngle={minPolar}
+      maxPolarAngle={maxPolar}
       rotateSpeed={0.6}
       zoomSpeed={system ? 2.2 : onEarthOnly ? 1.6 : 3.8}
     />
@@ -543,7 +788,17 @@ function Scene({
   facing,
   fanSite,
   arc,
+  focus,
+  onFocus,
+  apiRef,
+  onDiscs,
+  pointer,
 }: {
+  focus: FocusState;
+  onFocus: (id: Focus, auto: boolean) => void;
+  apiRef: { current: RigApi | null };
+  onDiscs: (ex: number, ey: number, er: number, mx: number, my: number, mr: number) => void;
+  pointer: { current: { x: number; y: number } | null };
   data: SystemData;
   state: SystemState;
   frame: MoonFrame;
@@ -650,7 +905,7 @@ function Scene({
   return (
     <>
       <color attach="background" args={[PAPER]} />
-      <Rig framing={framing} geo={geo} group={group} moonQ={moonQ} earthQ={earthQ} facing={facing} earthPxRef={earthPx} onView={onView} />
+      <Rig framing={framing} geo={geo} group={group} moonQ={moonQ} earthQ={earthQ} facing={facing} earthPxRef={earthPx} onView={onView} focus={focus} onFocus={onFocus} apiRef={apiRef} onDiscs={onDiscs} pointer={pointer} />
       <group ref={group}>
         <Line points={orbit} color={INK} lineWidth={1} />
         <Line points={[ORIGIN, earth]} color={RULE} lineWidth={1} />
@@ -984,6 +1239,9 @@ export default function SystemView({
   const [attempt, setAttempt] = useState(0);
   const [scale, setScale] = useState<Scale>("display");
   const [framing, setFraming] = useState<Framing>(() => (entry === "below" ? { id: "pair", start: "near" } : { id: "system", start: "default" }));
+  const [focus, setFocus] = useState<FocusState>(() => ({ id: entry === "below" ? "moon" : "both", auto: false }));
+  // Set when zooming in on the pair has moved the focus to a body, and shown for a moment as a note.
+  const [nudge, setNudge] = useState<Focus | null>(null);
   const [playing, setPlaying] = useState(false);
   const [gl] = useState(hasWebGL);
   const [textures, setTextures] = useState<Textures | null>(null);
@@ -1054,6 +1312,26 @@ export default function SystemView({
   const earthRay = useMemo(() => ({ sun: { current: 1.13 }, moon: { current: 1.13 } }), []);
 
   const overlay = useRef<HTMLDivElement>(null);
+  const rig = useRef<RigApi | null>(null);
+  const discs = useRef<Discs>({ ex: 0, ey: 0, er: 0, mx: 0, my: 0, mr: 0 });
+  const pointer = useRef<{ x: number; y: number } | null>(null);
+  const hostEl = useRef<HTMLDivElement | null>(null);
+  const pressed = useRef<{ x: number; y: number } | null>(null);
+  // Where the two discs stand, for the pointer and for tests.
+  const onDiscs = useCallback((ex: number, ey: number, er: number, mx: number, my: number, mr: number) => {
+    discs.current = { ex, ey, er, mx, my, mr };
+    if (hostEl.current) hostEl.current.dataset.bodies = [ex, ey, er, mx, my, mr].map((v) => v.toFixed(1)).join(",");
+  }, []);
+  const onFocus = useCallback((id: Focus, auto: boolean) => {
+    setFocus((prev) => (prev.id === id && prev.auto === auto ? prev : { id, auto }));
+    setNudge(auto && id !== "both" ? id : null);
+  }, []);
+  const pick = useCallback((id: Focus) => onFocus(id, false), [onFocus]);
+  useEffect(() => {
+    if (!nudge) return;
+    const timer = window.setTimeout(() => setNudge(null), 2600);
+    return () => window.clearTimeout(timer);
+  }, [nudge]);
   const rayLen = useMemo(() => ({ sun: { current: 1.13 }, earth: { current: 1.13 } }), []);
   const months = useMemo(() => (data ? monthPoints(data) : []), [data]);
   const geo = useMemo(() => (state ? geometry(state, scale, framing.id) : null), [state, scale, framing.id]);
@@ -1090,16 +1368,17 @@ export default function SystemView({
     if (!geo || !state || !frame) return [];
     const { earth } = geo;
     const { speck } = detail;
+    const onPair = framing.id === "pair";
     const out: SysLabel[] = [];
     const push = (key: string, anchor: Anchor, pri: number, node: ReactNode, more?: Partial<Label>) => out.push({ key, at: ORIGIN, anchor, pri, node, ...more });
     push("sun", { kind: "limb", body: "sun", side: 1 }, 0, <BodyTag text="Sun" speck={speck.sun} />, { free: true });
-    push("earth", { kind: "limb", body: "earth", side: 1 }, 0, <BodyTag text="Earth" speck={speck.earth} />, { free: true });
+    push("earth", { kind: "limb", body: "earth", side: 1 }, 0, <BodyTag text="Earth" speck={speck.earth} onPick={onPair ? () => pick("earth") : undefined} />, { free: true });
     if (detail.onBody) {
-      push("moon", { kind: "limb", body: "moon", side: 1 }, 0, <BodyTag text="Moon" speck={false} />, { free: true });
+      push("moon", { kind: "limb", body: "moon", side: 1 }, 0, <BodyTag text="Moon" speck={false} onPick={onPair ? () => pick("moon") : undefined} />, { free: true });
       if (site) push("site", { kind: "moon", at: onGlobe(site.lat, site.lon) }, 0, <SiteFlag text={site.name} />, { dot: 6 });
       push("cluster", { kind: "moon", at: CLUSTER_AT }, 2, <ClusterMark onOpen={() => onOpenMoon?.()} hint="Open the Moon level to tell them apart." />, { dot: 8 });
     } else {
-      push("moon", { kind: "limb", body: "moon", side: -1 }, 0, <BodyTag text="Moon · 9 candidate regions" sub={site?.name} speck={speck.moon} below />, { free: true });
+      push("moon", { kind: "limb", body: "moon", side: -1 }, 0, <BodyTag text={onPair ? "Moon" : "Moon · 9 candidate regions"} sub={site?.name} speck={speck.moon} below onPick={onPair ? () => pick("moon") : undefined} />, { free: true });
     }
     if (detail.rays) {
       push("to-sun", { kind: "ray", to: "sun" }, 1, <BearingTag text={LINE_NAMES.sun} className="text-sun-ink" />, { dot: 9, float: true });
@@ -1139,25 +1418,49 @@ export default function SystemView({
     }
     months.forEach((p, i) => push(MONTHS[i], { kind: "point", at: mul(p, 1.075) }, 4, <CentredTag text={MONTHS[i]} className="font-medium text-ink-2" />));
     if (framing.id === "pair") {
+      // The distance stands on the line between the two, clear of whichever body the view has closed on.
+      const k = focus.id === "both" ? 0.5 : focus.id === "moon" ? 0.62 : 0.38;
+      push(
+        "pair-km",
+        { kind: "point", at: add(earth, mul(add(geo.moon, mul(earth, -1)), k)) },
+        0,
+        <CentredTag text={`${fmtInt(state.earthMoonKm)} km`} className="border border-rule bg-paper px-1.5 text-ink tabular-nums" />,
+        { free: true },
+      );
       for (const t of days) {
         if ((new Date(t.ms).getUTCDate() - 1) % 7) continue;
         push(`day-${t.ms}`, { kind: "point", at: add(earth, mul(t.at, 1.09)) }, 5, <CentredTag text={DAY_LABEL.format(t.ms)} className="font-medium text-ink-2" />);
       }
     }
     return out;
-  }, [geo, state, frame, framing.id, months, days, detail, site, bearingLen, onOpenMoon, launchSites, launchId, chooseSite, earthFrame, earthRay, arc]);
+  }, [geo, state, frame, framing.id, focus.id, pick, months, days, detail, site, bearingLen, onOpenMoon, launchSites, launchId, chooseSite, earthFrame, earthRay, arc]);
 
-  // The zoom chain: Sun–Earth–Moon, then Earth–Moon, then down to the Moon level. The Earth framing is entered by
-  // its button and left by it or by zooming out, which returns to Earth–Moon.
+  // The zoom chain: Sun–Earth–Moon, then Earth–Moon, then by its focus down to the Moon level or into the Earth
+  // framing. With the pair framed, zooming in first moves the focus to a body (the rig does that). Zooming out of the
+  // Earth framing returns to Earth–Moon about Earth.
   const zoomIn = useCallback(() => {
-    if (framing.id === "system") setFraming({ id: "pair", start: "far" });
-    else if (framing.id === "pair") onOpenMoon?.();
-  }, [framing.id, onOpenMoon]);
-  const zoomOut = useCallback(() => setFraming(framing.id === "earth" ? { id: "pair", start: "default" } : { id: "system", start: "near" }), [framing.id]);
-  const { setHost, report, rearm, hint, progress } = useZoomGate({
-    onIn: framing.id === "system" || (framing.id === "pair" && onOpenMoon) ? zoomIn : undefined,
-    onOut: framing.id !== "system" ? zoomOut : undefined,
-  });
+    if (framing.id === "system") {
+      setFocus({ id: "both", auto: false });
+      setFraming({ id: "pair", start: "far" });
+    } else if (framing.id === "pair" && focus.id === "moon") onOpenMoon?.();
+    else if (framing.id === "pair" && focus.id === "earth") setFraming({ id: "earth", start: "far" });
+  }, [framing.id, focus.id, onOpenMoon]);
+  const zoomOut = useCallback(() => {
+    if (framing.id === "earth") {
+      setFocus({ id: "earth", auto: false });
+      setFraming({ id: "pair", start: "near" });
+    } else setFraming({ id: "system", start: "near" });
+  }, [framing.id]);
+  const canIn = framing.id === "system" || (framing.id === "pair" && (focus.id === "earth" || (focus.id === "moon" && Boolean(onOpenMoon))));
+  const canOut = framing.id !== "system";
+  const { setHost, report, rearm, hint, progress } = useZoomGate({ onIn: canIn ? zoomIn : undefined, onOut: canOut ? zoomOut : undefined });
+  const hostRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      hostEl.current = el;
+      setHost(el);
+    },
+    [setHost],
+  );
   useEffect(() => rearm(), [framing, rearm]);
   const onView = useCallback<OnView>(
     (distance, min, max, m) => {
@@ -1178,16 +1481,43 @@ export default function SystemView({
     },
     [report],
   );
+  const inText = framing.id === "system" ? "Keep zooming in for the Earth–Moon framing" : focus.id === "earth" ? "Keep zooming to open the Earth view" : "Keep zooming to open the Moon level";
   const hintText =
     hint === "in"
-      ? framing.id === "system"
-        ? "Keep zooming in for the Earth–Moon framing"
-        : "Keep zooming to open the Moon level"
+      ? inText
       : hint === "out"
         ? framing.id === "earth"
           ? "Keep zooming out for the Earth–Moon framing"
           : "Keep zooming out for the Sun–Earth–Moon framing"
-        : null;
+        : framing.id === "pair" && nudge && nudge === focus.id && (nudge === "earth" || onOpenMoon)
+          ? inText
+          : null;
+
+  // A click or double-click on a body centres the view on it; a double-click on empty paper frames both again.
+  const bodyAt = (e: { clientX: number; clientY: number; currentTarget: HTMLElement }): Focus | null => {
+    const box = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - box.left;
+    const y = e.clientY - box.top;
+    const d = discs.current;
+    const moon = Math.hypot(d.mx - x, d.my - y) - Math.max(d.mr, 12);
+    const earth = Math.hypot(d.ex - x, d.ey - y) - Math.max(d.er, 12);
+    return Math.min(moon, earth) > 5 ? null : moon <= earth ? "moon" : "earth";
+  };
+  const onKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget || e.altKey || e.ctrlKey || e.metaKey || !rig.current) return;
+    const turn = 8 * RAD;
+    if (e.key === "ArrowLeft") rig.current.orbit(-turn, 0);
+    else if (e.key === "ArrowRight") rig.current.orbit(turn, 0);
+    else if (e.key === "ArrowUp") rig.current.orbit(0, -turn);
+    else if (e.key === "ArrowDown") rig.current.orbit(0, turn);
+    else if (e.key === "+" || e.key === "=") {
+      // On a limit the key does what the wheel's last notches do.
+      if (rig.current.zoom(1 / 1.25) === "in" && canIn) zoomIn();
+    } else if (e.key === "-" || e.key === "_") {
+      if (rig.current.zoom(1.25) === "out" && canOut) zoomOut();
+    } else return;
+    e.preventDefault();
+  };
 
   const span = useMemo(() => (data ? { startMs: data.startMs, endMs: systemEndMs(data) } : null), [data]);
   useYearPlayback(playing, span, ms, onScrub);
@@ -1199,9 +1529,12 @@ export default function SystemView({
       ? (scale === "display"
           ? "Earth framing: Earth and the Moon are drawn to one scale here, the Moon about 60 Earth radii away along the line to it, so it is usually out of view."
           : "Earth framing, true scale.") + earthNote
-      : scale === "display"
+      : (framing.id === "pair"
+          ? "Earth–Moon framing: drag to turn the view about its centre (both bodies, Earth or the Moon), scroll to zoom towards it; click a body or its name to centre on it, double-click empty paper for both. With the diagram focused, the arrow keys turn it and + and − zoom. "
+          : "") +
+        (scale === "display"
       ? `Display scale, not to scale: Earth and the Moon are drawn ${BODY_STRETCH} times too large, the Sun ${SUN_STRETCH} times, and the Earth to Moon distance ${PAIR_STRETCH} times too long, so all three can be seen at once. Positions, the Moon's orientation, the terminator and the table are true; the line to the Sun keeps its true direction, which the stretch can leave up to 7° off the Sun as drawn.`
-      : "True scale: sizes and distances keep their real ratios, so the bodies are specks inside the rings that mark them. Zoom in on the Earth–Moon framing to find them; the lines from the Moon and its terminator are true.";
+      : "True scale: sizes and distances keep their real ratios, so the bodies are specks inside the rings that mark them. Zoom in on the Earth–Moon framing to find them; the lines from the Moon and its terminator are true.");
 
   return (
     <div className={`flex min-h-0 flex-col xl:flex-row ${className}`}>
@@ -1216,6 +1549,7 @@ export default function SystemView({
               value={framing.id}
               onChange={(id) => {
                 setFraming({ id, start: "default" });
+                setFocus({ id: "both", auto: false });
                 // The Earth framing opens over the selected launch site, or with none over the day side.
                 if (id === "earth") setAim((a) => ({ dir: launchSite || !earthFrame ? null : bodyToScene(earthFrame.sunDir), n: a.n + 1 }));
               }}
@@ -1228,7 +1562,11 @@ export default function SystemView({
             <Segmented
               label="Scale"
               value={scale}
-              onChange={setScale}
+              onChange={(v) => {
+                setScale(v);
+                // The view opens afresh at the new scale, about the focus it has.
+                setFraming((f) => ({ id: f.id, start: "default" }));
+              }}
               options={[
                 { id: "display", label: "Display scale" },
                 { id: "true", label: "True scale" },
@@ -1255,7 +1593,63 @@ export default function SystemView({
           </div>
         )}
 
-        <div ref={setHost} className="relative isolate min-h-[22rem] flex-1 overflow-hidden bg-paper">
+        {framing.id === "pair" && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-rule px-4 py-2">
+            <span className="text-[0.75rem] font-semibold tracking-[0.08em] text-ink uppercase">Centre on</span>
+            <Segmented
+              label="Centre the view on"
+              value={focus.id}
+              onChange={pick}
+              options={[
+                { id: "both", label: "Both" },
+                { id: "earth", label: "Earth" },
+                { id: "moon", label: "Moon" },
+              ]}
+            />
+            <div role="group" aria-label="View presets" className="flex flex-wrap gap-1.5">
+              <FaceButton onClick={() => rig.current?.preset("top")}>Top view</FaceButton>
+              <FaceButton onClick={() => rig.current?.preset("side")}>Side view</FaceButton>
+              <FaceButton
+                onClick={() => {
+                  rig.current?.preset("reset");
+                  pick("both");
+                }}
+              >
+                Reset view
+              </FaceButton>
+            </div>
+          </div>
+        )}
+
+        <div
+          ref={hostRef}
+          tabIndex={0}
+          role="group"
+          aria-label="Diagram. Arrow keys turn the view; plus and minus zoom."
+          data-framing={framing.id}
+          data-focus={framing.id === "pair" ? focus.id : undefined}
+          onKeyDown={onKey}
+          onPointerMove={(e) => {
+            const box = e.currentTarget.getBoundingClientRect();
+            pointer.current = { x: e.clientX - box.left, y: e.clientY - box.top };
+          }}
+          onPointerLeave={() => {
+            pointer.current = null;
+          }}
+          onPointerDown={(e) => {
+            pressed.current = { x: e.clientX, y: e.clientY };
+          }}
+          onClick={(e) => {
+            const from = pressed.current;
+            if (framing.id !== "pair" || !(e.target instanceof HTMLCanvasElement) || !from || Math.hypot(e.clientX - from.x, e.clientY - from.y) > 4) return;
+            const body = bodyAt(e);
+            if (body) pick(body);
+          }}
+          onDoubleClick={(e) => {
+            if (framing.id === "pair" && e.target instanceof HTMLCanvasElement) pick(bodyAt(e) ?? "both");
+          }}
+          className="relative isolate min-h-[22rem] flex-1 overflow-hidden bg-paper focus-visible:outline-2 focus-visible:-outline-offset-2"
+        >
           <ZoomHint text={hintText} progress={progress} />
           {load.status === "loading" && (
             <p role="status" className="absolute inset-0 grid place-items-center text-[0.844rem] text-ink-2">
@@ -1289,7 +1683,7 @@ export default function SystemView({
                 dpr={[1, 2]}
                 camera={{ fov: FOV, position: [0, 260, 203], near: 1, far: 5000 }}
                 gl={{ antialias: true }}
-                aria-label="3D diagram of the Sun, Earth and Moon. Drag to turn, scroll to zoom; zooming past a limit changes the framing or opens the Moon level."
+                aria-label="3D diagram of the Sun, Earth and Moon. Drag to turn, scroll to zoom; zooming past a limit changes the framing or opens the Moon level. In the Earth–Moon framing, click a body to centre the view on it."
                 role="img"
               >
                 <Scene
@@ -1315,6 +1709,11 @@ export default function SystemView({
                   facing={facing}
                   fanSite={launchSite}
                   arc={arc}
+                  focus={focus}
+                  onFocus={onFocus}
+                  apiRef={rig}
+                  onDiscs={onDiscs}
+                  pointer={pointer}
                 />
               </Canvas>
               <div ref={overlay} className="pointer-events-none absolute inset-0 overflow-hidden">
