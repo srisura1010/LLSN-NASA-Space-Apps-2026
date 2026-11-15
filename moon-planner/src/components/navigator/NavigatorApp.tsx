@@ -17,6 +17,8 @@ import {
 import { loadSite, rankSites, sampleAt, type MissionScore, type SiteData } from "@/lib/sky";
 import { formatLatLon, sites } from "@/lib/sites";
 import { customHorizonMethod, loadCustomSite } from "@/lib/customSite";
+import { POINT_SITE_ID, buildSmoothSite } from "@/lib/anySite";
+import { loadSystem, type SystemData } from "@/lib/system";
 import HorizonPlot from "./HorizonPlot";
 import RegionTable, { CustomSiteForm, GAP_LIMITS, type CustomSiteState, type RankedRow } from "./RegionTable";
 import MissionControls, {
@@ -74,6 +76,8 @@ type UrlState = {
   view: View;
   cmp: string[] | null;
   custom: { lat: number; lon: number } | null;
+  /** A point picked at the Moon level, anywhere on the globe. */
+  pt: { lat: number; lon: number } | null;
   atHours: number;
   gap: number;
 };
@@ -110,7 +114,14 @@ function readUrl(p: URLSearchParams): UrlState {
     const lon = Number(c[2]);
     if (lat <= -80 && lat >= -90 && lon >= -180 && lon <= 360) custom = { lat, lon };
   }
-  const valid = (id: string) => SITE_IDS.has(id) || (id === CUSTOM_ID && !!custom);
+  let pt: UrlState["pt"] = null;
+  const q = /^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/.exec(p.get("pt") ?? "");
+  if (q) {
+    const lat = Number(q[1]);
+    const lon = Number(q[2]);
+    if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 360) pt = { lat, lon: lon > 180 ? lon - 360 : lon };
+  }
+  const valid = (id: string) => SITE_IDS.has(id) || (id === CUSTOM_ID && !!custom) || (id === POINT_SITE_ID && !!pt);
   const siteParam = p.get("site");
   const viewParam = p.get("view");
   const cmp = (p.get("cmp") ?? "").split(",").filter(valid).slice(0, 3);
@@ -123,6 +134,7 @@ function readUrl(p: URLSearchParams): UrlState {
     view: TABS.some((t) => t.id === viewParam) ? (viewParam as View) : "navigator",
     cmp: cmp.length ? cmp : null,
     custom,
+    pt,
     atHours: Number.isFinite(at) && at > 0 && at <= hours ? at : 0,
     gap: GAP_LIMITS.includes(gap) ? gap : DEFAULT_GAP,
   };
@@ -141,6 +153,7 @@ function writeUrl(s: {
   view: View;
   cmp: string[] | null;
   custom: { lat: number; lon: number } | null;
+  pt: { lat: number; lon: number } | null;
   atHours: number;
   gap: number;
 }): string {
@@ -148,6 +161,7 @@ function writeUrl(s: {
   if (s.view !== "navigator") parts.push(`view=${s.view}`);
   if (s.cmp?.length) parts.push(`cmp=${s.cmp.map(encodeURIComponent).join(",")}`);
   if (s.custom) parts.push(`custom=${s.custom.lat.toFixed(4)},${s.custom.lon.toFixed(4)}`);
+  if (s.pt) parts.push(`pt=${Number(s.pt.lat.toFixed(4))},${Number(s.pt.lon.toFixed(4))}`);
   if (s.atHours > 0.05) parts.push(`at=${Number(s.atHours.toFixed(1))}`);
   if (s.gap !== DEFAULT_GAP) parts.push(`gap=${s.gap}`);
   return parts.join("&");
@@ -399,6 +413,10 @@ export default function NavigatorApp() {
     init.custom ? { ...init.custom, fromMs: init.startMs, toMs: init.startMs + init.hours * HOUR } : null,
   );
 
+  // A point picked at the Moon level, and the ephemeris its smooth-horizon tracks are computed from.
+  const [point, setPoint] = useState<{ lat: number; lon: number } | null>(init.pt);
+  const [system, setSystem] = useState<SystemData | null>(null);
+
   // ---- URL in ----
   // The page stays mounted across client navigations (and is kept alive while
   // another route shows), so a later visit with new search params, such as a
@@ -412,7 +430,7 @@ export default function NavigatorApp() {
   if (pathname === home && query !== seenQuery) {
     setSeenQuery(query);
     const incoming = new URLSearchParams(query);
-    const namesPlan = ["site", "start", "hours", "custom", "cmp"].some((k) => incoming.has(k));
+    const namesPlan = ["site", "start", "hours", "custom", "cmp", "pt"].some((k) => incoming.has(k));
     if (query !== ownQuery && !namesPlan && incoming.has("view")) {
       setView(readUrl(incoming).view);
       setUrlEpoch((n) => n + 1);
@@ -426,6 +444,7 @@ export default function NavigatorApp() {
       setChange(null);
       setGap(u.gap);
       setPicked(u.cmp);
+      setPoint(u.pt);
       setPlaying(false);
       setUrlEpoch((n) => n + 1);
       const uEnd = u.startMs + u.hours * HOUR;
@@ -477,6 +496,21 @@ export default function NavigatorApp() {
       alive = false;
     };
   }, [customReq]);
+
+  // The ephemeris is only needed once a point is picked; loadSystem caches it for the Moon and System levels.
+  const wantSystem = !!point && !system;
+  useEffect(() => {
+    if (!wantSystem) return;
+    let alive = true;
+    loadSystem().then(
+      (d) => alive && setSystem(d),
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+    };
+  }, [wantSystem]);
+  const pointSite = useMemo(() => (point && system ? buildSmoothSite(point.lat, point.lon, system) : null), [point, system]);
 
   const retrySite = useCallback(
     (id: string) => {
@@ -627,6 +661,13 @@ export default function NavigatorApp() {
     setPicked((prev) => (prev ? prev.filter((p) => p !== CUSTOM_ID) : prev));
   }, []);
 
+  // ---- Picked point ----
+
+  const pickPoint = useCallback((p: { lat: number; lon: number } | null) => {
+    setPoint(p);
+    if (!p) setPicked((prev) => (prev ? prev.filter((id) => id !== POINT_SITE_ID) : prev));
+  }, []);
+
   // ---- Time ----
 
   const scrub = useCallback((ms: number) => {
@@ -761,6 +802,7 @@ export default function NavigatorApp() {
         view,
         cmp: picked,
         custom: custom ? { lat: custom.lat, lon: custom.lon } : null,
+        pt: point,
         atHours: urlAt,
         gap,
       });
@@ -771,7 +813,7 @@ export default function NavigatorApp() {
       }
     }, 300);
     return () => window.clearTimeout(t);
-  }, [effectiveId, startMs, durationHours, view, picked, custom, urlAt, gap, seenQuery]);
+  }, [effectiveId, startMs, durationHours, view, picked, custom, point, urlAt, gap, seenQuery]);
 
   // ---- Derived props for panels ----
 
@@ -837,14 +879,32 @@ export default function NavigatorApp() {
   const compareOptions: CompareOption[] = useMemo(() => {
     const out: CompareOption[] = sites.map((s) => ({ id: s.id, name: s.name, site: rankable.get(s.id) ?? null }));
     if (custom) out.push({ id: CUSTOM_ID, name: customName, custom: true, site: customData });
+    if (point) out.push({ id: POINT_SITE_ID, name: formatLatLon(point.lat, point.lon), noTerrain: true, site: pointSite });
     return out;
-  }, [rankable, custom, customName, customData]);
+  }, [rankable, custom, customName, customData, point, pointSite]);
 
   const comparePicked = useMemo(() => {
     if (picked) return picked;
     const other = ranking.find((r) => r.siteId !== effectiveId)?.siteId;
     return other ? [effectiveId, other] : [effectiveId];
   }, [picked, ranking, effectiveId]);
+
+  /** Hand a picked point to the terrain-aware custom-site path and open it at the site level. The site level covers 80° S to the pole only. */
+  const pointToTerrain = useCallback(
+    (lat: number, lon: number) => {
+      if (lat > -80) return;
+      addCustom(lat, lon);
+      changeView("navigator");
+    },
+    [addCustom, changeView],
+  );
+
+  /** Put the picked point in the Compare view, beside what is already there, and open it. */
+  const comparePoint = useCallback(() => {
+    const base = comparePicked.filter((id) => id !== POINT_SITE_ID).slice(0, 2);
+    setPicked([...base, POINT_SITE_ID]);
+    changeView("compare");
+  }, [comparePicked, changeView]);
 
   const aboutEntries = useMemo(
     () => sites.map((s) => ({ id: s.id, name: s.name, site: rankable.get(s.id) ?? null })),
@@ -1022,6 +1082,11 @@ export default function NavigatorApp() {
             entry={arrival}
             levelNav={<LevelNav level="moon" onLevel={stepLevel} />}
             windowMs={systemWindow}
+            point={point}
+            pointSite={pointSite}
+            onPoint={pickPoint}
+            onPointTerrain={pointToTerrain}
+            onPointCompare={comparePoint}
             className="h-full"
           />
         </div>

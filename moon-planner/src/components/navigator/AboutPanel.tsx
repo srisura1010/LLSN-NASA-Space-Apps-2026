@@ -305,6 +305,20 @@ function AboutPanel({ entries, loading }: Props) {
             </p>
           </Section>
 
+          <Section id="about-point" title="Any point on the Moon">
+            <p>
+              At the Moon level you can pick any point on the globe, or type its latitude and longitude, and read Sun
+              and Earth visibility there for the mission window. The directions are computed in the browser from the
+              same JPL Horizons vectors and IAU rotation model, measured from the surface point so Earth&apos;s
+              parallax is included; azimuth and elevation agree with the Horizons observer tracks at the nine region
+              centres to within 0.01°. The limit is the horizon: it is that of a smooth sphere of radius 1,737.4 km
+              seen from a 2 m mast, 0.087° below level, so hills and crater rims are not included. That matters
+              little at low latitudes, where the Sun and Earth climb high, and a great deal near the poles, where
+              they graze the horizon. For a point between 80° S and 89.9° S, Use LOLA terrain reopens it at the site
+              level with a terrain horizon. In Compare, a picked point is marked No terrain and is not ranked.
+            </p>
+          </Section>
+
           <Section id="about-system" title="System level">
             <p>
               The System tab steps back from the surface to the geometry that causes everything else: where Earth is on

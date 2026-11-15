@@ -4,11 +4,13 @@
 // IAU/WGCCRE rotation model and lit from the Sun's real direction. It sits
 // between the System level and the site-level terrain plate.
 
-import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { Component, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Line, OrbitControls } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
-import { elevationDeg, moonFrameAt, type MoonFrame } from "@/lib/moonFrame";
+import { Vector3, type Camera } from "three";
+import type { SmoothSiteData } from "@/lib/anySite";
+import { bodyToLatLon, elevationDeg, moonFrameAt, type LatLon, type MoonFrame } from "@/lib/moonFrame";
 import { sites, type Site } from "@/lib/sites";
 import { EARTH_RADIUS_KM, loadSystem, stateAt, systemEndMs, type SystemData, type SystemState, type Vec3 } from "@/lib/system";
 import YearSlider, { fmtUtc, useYearPlayback } from "../system/YearSlider";
@@ -16,6 +18,7 @@ import { ZoomHint } from "../levels/LevelNav";
 import { useZoomGate } from "../levels/useZoomGate";
 import { BearingTag, Bearing, CLUSTER_AT, ClusterMark, Flag, HIT, LABEL_TEXT, LINE_NAMES, LIFT, LineLegend, LabelProjector, OVER, POLE_DIR, RAY, Ray, arcTowards, handoff, onGlobe, toScene, type Label } from "./marks";
 import { MoonGlobe, loadFineTextures, loadTextures, type FineTextures, type Textures } from "./moonMaterial";
+import PointPanel, { type PickedPoint } from "./PointPanel";
 import type { TileStatus } from "./tiles/TileLayer";
 
 export type MoonViewProps = {
@@ -33,6 +36,12 @@ export type MoonViewProps = {
   levelNav?: ReactNode;
   /** The mission window, marked on the year rail. */
   windowMs?: { startMs: number; endMs: number };
+  /** A point picked anywhere on the globe, its smooth-horizon tracks, and what can be done with it. */
+  point?: PickedPoint | null;
+  pointSite?: SmoothSiteData | null;
+  onPoint?: (p: PickedPoint | null) => void;
+  onPointTerrain?: (lat: number, lon: number) => void;
+  onPointCompare?: () => void;
   className?: string;
 };
 
@@ -58,6 +67,9 @@ const LANDINGS: { id: string; short: string; name: string; lat: number; lon: num
   { id: "im-1", short: "IM-1", name: "IM-1 Odysseus", lat: -80.13, lon: 1.44, year: 2024 },
   { id: "change-6", short: "CE-6", name: "Chang'e 6", lat: -41.6385, lon: -153.9852, year: 2024 },
 ];
+
+/** Landings offered as quick picks for the point panel: low latitudes, a high southern latitude and the far side. */
+const QUICK_PICKS = ["apollo-11", "apollo-15", "chandrayaan-3", "change-6"].map((id) => LANDINGS.find((l) => l.id === id)!);
 
 const RAD = Math.PI / 180;
 const fmtInt = (n: number) => Math.round(n).toLocaleString("en-US");
@@ -107,7 +119,7 @@ async function loadOutlines(): Promise<RegionOutline[]> {
 
 // ---------- Camera ----------
 
-type FramingId = "pole" | "near" | "sun";
+type FramingId = "pole" | "near" | "sun" | "point";
 type Framing = { id: FramingId; dir: Vec3; zoom?: "near" | "far" };
 const MIN_DISTANCE = 1.45;
 /** Camera distance, in Moon radii, at which zooming in over the polar cap opens the site level; the plate outline is still whole in view. */
@@ -160,6 +172,36 @@ function Rig({ framing, onView }: { framing: Framing; onView: (distance: number,
   );
 }
 
+/** Keeps the scene's camera where the pointer handlers outside the canvas can read it. */
+function CameraTap({ cameraRef }: { cameraRef: { current: Camera | null } }) {
+  const camera = useThree((s) => s.camera);
+  useEffect(() => {
+    cameraRef.current = camera;
+    return () => {
+      cameraRef.current = null;
+    };
+  }, [camera, cameraRef]);
+  return null;
+}
+
+/**
+ * The selenographic point under a pixel: the sight line is intersected with the unit sphere of the globe, which sits
+ * at the origin in body-fixed scene axes, so no mesh is involved. Null off the limb.
+ */
+function pointUnder(camera: Camera, rect: DOMRect, clientX: number, clientY: number): LatLon | null {
+  camera.updateMatrixWorld();
+  const o = camera.position;
+  const d = new Vector3(((clientX - rect.left) / rect.width) * 2 - 1, 1 - ((clientY - rect.top) / rect.height) * 2, 0.5).unproject(camera).sub(o).normalize();
+  const b = o.dot(d);
+  const disc = b * b - (o.lengthSq() - 1);
+  if (disc < 0) return null;
+  const t = -b - Math.sqrt(disc);
+  if (t <= 0) return null;
+  // Scene axes back to body-fixed: the inverse of toScene.
+  const ll = bodyToLatLon([o.x + d.x * t, -(o.z + d.z * t), o.y + d.y * t]);
+  return { lat: Math.round(ll.lat * 1e4) / 1e4 || 0, lon: Math.round(ll.lon * 1e4) / 1e4 || 0 };
+}
+
 function Scene({
   textures,
   fine,
@@ -173,6 +215,7 @@ function Scene({
   site,
   bearingLen,
   onTiles,
+  cameraRef,
 }: {
   textures: Textures;
   fine: FineTextures | null;
@@ -187,6 +230,7 @@ function Scene({
   bearingLen: number;
   /** Given when detail tiles are on; told what the tile layer is drawing and fetching. */
   onTiles: ((s: TileStatus) => void) | null;
+  cameraRef: { current: Camera | null };
 }) {
   const tiles = useMemo(() => (onTiles ? { onStatus: onTiles } : null), [onTiles]);
   const sun = useMemo(() => toScene(frame.sunDir), [frame]);
@@ -196,6 +240,7 @@ function Scene({
     <>
       <color attach="background" args={[PAPER]} />
       <Rig framing={framing} onView={onView} />
+      <CameraTap cameraRef={cameraRef} />
       <LabelProjector labels={labels} overlay={overlay} />
       <MoonGlobe textures={textures} fine={fine} sunDir={sun} tiles={tiles} />
       <Ray dir={sun} color={SUN} casing={INK} />
@@ -238,6 +283,19 @@ function PointTag({ text, swatch, below = false }: { text: string; swatch: strin
         {text}
       </span>
       <span className={`absolute -top-[5.5px] -left-[5.5px] block size-[11px] rounded-full border border-ink ${swatch}`} />
+    </div>
+  );
+}
+
+/** The picked point: a diamond on the surface with its coordinates beside it, on whichever side is free. */
+function PinMark({ text }: { text: string }) {
+  return (
+    <div aria-hidden="true" data-pin className="relative">
+      <span className="absolute -top-[6px] -left-[6px] block size-3 rotate-45 border-[1.5px] border-ink bg-paper" />
+      <span className="absolute -top-[1.5px] -left-[1.5px] block size-[3px] bg-ink" />
+      <span data-box className={`absolute top-0 left-0 block border border-ink bg-paper px-1.5 text-ink ${LABEL_TEXT}`}>
+        {text}
+      </span>
     </div>
   );
 }
@@ -407,7 +465,7 @@ function Readout({ frame, state, site }: { frame: MoonFrame; state: SystemState;
   );
 }
 
-function Legend({ showLandings }: { showLandings: boolean }) {
+function Legend({ showLandings, showPoint }: { showLandings: boolean; showPoint: boolean }) {
   const item = "flex items-center gap-2.5 py-1 text-[0.844rem] leading-snug text-ink-2";
   const line = "block h-0 w-4 shrink-0 border-t";
   return (
@@ -435,6 +493,12 @@ function Legend({ showLandings }: { showLandings: boolean }) {
           Earlier landing
         </li>
       )}
+      {showPoint && (
+        <li className={item}>
+          <span className="mx-[3px] block size-[10px] shrink-0 rotate-45 border-[1.5px] border-ink" />
+          Picked point, smooth horizon with no terrain
+        </li>
+      )}
     </ul>
   );
 }
@@ -455,12 +519,54 @@ const GRID_LABELS: { key: string; text: string; lat: number; lon: number }[] = [
   { key: "g-60n", text: "60° N", lat: 60, lon: 45 },
 ];
 
-export default function MoonView({ nowMs, onScrub, selectedId, onSelect, onOpenSite, onOpenSystem, entry, levelNav, windowMs, className = "" }: MoonViewProps) {
+export default function MoonView({
+  nowMs,
+  onScrub,
+  selectedId,
+  onSelect,
+  onOpenSite,
+  onOpenSystem,
+  entry,
+  levelNav,
+  windowMs,
+  point = null,
+  pointSite = null,
+  onPoint,
+  onPointTerrain,
+  onPointCompare,
+  className = "",
+}: MoonViewProps) {
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
+  // Opened from a link that carries a point, the globe starts turned to it.
   const [framing, setFraming] = useState<Framing>(() =>
-    entry === "below" ? { id: "pole", dir: POLE_CLOSE_DIR, zoom: "near" } : { id: "pole", dir: POLE_DIR, zoom: entry === "above" ? "far" : undefined },
+    entry === "below"
+      ? { id: "pole", dir: POLE_CLOSE_DIR, zoom: "near" }
+      : !entry && point
+        ? { id: "point", dir: onGlobe(point.lat, point.lon) }
+        : { id: "pole", dir: POLE_DIR, zoom: entry === "above" ? "far" : undefined },
   );
+  // Pick mode: a click on the globe that is not a drag drops the pin. Shift-click does the same with the mode off.
+  const [pickMode, setPickMode] = useState(false);
+  const cameraRef = useRef<Camera | null>(null);
+  const press = useRef<{ id: number; x: number; y: number; shift: boolean } | null>(null);
+  const onPressDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    press.current = e.button === 0 && e.target instanceof HTMLCanvasElement ? { id: e.pointerId, x: e.clientX, y: e.clientY, shift: e.shiftKey } : null;
+  };
+  const onPressUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const p = press.current;
+    press.current = null;
+    const camera = cameraRef.current;
+    if (!p || p.id !== e.pointerId || !camera || !onPoint) return;
+    if (!(pickMode || p.shift || e.shiftKey) || Math.hypot(e.clientX - p.x, e.clientY - p.y) > 4) return;
+    const hit = pointUnder(camera, e.currentTarget.getBoundingClientRect(), e.clientX, e.clientY);
+    if (hit) onPoint(hit);
+  };
+  /** A point typed in or chosen from the list: set it and turn the globe to it. */
+  const setPointAndFrame = (lat: number, lon: number) => {
+    onPoint?.({ lat, lon });
+    setFraming({ id: "point", dir: onGlobe(lat, lon) });
+  };
   const { setHost, report, hint, progress } = useZoomGate({ onIn: onOpenSite, onOut: onOpenSystem });
   // What the camera distance changes besides the picture: whether the regions are drawn one by one, and how long
   // the bearing lines are on the globe so that they stay about the same length on screen.
@@ -567,6 +673,8 @@ export default function MoonView({ nowMs, onScrub, selectedId, onSelect, onOpenS
         node: <RegionMark site={s} selected={selected} callout={near} outlined={outlined} onSelect={onSelect} />,
       });
     }
+    // The picked point ranks under the selected region and over everything else; its text moves to a free side, so it never covers the region's flag.
+    if (point) out.push({ key: "pin", at: onGlobe(point.lat, point.lon), pri: 0.5, dot: 9, float: true, node: <PinMark text={`Point ${fmtLat(point.lat)}, ${fmtLon(point.lon)}`} /> });
     if (site) {
       // The tips of the two bearing lines, each with the body's elevation at the region; drawn last, over the leaders.
       const from = onGlobe(site.lat, site.lon);
@@ -579,7 +687,7 @@ export default function MoonView({ nowMs, onScrub, selectedId, onSelect, onOpenS
       }
     }
     return out;
-  }, [frame, showLandings, selectedId, onSelect, site, near, outlined, bearingLen, openRegions]);
+  }, [frame, showLandings, selectedId, onSelect, site, near, outlined, bearingLen, openRegions, point]);
 
   const frameTo = (id: FramingId) => {
     if (!frame) return;
@@ -627,12 +735,34 @@ export default function MoonView({ nowMs, onScrub, selectedId, onSelect, onOpenS
             >
               Earlier landings
             </button>
+            {onPoint && (
+              <button
+                type="button"
+                aria-pressed={pickMode}
+                disabled={!frame || !gl}
+                onClick={() => setPickMode((v) => !v)}
+                title="Click the globe to drop a pin and read the Sun and Earth there. Shift-click works at any time."
+                className={`${BUTTON} disabled:cursor-not-allowed disabled:border-rule disabled:text-ink-3 ${pickMode ? "bg-ink font-semibold text-paper" : "font-medium text-ink hover:bg-paper-3"}`}
+              >
+                Pick a point
+              </button>
+            )}
             {levelNav}
           </div>
         </header>
 
-        <div ref={setHost} className="relative isolate min-h-[24rem] flex-1 overflow-hidden bg-paper">
+        <div
+          ref={setHost}
+          onPointerDownCapture={onPressDown}
+          onPointerUpCapture={onPressUp}
+          className={`relative isolate min-h-[24rem] flex-1 overflow-hidden bg-paper ${pickMode ? "cursor-crosshair" : ""}`}
+        >
           <ZoomHint text={hintText} progress={progress} />
+          {pickMode && frame && (
+            <p role="status" className="pointer-events-none absolute top-3 left-3 z-10 border border-ink bg-paper px-2.5 py-1 text-[0.8rem] leading-snug text-ink">
+              Click the globe to drop a pin. Drag still turns it.
+            </p>
+          )}
           {load.status === "loading" && (
             <p role="status" className="absolute inset-0 grid place-items-center text-[0.844rem] text-ink-2">
               Loading the Moon globe and the 2027 ephemeris
@@ -681,6 +811,7 @@ export default function MoonView({ nowMs, onScrub, selectedId, onSelect, onOpenS
                   site={site}
                   bearingLen={bearingLen}
                   onTiles={detail ? setTileStatus : null}
+                  cameraRef={cameraRef}
                 />
               </Canvas>
               <div ref={overlay} className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -696,7 +827,7 @@ export default function MoonView({ nowMs, onScrub, selectedId, onSelect, onOpenS
 
         <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2 border-t border-rule px-4 py-2">
           <p className="min-w-[16rem] flex-1 text-[0.8rem] leading-snug text-ink-2">
-            Drag to turn the globe, scroll to zoom; zooming in on the south pole opens the site level, zooming out opens
+            Drag to turn the globe, scroll to zoom, shift-click to pick a point; zooming in on the south pole opens the site level, zooming out opens
             the System level. The terminator, the lines to the Sun and Earth and the Moon&apos;s orientation are
             computed for the time shown; relief shading is exaggerated and no cast shadows are drawn, so use the site
             level for terrain shadow.
@@ -745,6 +876,22 @@ export default function MoonView({ nowMs, onScrub, selectedId, onSelect, onOpenS
           <p className="text-[0.844rem] text-ink-2">{load.status === "error" ? "No values to show." : "Loading values"}</p>
         )}
 
+        {onPoint && (
+          <PointPanel
+            className="mt-6"
+            point={point}
+            site={pointSite}
+            nowMs={ms}
+            windowMs={windowMs}
+            onScrub={onScrub}
+            onSet={setPointAndFrame}
+            onClear={() => onPoint(null)}
+            onTerrain={onPointTerrain}
+            onCompare={onPointCompare}
+            quickPicks={QUICK_PICKS}
+          />
+        )}
+
         <h3 className={`mt-6 ${H3}`}>Regions</h3>
         <ul className="mt-2 flex flex-wrap gap-1.5">
           {sites.map((s) => {
@@ -768,7 +915,7 @@ export default function MoonView({ nowMs, onScrub, selectedId, onSelect, onOpenS
 
         <h3 className={`mt-6 ${H3}`}>Marks</h3>
         <div className="mt-1.5">
-          <Legend showLandings={showLandings} />
+          <Legend showLandings={showLandings} showPoint={!!point} />
         </div>
         {showLandings && (
           <table className="mt-2 w-full border-collapse text-[0.8rem]">

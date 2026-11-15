@@ -1,13 +1,20 @@
 "use client";
 
 import { useId, useMemo, type ReactNode } from "react";
-import { compareScores, rankSites, type MissionScore, type SiteData } from "@/lib/sky";
+import { compareScores, rankSites, scoreWindow, windowStats, type MissionScore, type SiteData } from "@/lib/sky";
 import { fmtDuration } from "./plot/format";
 import TimelineStrip from "./TimelineStrip";
 import { DATA_END_MS, DAY, HOUR, fmtLength, fmtSpan, fmtWhen } from "./MissionControls";
 import { AlertMark, EarthMark, SunMark, contactsFor, covers, pct, spell } from "./SiteBulletin";
 
-export type CompareOption = { id: string; name: string; custom?: boolean; site: SiteData | null };
+export type CompareOption = {
+  id: string;
+  name: string;
+  custom?: boolean;
+  /** Measured against a smooth horizon (a point picked at the Moon level): shown beside the regions, never ranked or scored. */
+  noTerrain?: boolean;
+  site: SiteData | null;
+};
 
 type Props = {
   options: CompareOption[];
@@ -50,9 +57,15 @@ type Measure = {
   mark?: ReactNode;
   value: (s: MissionScore, id: string) => number;
   show: (s: MissionScore, id: string) => string;
+  /** Rank and score: a point with no terrain has neither. */
+  rankedOnly?: string;
   better: "high" | "low";
   flag?: (s: MissionScore) => boolean;
 };
+
+function NoTerrainTag({ className = "" }: { className?: string }) {
+  return <span className={`text-[0.75rem] font-semibold tracking-[0.06em] whitespace-nowrap text-ink-2 uppercase ${className}`}>No terrain</span>;
+}
 
 const th = "py-2 pr-4 text-left align-bottom text-[0.75rem] font-semibold uppercase tracking-[0.06em] text-ink-2";
 const tdNum = "py-2 pl-4 text-right align-baseline tabular-nums whitespace-nowrap";
@@ -77,10 +90,15 @@ export default function ComparePanel({
   const endMs = startMs + durationHours * HOUR;
   const chosen = picked
     .map((p) => options.find((o) => o.id === p))
-    .filter((o): o is CompareOption => !!o && !!o.site && scores.has(o.id));
+    .filter((o): o is CompareOption => !!o && !!o.site && (!!o.noTerrain || scores.has(o.id)));
+  const anyNoTerrain = chosen.some((o) => o.noTerrain);
+  /** Stats for a column: from the ranking, or for a no-terrain point computed here and kept out of it. */
+  const statsOf = (o: CompareOption, s = startMs, ranked: Map<string, MissionScore> | null = scores): MissionScore | undefined =>
+    o.noTerrain ? (covers(o.site!, s, s + durationHours * HOUR) ? scoreWindow(o.id, windowStats(o.site!, s, s + durationHours * HOUR)) : undefined) : ranked?.get(o.id);
 
   // A few hundred hourly steps per site: cheap enough to recount on each render.
   const contactCounts = new Map(chosen.map((o) => [o.id, contactsFor(o.site!, startMs, endMs).length]));
+  const pointName = chosen.find((o) => o.noTerrain)?.name;
 
   const slips = useMemo(
     () =>
@@ -102,8 +120,8 @@ export default function ComparePanel({
   );
 
   const measures: Measure[] = [
-    { label: "Rank", value: (_, i) => ranks.get(i) ?? Infinity, show: (_, i) => `${ranks.get(i)} of ${total}`, better: "low" },
-    { label: "Score", value: (s) => s.score, show: (s) => s.score.toFixed(2), better: "high" },
+    { label: "Rank", value: (_, i) => ranks.get(i) ?? Infinity, show: (_, i) => `${ranks.get(i)} of ${total}`, better: "low", rankedOnly: "Not ranked" },
+    { label: "Score", value: (s) => s.score, show: (s) => s.score.toFixed(2), better: "high", rankedOnly: "Not scored" },
     { label: "Sun up", mark: <SunMark className="size-3.5" />, value: (s) => s.sunlit, show: (s) => pct(s.sunlit), better: "high" },
     { label: "Mean disc power", value: (s) => s.sunPower, show: (s) => pct(s.sunPower), better: "high" },
     {
@@ -179,6 +197,7 @@ export default function ComparePanel({
                 />
                 {o.name}
                 {o.custom && <span className="text-[0.75rem] font-semibold uppercase tracking-[0.06em] text-ink-2">Custom</span>}
+                {o.noTerrain && <NoTerrainTag />}
               </label>
             );
           })}
@@ -220,15 +239,18 @@ export default function ComparePanel({
                     {chosen.map((o) => (
                       <th key={o.id} scope="col" className="py-2 pl-4 text-right align-bottom text-[0.95rem] font-semibold text-ink">
                         {o.name}
+                        {o.noTerrain && <NoTerrainTag className="block" />}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {measures.map((m) => {
-                    const vals = chosen.map((o) => m.value(scores.get(o.id)!, o.id));
-                    const bestVal = m.better === "high" ? Math.max(...vals) : Math.min(...vals);
-                    const allSame = vals.every((v) => Math.abs(v - vals[0]) < 1e-9);
+                    const vals = chosen.map((o) => m.value(statsOf(o)!, o.id));
+                    // Best is judged among the regions with terrain only.
+                    const rankedVals = vals.filter((_, i) => !chosen[i].noTerrain);
+                    const bestVal = m.better === "high" ? Math.max(...rankedVals) : Math.min(...rankedVals);
+                    const allSame = rankedVals.every((v) => Math.abs(v - rankedVals[0]) < 1e-9);
                     return (
                       <tr key={m.label} className="border-b border-rule">
                         <th scope="row" className="py-2 pr-4 text-left text-[0.844rem] font-normal text-ink-2">
@@ -238,8 +260,14 @@ export default function ComparePanel({
                           </span>
                         </th>
                         {chosen.map((o, i) => {
-                          const s = scores.get(o.id)!;
-                          const best = !allSame && Math.abs(vals[i] - bestVal) < 1e-9;
+                          const s = statsOf(o)!;
+                          if (o.noTerrain && m.rankedOnly)
+                            return (
+                              <td key={o.id} className={`${tdNum} text-[0.844rem] text-ink-2`}>
+                                {m.rankedOnly}
+                              </td>
+                            );
+                          const best = !o.noTerrain && !allSame && Math.abs(vals[i] - bestVal) < 1e-9;
                           const flagged = m.flag?.(s) ?? false;
                           return (
                             <td
@@ -261,7 +289,11 @@ export default function ComparePanel({
                 </tbody>
               </table>
             </div>
-            <p className="mt-2 text-[0.75rem] text-ink-2">Bold marks the best value in each row. Red marks a gap {limitText}.</p>
+            <p className="mt-2 max-w-[80ch] text-[0.75rem] text-ink-2">
+              Bold marks the best value in each row. Red marks a gap {limitText}.
+              {anyNoTerrain &&
+                " A column marked No terrain is a point picked at the Moon level, measured against a smooth horizon: hills and crater rims are not included, so it is not ranked or scored and never takes the bold. Read its numbers beside the regions, not against them."}
+            </p>
           </section>
 
           <section aria-labelledby={`${id}-time`} className="mt-7">
@@ -270,6 +302,7 @@ export default function ComparePanel({
             </h3>
             <p className="mt-1 text-[0.844rem] text-ink-2">
               One time axis for every region. Drag along the strip, or use the arrow keys on it, to move the time marker.
+              {pointName && ` The bands for ${pointName} are for a smooth horizon with no terrain.`}
             </p>
             <TimelineStrip
               site={chosen[0].site!}
@@ -331,9 +364,10 @@ export default function ComparePanel({
                     <tr key={o.id} className="border-b border-rule">
                       <th scope="row" className="py-2 pr-4 text-left text-[0.95rem] font-medium text-ink">
                         {o.name}
+                        {o.noTerrain && <NoTerrainTag className="ml-2" />}
                       </th>
                       {slips.map((s) => {
-                        const sc = s.scores?.get(o.id);
+                        const sc = s.scores ? statsOf(o, s.startMs, s.scores) : undefined;
                         if (!sc)
                           return (
                             <td key={s.days} colSpan={4} className="border-l border-rule py-2 pl-3 text-[0.844rem] text-ink-2">
@@ -343,8 +377,14 @@ export default function ComparePanel({
                         const over = sc.longestDarkHours > limitHours;
                         return [
                           <td key={`${s.days}-r`} className={`${tdNum} border-l border-rule pl-3 text-[0.95rem] font-semibold text-ink`}>
-                            {s.ranks?.get(o.id)}
-                            <span className="text-[0.75rem] font-normal text-ink-2"> of {s.count}</span>
+                            {o.noTerrain ? (
+                              <span className="text-[0.844rem] font-normal text-ink-2">Not ranked</span>
+                            ) : (
+                              <>
+                                {s.ranks?.get(o.id)}
+                                <span className="text-[0.75rem] font-normal text-ink-2"> of {s.count}</span>
+                              </>
+                            )}
                           </td>,
                           <td key={`${s.days}-s`} className={`${tdNum} text-[0.95rem] text-ink`}>
                             {pct(sc.sunlit)}
