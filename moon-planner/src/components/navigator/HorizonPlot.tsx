@@ -8,9 +8,9 @@
 // can be dragged (mouse and pen) to move the time.
 
 import { Fragment, useId, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
-import { EARTH_RADIUS_DEG, SUN_RADIUS_DEG, rangeOf, sampleAt, windowStats, type SiteData } from "@/lib/sky";
+import { EARTH_RADIUS_DEG, SUN_RADIUS_DEG, missionScore, rangeOf, sampleAt, type SiteData } from "@/lib/sky";
 import { horizonElevationAt } from "@/lib/terrain";
-import { bodyAt, bodyOf, contactEvents, isUpAt, nextContact, type Body, type ContactKind } from "./plot/contacts";
+import { bodyAt, bodyOf, contactEvents, isUp, nextContact, type Body, type ContactKind } from "@/lib/contacts";
 import {
   HOUR_MS,
   fmtAz,
@@ -23,7 +23,9 @@ import {
   fmtSigned,
   fmtSpan,
   fmtTime,
-} from "./plot/format";
+  pct,
+} from "@/lib/format";
+import { PlayMark, StateSwatch } from "../ui";
 import { useElementWidth, useTypeMetrics } from "./plot/hooks";
 import {
   measureText,
@@ -341,7 +343,7 @@ function computeLayout({ site, t0, t1, svgW, plotH, elMin, elMax, remPx, fontEpo
     azTicks: azimuthTicks(),
     exaggeration: pxPerDegY(frame) / pxPerDegX(frame),
     horizonYAt: horizonY,
-    stats: hasWindow ? windowStats(site, t0, t1) : null,
+    stats: hasWindow ? missionScore(site, t0, t1) : null,
   };
 }
 
@@ -467,22 +469,10 @@ export default function HorizonPlot({
       ) : (
         <div className="flex flex-wrap items-start justify-between gap-x-10 gap-y-3 pt-2">
           {layout ? <Legend layout={layout} /> : null}
-          <Circumstances now={now} />
+          <Circumstances site={site} now={now} />
         </div>
       )}
     </figure>
-  );
-}
-
-function PlayMark({ playing }: { playing: boolean }) {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" className="size-3.5">
-      {playing ? (
-        <path d="M5.25 3.5v9M10.75 3.5v9" stroke="currentColor" strokeWidth="1.5" />
-      ) : (
-        <path d="M4.75 3.25v9.5L12.75 8Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-      )}
-    </svg>
   );
 }
 
@@ -511,7 +501,7 @@ function NowReadout({
 }) {
   const dataEnd = rangeOf(site.sky).endMs;
   const rows = (["sun", "earth"] as const).map((body) => {
-    const up = isUpAt(site, body, now.ms);
+    const up = isUp(site, body, now.ms);
     const next = nextContact(site, body, now.ms);
     const sun = body === "sun";
     const word = sun ? (up ? "sunset" : "sunrise") : up ? "Earthset" : "Earthrise";
@@ -585,15 +575,6 @@ function NowReadout({
         ))}
       </dl>
     </div>
-  );
-}
-
-function StateSwatch({ body, up }: { body: Body; up: boolean }) {
-  const cls = body === "sun" ? (up ? "fill-sun" : "fill-umbra") : up ? "fill-earth" : "fill-umbra-soft";
-  return (
-    <svg width={10} height={10} viewBox="0 0 10 10" className="shrink-0" aria-hidden="true">
-      <rect width={10} height={10} className={cls} />
-    </svg>
   );
 }
 
@@ -1018,9 +999,9 @@ function Swatch({ children }: { children: ReactNode }) {
   );
 }
 
-function Circumstances({ now }: { now: ReturnType<typeof sampleAt> }) {
+function Circumstances({ site, now }: { site: SiteData; now: ReturnType<typeof sampleAt> }) {
   const sunStatus =
-    now.sunFraction <= 0
+    !isUp(site, "sun", now.ms)
       ? null
       : now.sunFraction >= 1
         ? "Full disc up"
@@ -1069,7 +1050,7 @@ function Circumstances({ now }: { now: ReturnType<typeof sampleAt> }) {
           <td className={td}>{fmtSigned(now.earthEl, 2)}</td>
           <td className={td}>{fmtSigned(now.earthHorizon, 2)}</td>
           <td className="whitespace-nowrap py-0.5 pl-1.5 pr-0 text-left">
-            {now.earthUp ? "In view" : <span className="text-limit">Behind terrain</span>}
+            {isUp(site, "earth", now.ms) ? "In view" : <span className="text-limit">Behind terrain</span>}
           </td>
         </tr>
       </tbody>
@@ -1084,7 +1065,7 @@ function describe(L: Layout, site: SiteData, nowMs: number, windowText: string):
   );
   if (L.stats) {
     const share = (v: number, what: string) =>
-      v >= 0.999 ? `${what} for the whole window` : v <= 0.001 ? `behind the terrain for the whole window` : `${what} for ${Math.round(v * 100)}% of the window`;
+      v >= 0.999 ? `${what} for the whole window` : v <= 0.001 ? `behind the terrain for the whole window` : `${what} for ${pct(v)} of the window`;
     parts.push(`Window ${windowText}. Sun ${share(L.stats.sunlit, "above the terrain")}. Earth ${share(L.stats.earthVisible, "in view")}.`);
   }
   if (L.contacts.length) {
@@ -1098,7 +1079,7 @@ function describe(L: Layout, site: SiteData, nowMs: number, windowText: string):
   }
   const n = sampleAt(site, nowMs);
   parts.push(
-    `At ${fmtFull(nowMs)}: Sun azimuth ${fmtAz(n.sunAz)}, elevation ${fmtSigned(n.sunEl, 2)} against terrain ${fmtSigned(n.sunHorizon, 2)}${n.sunFraction > 0 ? "" : ", behind the terrain"}; Earth azimuth ${fmtAz(n.earthAz)}, elevation ${fmtSigned(n.earthEl, 2)} against terrain ${fmtSigned(n.earthHorizon, 2)}${n.earthUp ? ", in view" : ", behind the terrain"}.`,
+    `At ${fmtFull(nowMs)}: Sun azimuth ${fmtAz(n.sunAz)}, elevation ${fmtSigned(n.sunEl, 2)} against terrain ${fmtSigned(n.sunHorizon, 2)}${isUp(site, "sun", nowMs) ? "" : ", behind the terrain"}; Earth azimuth ${fmtAz(n.earthAz)}, elevation ${fmtSigned(n.earthEl, 2)} against terrain ${fmtSigned(n.earthHorizon, 2)}${isUp(site, "earth", nowMs) ? ", in view" : ", behind the terrain"}.`,
   );
   return parts.join(" ");
 }

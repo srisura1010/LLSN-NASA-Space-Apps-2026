@@ -12,6 +12,8 @@ const LINKS = [
 // The Navigator runs edge to edge; other pages keep the landing page's column.
 export default function Navbar() {
   const pathname = usePathname();
+  // The tool has its own app bar, with the name linking home.
+  if (pathname.startsWith("/tool")) return null;
   const fullWidth = pathname.startsWith("/tool");
   const overMoon = pathname === "/";
   return (

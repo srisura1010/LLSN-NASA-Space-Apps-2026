@@ -1,11 +1,15 @@
 "use client";
 
 import { useId, useMemo, type ReactNode } from "react";
-import { compareScores, rankSites, scoreWindow, windowStats, type MissionScore, type SiteData } from "@/lib/sky";
-import { fmtDuration } from "./plot/format";
+import { compareScores, missionScore, rankSites, type MissionScore, type SiteData } from "@/lib/sky";
+import { fmtDuration } from "@/lib/format";
 import TimelineStrip from "./TimelineStrip";
-import { DATA_END_MS, DAY, HOUR, fmtLength, fmtSpan, fmtWhen } from "./MissionControls";
-import { AlertMark, EarthMark, SunMark, contactsFor, covers, pct, spell } from "./SiteBulletin";
+import { DATA_END_MS } from "@/lib/mission";
+import { DAY, HOUR, fmtLength, fmtWhen } from "@/lib/format";
+import { contactsInWindow } from "@/lib/contacts";
+import { covers } from "@/lib/sky";
+import { pct, fmtSpell } from "@/lib/format";
+import { AlertMark, EarthMark, SunMark } from "../ui";
 
 export type CompareOption = {
   id: string;
@@ -32,7 +36,6 @@ type Props = {
   nowMs: number;
   onScrub: (ms: number) => void;
   limitHours: number;
-  note?: ReactNode;
 };
 
 const MAX_PICKS = 3;
@@ -84,7 +87,6 @@ export default function ComparePanel({
   nowMs,
   onScrub,
   limitHours,
-  note,
 }: Props) {
   const id = useId();
   const endMs = startMs + durationHours * HOUR;
@@ -94,10 +96,10 @@ export default function ComparePanel({
   const anyNoTerrain = chosen.some((o) => o.noTerrain);
   /** Stats for a column: from the ranking, or for a no-terrain point computed here and kept out of it. */
   const statsOf = (o: CompareOption, s = startMs, ranked: Map<string, MissionScore> | null = scores): MissionScore | undefined =>
-    o.noTerrain ? (covers(o.site!, s, s + durationHours * HOUR) ? scoreWindow(o.id, windowStats(o.site!, s, s + durationHours * HOUR)) : undefined) : ranked?.get(o.id);
+    o.noTerrain ? (covers(o.site!, s, s + durationHours * HOUR) ? missionScore(o.site!, s, s + durationHours * HOUR, o.id) : undefined) : ranked?.get(o.id);
 
   // A few hundred hourly steps per site: cheap enough to recount on each render.
-  const contactCounts = new Map(chosen.map((o) => [o.id, contactsFor(o.site!, startMs, endMs).length]));
+  const contactCounts = new Map(chosen.map((o) => [o.id, contactsInWindow(o.site!, startMs, endMs).length]));
   const pointName = chosen.find((o) => o.noTerrain)?.name;
 
   const slips = useMemo(
@@ -135,14 +137,14 @@ export default function ComparePanel({
     {
       label: "Longest dark",
       value: (s) => s.longestDarkHours,
-      show: (s) => spell(s.longestDarkHours),
+      show: (s) => fmtSpell(s.longestDarkHours),
       better: "low",
       flag: (s) => s.longestDarkHours > limitHours,
     },
     {
       label: "Longest without comms",
       value: (s) => s.longestNoCommsHours,
-      show: (s) => spell(s.longestNoCommsHours),
+      show: (s) => fmtSpell(s.longestNoCommsHours),
       better: "low",
       flag: (s) => s.longestNoCommsHours > limitHours,
     },
@@ -165,12 +167,8 @@ export default function ComparePanel({
     <div className="mx-auto w-full max-w-[80rem] px-4 py-5 xl:px-8 xl:py-6">
       <header>
         <h2 className="text-[1.2rem] font-semibold leading-tight text-ink">Compare regions</h2>
-        <p className="mt-1 text-[0.95rem] text-ink-2 tabular-nums">
-          Every region over the same window: {fmtSpan(startMs, endMs)}, {fmtLength(durationHours)}.
-        </p>
+        <p className="mt-1 text-[0.95rem] text-ink-2">Every region over the same mission window, set in the window chip above.</p>
       </header>
-
-      {note && <div className="mt-4 max-w-[34rem]">{note}</div>}
 
       <fieldset className="mt-5">
         <legend className="text-[0.75rem] font-semibold uppercase tracking-[0.08em] text-ink">
@@ -398,7 +396,7 @@ export default function ComparePanel({
                           >
                             <span className="inline-flex items-center justify-end gap-1">
                               {over && <AlertMark className="size-3" />}
-                              {spell(sc.longestDarkHours)}
+                              {fmtSpell(sc.longestDarkHours)}
                             </span>
                             {over && <span className="sr-only">, {limitText}</span>}
                           </td>,

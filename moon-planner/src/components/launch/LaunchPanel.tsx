@@ -17,8 +17,7 @@ import {
   type Rating,
 } from "@/lib/launchWindow";
 import { loadSystem, systemEndMs, type SystemData } from "@/lib/system";
-import { fmtLength } from "../navigator/MissionControls";
-import { AlertMark, ChevronMark, SelectField, fieldLabel, smallButton } from "../navigator/SiteBulletin";
+import { AlertMark, ChevronMark, SelectField, fieldLabel, buttonClass } from "../ui";
 import LaunchDetail from "./LaunchDetail";
 import { DAY_MS, Status, capsLabel, fmtDate, fmtDateTime, fmtDeg, fmtMinutes, fmtOffset, fmtWindowSpan, plainReason } from "./launchFormat";
 
@@ -27,7 +26,7 @@ export type LaunchPick = { launchSiteId: string; launchMs: number; arrivalMs: nu
 export type LaunchPanelProps = {
   /** Start of the landing window, ms UTC: the arrival the launch aims for. */
   arrivalMs: number;
-  /** Length of the landing window, hours. */
+  /** Length of the landing window, hours (shown in the window chip, not here). */
   windowHours: number;
   siteName: string;
   /** Controlled selection; leave undefined to let the panel keep its own. */
@@ -35,6 +34,11 @@ export type LaunchPanelProps = {
   onSelectLaunchSite?: (id: string) => void;
   /** Called whenever the chosen lift-off changes (site, opportunity, transfer time or arrival); null when there is none. */
   onPickOpportunity?: (o: LaunchPick | null) => void;
+  /** A lift-off chosen earlier (from the URL), selected again when its site's list contains it. */
+  initialPick?: LaunchPick | null;
+  /** Controlled transfer time in days; leave undefined to let the panel keep its own. */
+  transitDays?: number;
+  onTransitDaysChange?: (days: number) => void;
   className?: string;
 };
 
@@ -60,12 +64,23 @@ type SiteResult = { site: LaunchSite; list: LaunchOpportunity[]; best: LaunchOpp
 /** The search reads the Moon up to about two days either side of the arrival. */
 const inData = (system: SystemData, arrivalMs: number) => arrivalMs - 2 * DAY_MS >= system.startMs && arrivalMs + 2 * DAY_MS <= systemEndMs(system);
 
+const solveCache = new WeakMap<SystemData, Map<string, SiteResult[] | null>>();
+
+/** Every launch site's opportunities for one arrival; cached per ephemeris, arrival and transfer time. */
 function solve(system: SystemData, arrivalMs: number, transitDays: number): SiteResult[] | null {
-  if (!inData(system, arrivalMs)) return null;
-  return launchSites.map((site) => {
-    const list = launchOpportunities(site, arrivalMs, { system, transitDays });
-    return { site, list, best: bestOpportunity(list) };
-  });
+  let bySystem = solveCache.get(system);
+  if (!bySystem) solveCache.set(system, (bySystem = new Map()));
+  const key = `${arrivalMs}|${transitDays}`;
+  if (bySystem.has(key)) return bySystem.get(key)!;
+  if (bySystem.size > 64) bySystem.clear();
+  const out = !inData(system, arrivalMs)
+    ? null
+    : launchSites.map((site) => {
+        const list = launchOpportunities(site, arrivalMs, { system, transitDays });
+        return { site, list, best: bestOpportunity(list) };
+      });
+  bySystem.set(key, out);
+  return out;
 }
 
 const rank = (a: SiteResult, b: SiteResult) => {
@@ -132,23 +147,32 @@ function Notice({ children, action }: { children: React.ReactNode; action?: Reac
 
 export default function LaunchPanel({
   arrivalMs,
-  windowHours,
   siteName,
   selectedLaunchSiteId,
   onSelectLaunchSite,
   onPickOpportunity,
+  initialPick = null,
+  transitDays: transitProp,
+  onTransitDaysChange,
   className = "",
 }: LaunchPanelProps) {
   const id = useId();
   const [system, setSystem] = useState<SystemData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const [transitDays, setTransitDays] = useState(DEFAULT_TRANSIT_DAYS);
+  const [ownTransit, setOwnTransit] = useState(DEFAULT_TRANSIT_DAYS);
+  const transitDays = transitProp ?? ownTransit;
+  const setTransitDays = (d: number) => {
+    setOwnTransit(d);
+    onTransitDaysChange?.(d);
+  };
   const [group, setGroup] = useState<GroupFilter>("all");
   const [usableOnly, setUsableOnly] = useState(false);
   const [ownSelected, setOwnSelected] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
-  const [picked, setPicked] = useState<{ siteId: string; sweep: string; launchMs: number } | null>(null);
+  const [picked, setPicked] = useState<{ siteId: string; sweep?: string; launchMs: number } | null>(() =>
+    initialPick ? { siteId: initialPick.launchSiteId, launchMs: initialPick.launchMs } : null,
+  );
 
   useEffect(() => {
     let live = true;
@@ -177,7 +201,7 @@ export default function LaunchPanel({
   const selected = results?.find((r) => r.site.id === selectedId) ?? null;
   const chosen = useMemo(() => {
     if (!selected) return null;
-    const hit = picked && picked.siteId === selected.site.id ? selected.list.find((o) => o.sweep === picked.sweep && o.launchMs === picked.launchMs) : null;
+    const hit = picked && picked.siteId === selected.site.id ? selected.list.find((o) => (picked.sweep === undefined || o.sweep === picked.sweep) && Math.abs(o.launchMs - picked.launchMs) < 60_000) : null;
     return hit ?? selected.best;
   }, [selected, picked]);
 
@@ -223,7 +247,6 @@ export default function LaunchPanel({
 
   const loading = !system && !error;
   const outside = system !== null && results === null;
-  const arrivalText = `${fmtDateTime(arrivalMs)} UTC`;
 
   return (
     <section aria-labelledby={`${id}-title`} className={`@container bg-paper-2 text-ink ${className}`}>
@@ -232,8 +255,8 @@ export default function LaunchPanel({
           Launch from Earth
         </h2>
         <p className="mt-1.5 max-w-[75ch] text-[0.95rem] text-pretty text-ink-2 tabular-nums">
-          When to lift off, and from where, to reach <span className="font-semibold text-ink">{siteName}</span> at the start of the landing window:{" "}
-          <span className="font-semibold text-ink">{arrivalText}</span>, with {fmtLength(windowHours)} on the surface to follow.
+          When to lift off, and from where, to reach <span className="font-semibold text-ink">{siteName}</span> at the start of the
+          mission window set in the window chip above, with the whole window on the surface to follow.
         </p>
       </header>
 
@@ -308,7 +331,7 @@ export default function LaunchPanel({
             action={
               <button
                 type="button"
-                className={smallButton}
+                className={buttonClass.secondary}
                 onClick={() => {
                   setError(null);
                   setAttempt((a) => a + 1);
@@ -348,7 +371,7 @@ export default function LaunchPanel({
             {rows.length === 0 && listed.length > 0 && (
               <div className="flex flex-wrap items-center gap-3 border-b border-rule px-4 py-4 text-[0.95rem] text-ink-2">
                 <span>All {listed.length} listed sites are blocked, and blocked sites are hidden.</span>
-                <button type="button" className={smallButton} onClick={() => setUsableOnly(false)}>
+                <button type="button" className={buttonClass.secondary} onClick={() => setUsableOnly(false)}>
                   Show blocked sites
                 </button>
               </div>

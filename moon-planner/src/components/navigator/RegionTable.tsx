@@ -1,19 +1,12 @@
 "use client";
 
-import { memo, useId, useState, type ReactNode } from "react";
+import { memo, useId, useState } from "react";
 import type { MissionScore } from "@/lib/sky";
-import { fmtDuration } from "./plot/format";
-import { isCustomSiteSupported } from "@/lib/customSite";
-import {
-  AlertMark,
-  SelectField,
-  fieldControl,
-  fieldLabel,
-  pct,
-  primaryButton,
-  smallButton,
-  spell,
-} from "./SiteBulletin";
+import { fmtDuration } from "@/lib/format";
+import { validateSitePoint } from "@/lib/customSite";
+import { parseCoordinate } from "@/lib/anySite";
+import { pct, fmtSpell } from "@/lib/format";
+import { AlertMark, SelectField, fieldControl, fieldLabel, buttonClass } from "../ui";
 
 export type RankedRow = {
   id: string;
@@ -28,7 +21,8 @@ export type RankedRow = {
   prevRank: number | null;
 };
 
-export const GAP_LIMITS = [12, 24, 48, 72, 96, 168];
+export { GAP_LIMITS } from "@/lib/mission";
+import { GAP_LIMITS } from "@/lib/mission";
 
 const COLS = "grid grid-cols-[1.25rem_minmax(0,1fr)_2.5rem_2.75rem_3.75rem] gap-x-2";
 
@@ -44,9 +38,6 @@ type Props = {
   onSelect: (id: string) => void;
   limitHours: number;
   onLimitChange: (hours: number) => void;
-  windowLabel: string;
-  /** Change note shown above the table after a slip or search. */
-  note?: ReactNode;
   className?: string;
 };
 
@@ -120,8 +111,6 @@ function RegionTable({
   onSelect,
   limitHours,
   onLimitChange,
-  windowLabel,
-  note,
   className = "",
 }: Props) {
   const id = useId();
@@ -136,10 +125,7 @@ function RegionTable({
         <h2 id={`${id}-title`} className="text-[1.068rem] font-semibold leading-tight text-ink">
           Regions ranked for this window
         </h2>
-        <p className="mt-1 text-[0.844rem] text-pretty text-ink-2 tabular-nums">{windowLabel}</p>
       </header>
-
-      {note && <div className="px-4 pb-3">{note}</div>}
 
       <div
         aria-hidden="true"
@@ -207,12 +193,12 @@ function RegionTable({
                     <Flagged
                       flagged={commsOver}
                       value={pct(r.score.earthVisible)}
-                      note={`comms gap of ${spell(r.score.longestNoCommsHours)}, ${limitText}`}
+                      note={`comms gap of ${fmtSpell(r.score.longestNoCommsHours)}, ${limitText}`}
                     />
                   </span>
                   <span className="text-right text-[0.844rem] font-medium tabular-nums whitespace-nowrap text-ink">
                     <span className="sr-only">, longest dark </span>
-                    <Flagged flagged={darkOver} value={spell(r.score.longestDarkHours)} note={limitText} />
+                    <Flagged flagged={darkOver} value={fmtSpell(r.score.longestDarkHours)} note={limitText} />
                   </span>
                 </button>
               </li>
@@ -244,7 +230,7 @@ function RegionTable({
               <span>
                 {f.name} did not load ({f.message}). It is left out of the ranking.
               </span>
-              <button type="button" onClick={() => onRetry(f.id)} className={smallButton}>
+              <button type="button" onClick={() => onRetry(f.id)} className={buttonClass.secondary}>
                 Try again
               </button>
             </p>
@@ -305,40 +291,16 @@ type CustomFormProps = {
   className?: string;
 };
 
-/** Accepts "-85.5", "−85.5", "85.5 S", "85.5° S"; returns null when it is not a number. */
-function parseAngle(text: string, negative: "S" | "W"): number | null {
-  const t = text.trim().replace("−", "-").replace(",", ".").replace(/°/g, "").toUpperCase();
-  const m = /^([+-]?\d+(?:\.\d+)?)\s*([NSEW])?$/.exec(t);
-  if (!m) return null;
-  let v = Number(m[1]);
-  if (m[2] === negative) v = -Math.abs(v);
-  return v;
-}
-
 type Problem = { field: "lat" | "lon"; message: string };
 
+/** Reads the two boxes ("-85.5", "85.5 S", "31.2", "45 W") and applies the site-level rule (validateSitePoint). */
 function validate(latText: string, lonText: string): { lat: number; lon: number } | Problem {
-  if (latText.trim() === "") return { field: "lat", message: "Enter a latitude, for example −85.5 (south is negative)." };
-  const lat = parseAngle(latText, "S");
-  if (lat === null)
-    return { field: "lat", message: "Latitude must be a number of degrees, for example −85.5 or 85.5 S." };
-  if (lat > 0)
-    return { field: "lat", message: "The terrain covers the south pole only. Use a negative latitude between −80 and −90." };
-  if (lat < -90) return { field: "lat", message: "Latitude stops at −90, the pole. Enter a value between −80 and −90." };
-  if (lonText.trim() === "") return { field: "lon", message: "Enter a longitude, for example 30 (east positive) or 45 W." };
-  const lon = parseAngle(lonText, "W");
-  if (lon === null) return { field: "lon", message: "Longitude must be a number of degrees, for example 30 or 45 W." };
-  if (lon < -180 || lon > 360)
-    return { field: "lon", message: "Longitude runs from −180 to 180 degrees east. Enter a value in that range." };
-  const lonNorm = lon > 180 ? lon - 360 : lon;
-  // North of 80° S the terrain comes from NASA Moon Trek and any point works.
-  const supported = lat > -80 ? { ok: true as const, reason: undefined } : isCustomSiteSupported(lat, lonNorm);
-  if (!supported.ok)
-    return {
-      field: "lat",
-      message: supported.reason ?? "That point is outside the terrain data. Pick a point between 80° S and the pole.",
-    };
-  return { lat, lon: lonNorm };
+  const a = parseCoordinate(latText, "lat");
+  if (!a.ok) return { field: "lat", message: a.message };
+  const b = parseCoordinate(lonText, "lon");
+  if (!b.ok) return { field: "lon", message: b.message };
+  const v = validateSitePoint(a.value, b.value);
+  return v.ok ? { lat: v.lat, lon: v.lon } : { field: v.field, message: v.reason };
 }
 
 export function CustomSiteForm({ state, onSubmit, onRemove, className = "" }: CustomFormProps) {
@@ -365,9 +327,10 @@ export function CustomSiteForm({ state, onSubmit, onRemove, className = "" }: Cu
         Add a custom site
       </h3>
       <p className="mt-1 max-w-[42ch] text-[0.844rem] leading-snug text-ink-2">
-        Any point on the Moon; it takes a few seconds. From 80&deg; S to the pole the horizon comes from the LOLA 80 m
-        and 640 m grids and the tracks from JPL Horizons. Elsewhere the terrain is fetched from NASA Moon Trek on a
-        coarser 240 m or 300 m grid, so times near a grazing Sun are approximate.
+        Any point on the Moon up to 0.1&deg; from either pole; it takes a few seconds. From 80&deg; S to the south
+        pole the horizon comes from the LOLA 80 m and 640 m grids and the tracks from JPL Horizons. Elsewhere the
+        terrain is fetched from NASA Moon Trek on a coarser 240 m or 300 m grid, so times near a grazing Sun are
+        approximate.
       </p>
       <form
         noValidate
@@ -387,7 +350,7 @@ export function CustomSiteForm({ state, onSubmit, onRemove, className = "" }: Cu
             inputMode="decimal"
             autoComplete="off"
             spellCheck={false}
-            placeholder="e.g. −85.5"
+            placeholder="e.g. 85.5 S"
             value={latText}
             onChange={(e) => setLatText(e.target.value)}
             aria-invalid={problem?.field === "lat" || undefined}
@@ -397,7 +360,7 @@ export function CustomSiteForm({ state, onSubmit, onRemove, className = "" }: Cu
         </div>
         <div>
           <label htmlFor={`${id}-lon`} className={fieldLabel}>
-            Longitude, east
+            Longitude
           </label>
           <input
             id={`${id}-lon`}
@@ -405,7 +368,7 @@ export function CustomSiteForm({ state, onSubmit, onRemove, className = "" }: Cu
             inputMode="decimal"
             autoComplete="off"
             spellCheck={false}
-            placeholder="e.g. 31.2"
+            placeholder="e.g. 31.2 E"
             value={lonText}
             onChange={(e) => setLonText(e.target.value)}
             aria-invalid={problem?.field === "lon" || undefined}
@@ -413,11 +376,11 @@ export function CustomSiteForm({ state, onSubmit, onRemove, className = "" }: Cu
             className={`${fieldControl} mt-1 w-[6.5rem] tabular-nums placeholder:text-ink-2`}
           />
         </div>
-        <button type="submit" disabled={busy} className={primaryButton}>
+        <button type="submit" disabled={busy} className={buttonClass.primary}>
           {busy ? "Computing" : state?.status === "error" ? "Try again" : state ? "Replace site" : "Add site"}
         </button>
         {state && !busy && (
-          <button type="button" onClick={onRemove} className={smallButton}>
+          <button type="button" onClick={onRemove} className={buttonClass.secondary}>
             Remove
           </button>
         )}

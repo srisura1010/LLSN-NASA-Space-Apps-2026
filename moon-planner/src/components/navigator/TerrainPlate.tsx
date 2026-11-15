@@ -5,7 +5,6 @@
 
 import { Canvas } from "@react-three/fiber";
 import {
-  Component,
   useCallback,
   useEffect,
   useId,
@@ -16,10 +15,11 @@ import {
   type ReactNode,
 } from "react";
 import { Vector3 } from "three";
-import { EARTH_RADIUS_DEG, SUN_RADIUS_DEG, type SiteData } from "@/lib/sky";
+import type { SiteData } from "@/lib/sky";
 import type { LocalTerrain } from "@/lib/localTerrain";
-import { formatLatLon, sites } from "@/lib/sites";
-import { horizonElevationAt, latLonToXY } from "@/lib/terrain";
+import { sites } from "@/lib/sites";
+import { fmtLatLon, fmtLatTick, fmtLonTick } from "@/lib/format";
+import { latLonToXY } from "@/lib/terrain";
 import { EXAGGERATION, RELIEF, rgbToHex, scoreTint, TOKENS, type RGB } from "./terrain/constants";
 import { gridHeight, gridRange, loadRegions, loadTerrain, localTerrainData, subscribeTerrainProgress, type TerrainData } from "./terrain/data";
 import { localLonStep } from "./terrain/engine";
@@ -32,6 +32,8 @@ import { RoseDrawer, buildRoseData } from "./terrain/rose";
 import { RoseLayer, ScaleBar } from "./terrain/RoseLayer";
 import TerrainScene from "./terrain/Scene";
 import { ZoomHint } from "../levels/LevelNav";
+import { ErrorBoundary } from "../ui";
+import { hasWebGL2 } from "@/lib/webgl";
 import { useZoomGate } from "../levels/useZoomGate";
 
 export type TerrainPlateProps = {
@@ -41,6 +43,8 @@ export type TerrainPlateProps = {
   sun: { az: number; el: number } | null;
   /** Apparent Earth position at the selected site (deg), or null when unknown. */
   earth: { az: number; el: number } | null;
+  /** Whether each body is up at the time shown (isUp in src/lib/contacts.ts). */
+  up?: { sun: boolean; earth: boolean } | null;
   /** 0..1 per region id, higher is better; tints outlines and labels from umbra to sun. */
   regionValues?: Record<string, number>;
   /**
@@ -74,12 +78,6 @@ const LEVEL_OUT_KM = 1100;
 const LOCAL_LEVEL_OUT_KM = 700;
 const NO_REGIONS: null[] = sites.map(() => null);
 
-const latText = (v: number) => (v === 0 ? "0°" : `${Math.abs(v)}° ${v < 0 ? "S" : "N"}`);
-const lonText = (v: number) => {
-  const w = ((v + 540) % 360) - 180;
-  return w === 0 ? "0°" : Math.abs(w) === 180 ? "180°" : `${Math.abs(w)}° ${w < 0 ? "W" : "E"}`;
-};
-
 /** Where f crosses `target` on a..b, or null when the ends do not bracket it. */
 function crossing(f: (t: number) => number, a: number, b: number, target: number): number | null {
   let fa = f(a) - target;
@@ -98,21 +96,6 @@ function crossing(f: (t: number) => number, a: number, b: number, target: number
 }
 
 // ---------- Environment ----------
-
-let webgl2: boolean | null = null;
-function hasWebGL2(): boolean {
-  if (webgl2 === null) {
-    try {
-      const c = document.createElement("canvas");
-      const ctx = c.getContext("webgl2");
-      webgl2 = !!ctx;
-      ctx?.getExtension("WEBGL_lose_context")?.loseContext();
-    } catch {
-      webgl2 = false;
-    }
-  }
-  return webgl2;
-}
 
 const noSubscribe = () => () => {};
 function useWebGL2(): "checking" | "ok" | "none" {
@@ -136,19 +119,6 @@ function useReducedMotion() {
   );
 }
 
-class GlBoundary extends Component<{ onError: () => void; children: ReactNode }, { failed: boolean }> {
-  state = { failed: false };
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-  componentDidCatch() {
-    this.props.onError();
-  }
-  render() {
-    return this.state.failed ? null : this.props.children;
-  }
-}
-
 // ---------- Component ----------
 
 export default function TerrainPlate({
@@ -156,6 +126,7 @@ export default function TerrainPlate({
   onSelect,
   sun,
   earth,
+  up,
   regionValues,
   customSite,
   local,
@@ -309,15 +280,8 @@ export default function TerrainPlate({
     bridge.invalidate();
   }, [rose, roseData, bridge]);
 
-  const sunUp =
-    roseSite && sunAz !== undefined && sunEl !== undefined
-      ? sunEl + SUN_RADIUS_DEG > horizonElevationAt(roseSite.horizon, sunAz)
-      : false;
-  const earthEl = earth?.el;
-  const earthUp =
-    roseSite && earthAz !== undefined && earthEl !== undefined
-      ? earthEl + EARTH_RADIUS_DEG > horizonElevationAt(roseSite.horizon, earthAz)
-      : false;
+  const sunUp = !!up?.sun;
+  const earthUp = !!up?.earth;
   useEffect(() => {
     rose.setNow(sunAz !== undefined && earthAz !== undefined ? { sunAz, earthAz, sunUp, earthUp } : null);
     bridge.invalidate();
@@ -351,7 +315,7 @@ export default function TerrainPlate({
         anchor: scenePoint(r.centre.x, r.centre.y),
         priority: isSel ? 0 : i === hovered ? 1 : 2,
         text: s.name,
-        detail: isSel ? formatLatLon(s.lat, s.lon) : undefined,
+        detail: isSel ? fmtLatLon(s.lat, s.lon) : undefined,
         tint: tintHex?.[i] ?? null,
         hovered: i === hovered,
         onActivate: isSel ? recentre : () => onSelect(s.id),
@@ -367,7 +331,7 @@ export default function TerrainPlate({
           anchor: scenePoint(site.x, site.y),
           priority: 0,
           text: selected.name,
-          detail: formatLatLon(selected.lat, selected.lon),
+          detail: fmtLatLon(selected.lat, selected.lon),
           onActivate: recentre,
           srText: ", selected. Re-centre the view",
         });
@@ -379,7 +343,7 @@ export default function TerrainPlate({
       const latAt = (y: number) => pr.unproject(-e, y).lat;
       for (let lat = Math.ceil(Math.min(latAt(-e), latAt(e))); lat <= Math.max(latAt(-e), latAt(e)); lat++) {
         const y = crossing(latAt, -e, e, lat);
-        if (y !== null) out.push({ id: `lat${lat}`, kind: "quiet", anchor: scenePoint(-e, y, 1), priority: 5, text: latText(lat) });
+        if (y !== null) out.push({ id: `lat${lat}`, kind: "quiet", anchor: scenePoint(-e, y, 1), priority: 5, text: fmtLatTick(lat) });
       }
       const dlonAt = (x: number) => ((pr.unproject(x, -e).lon - localTerrain.lon + 540) % 360) - 180;
       const d0 = dlonAt(-e);
@@ -387,7 +351,7 @@ export default function TerrainPlate({
       if (d1 > d0 && d1 - d0 < 180) {
         for (let lon = Math.ceil((localTerrain.lon + d0) / step) * step; lon <= localTerrain.lon + d1; lon += step) {
           const x = crossing(dlonAt, -e, e, lon - localTerrain.lon);
-          if (x !== null) out.push({ id: `lon${lon}`, kind: "quiet", anchor: scenePoint(x, -e, 1), priority: 5, text: lonText(lon) });
+          if (x !== null) out.push({ id: `lon${lon}`, kind: "quiet", anchor: scenePoint(x, -e, 1), priority: 5, text: fmtLonTick(lon) });
         }
       }
       const edge = terrain.half - 4000;
@@ -401,7 +365,7 @@ export default function TerrainPlate({
         anchor: scenePoint(site.x, site.y),
         priority: 0,
         text: selected.name,
-        detail: formatLatLon(selected.lat, selected.lon),
+        detail: fmtLatLon(selected.lat, selected.lon),
         onActivate: recentre,
         srText: ", selected. Re-centre the view",
       });
@@ -482,7 +446,7 @@ export default function TerrainPlate({
   const pct = progress === null ? null : Math.round(progress * 100);
 
   const lit = sunVec !== null;
-  const focusName = selected ? (selected.custom ? `Custom site at ${formatLatLon(selected.lat, selected.lon)}` : selected.name) : "";
+  const focusName = selected ? (selected.custom ? `Custom site at ${fmtLatLon(selected.lat, selected.lon)}` : selected.name) : "";
   const description = selected
     ? `${focusName} selected. ${
         sun ? `Sun at azimuth ${sun.az.toFixed(1)}°, elevation ${sun.el.toFixed(1)}°.` : "Sun position unknown."
@@ -495,7 +459,6 @@ export default function TerrainPlate({
     <figure className={`relative flex flex-col overflow-hidden bg-paper text-ink ${className ?? ""}`}>
       <figcaption className="flex flex-wrap items-center justify-between gap-x-5 gap-y-1 border-b border-rule bg-paper px-4 py-1">
         {caption}
-        {levelNav}
         <span className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[0.75rem] text-ink-2">
           {lit ? (
             <>
@@ -545,9 +508,14 @@ export default function TerrainPlate({
         aria-describedby={descId}
         onKeyDown={onKeyDown}
       >
-        <ZoomHint text={zoomHint === "out" && showCanvas ? "Keep zooming out to open the Moon level" : null} progress={zoomProgress} />
+        {levelNav && <div className="pointer-events-none absolute top-2 left-2 z-20">{levelNav}</div>}
+        <ZoomHint
+          text={zoomHint === "out" && showCanvas ? "Keep zooming out for the Moon level, or" : null}
+          progress={zoomProgress}
+          action={onZoomOut ? { label: "Open Moon level", onClick: onZoomOut } : null}
+        />
         {showCanvas && (
-          <GlBoundary key={attempt} onError={() => setGlFailed("error")}>
+          <ErrorBoundary key={attempt} onError={() => setGlFailed("error")}>
             <div className="absolute inset-0" aria-hidden>
               <Canvas
                 frameloop="demand"
@@ -596,7 +564,7 @@ export default function TerrainPlate({
               <LabelLayer bridge={bridge} labels={labels} />
               <Indicators bridge={bridge} sun={sun} earth={earth} />
             </div>
-          </GlBoundary>
+          </ErrorBoundary>
         )}
 
         {showPlan && (

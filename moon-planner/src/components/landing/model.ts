@@ -1,10 +1,11 @@
 // Constants and pure helpers shared by the landing page components.
 
 import { sites } from "@/lib/sites";
-import { sampleAt, type SiteData } from "@/lib/sky";
-import { contactEvents } from "@/components/navigator/plot/contacts";
+import type { SiteData } from "@/lib/sky";
+import { contactEvents, isUp } from "@/lib/contacts";
 
-export const HOUR_MS = 3_600_000;
+export { HOUR_MS } from "@/lib/format";
+import { HOUR_MS } from "@/lib/format";
 /** Surface stay shown on the landing page: 6.5 days. */
 export const STAY_HOURS = 156;
 export const SLIP_DAYS = 14;
@@ -68,7 +69,8 @@ export function dateValue(day: number, month: number): string {
 
 // ---------- Formatting (UTC) ----------
 
-export const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export { MONTHS } from "@/lib/format";
+import { MONTHS, fmtLatLon as fmtLatLonShared } from "@/lib/format";
 
 export function fmtDay(ms: number): string {
   const d = new Date(ms);
@@ -88,9 +90,8 @@ export function fmtDate(ms: number): string {
   return `${fmtDay(ms)} ${new Date(ms).getUTCFullYear()}`;
 }
 
-export function pct(share: number): string {
-  return `${Math.round(share * 100)}%`;
-}
+/** Shares use the app-wide rule: a partial value never reads as 0% or 100%. */
+export { pct } from "@/lib/format";
 
 /** Durations as the bulletin prints them: "22 h", "2 d 4 h", "none". */
 export function fmtSpell(hours: number): string {
@@ -101,9 +102,7 @@ export function fmtSpell(hours: number): string {
   return h ? `${d} d ${h} h` : `${d} d`;
 }
 
-export function fmtLatLon(lat: number, lon: number): string {
-  return `${Math.abs(lat).toFixed(2)}° ${lat < 0 ? "S" : "N"}, ${Math.abs(lon).toFixed(2)}° ${lon < 0 ? "W" : "E"}`;
-}
+export const fmtLatLon = (lat: number, lon: number): string => fmtLatLonShared(lat, lon);
 
 // ---------- Window facts ----------
 
@@ -132,9 +131,9 @@ export function hourlyFlags(site: SiteData, startMs: number, hours: number) {
   const sun: boolean[] = [];
   const earth: boolean[] = [];
   for (let h = 0; h < hours; h++) {
-    const s = sampleAt(site, startMs + h * HOUR_MS);
-    sun.push(s.sunFraction > 0);
-    earth.push(s.earthUp);
+    const t = startMs + h * HOUR_MS;
+    sun.push(isUp(site, "sun", t));
+    earth.push(isUp(site, "earth", t));
   }
   return { sun, earth };
 }

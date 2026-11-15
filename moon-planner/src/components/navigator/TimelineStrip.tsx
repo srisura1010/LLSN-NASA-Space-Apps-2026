@@ -7,10 +7,11 @@
 // which prints its own readout.
 
 import { useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
-import { rangeOf, windowStats, type SiteData } from "@/lib/sky";
+import { missionScore, rangeOf, type SiteData } from "@/lib/sky";
 import { sites } from "@/lib/sites";
-import { isUpAt, nextContact, visibilitySpans, type Body, type VisibilitySpan } from "./plot/contacts";
-import { DAY_MS, HOUR_MS, fmtDay, fmtDayTime, fmtDuration, fmtElapsed, fmtFull, fmtShift } from "./plot/format";
+import { isUp, nextContact, visibilitySpans, type Body, type VisibilitySpan } from "@/lib/contacts";
+import { DAY_MS, HOUR_MS, fmtDay, fmtDayTime, fmtDuration, fmtElapsed, fmtFull, fmtShift , pct } from "@/lib/format";
+import { StateSwatch } from "../ui";
 import { useElementWidth } from "./plot/hooks";
 
 export type CompareSite = {
@@ -78,7 +79,7 @@ function rowData(site: SiteData, startMs: number, endMs: number, offsetMs: numbe
   if (a > startMs + offsetMs) noData.push({ from: 0, to: Math.min(1, (a - startMs - offsetMs) / span) });
   if (b < endMs + offsetMs) noData.push({ from: Math.max(0, (b - startMs - offsetMs) / span), to: 1 });
   const ok = b > a;
-  const stats = ok ? windowStats(site, a, b) : null;
+  const stats = ok ? missionScore(site, a, b) : null;
   const row: RowData = {
     offsetMs,
     sun: ok ? visibilitySpans(site, "sun", a, b) : [],
@@ -148,8 +149,8 @@ export default function TimelineStrip({
   }, [startMs, endMs, span, trackW]);
 
   const shown = clampMs(nowMs);
-  const sunUp = isUpAt(site, "sun", nowMs);
-  const earthUp = isUpAt(site, "earth", nowMs);
+  const sunUp = isUp(site, "sun", nowMs);
+  const earthUp = isUp(site, "earth", nowMs);
   const sunNext = nextContact(site, "sun", nowMs);
   const earthNext = nextContact(site, "earth", nowMs);
   const dataEnd = rangeOf(site.sky).endMs;
@@ -287,7 +288,7 @@ export default function TimelineStrip({
           <span className="ml-2 font-normal text-ink-2">{fmtElapsed(nowMs - startMs)}</span>
         </span>
         <span className="inline-flex items-baseline gap-1.5">
-          <StateSwatch body="sun" up={sunUp} />
+          <StateSwatch body="sun" up={sunUp} className="shrink-0 self-center" />
           <span>
             {sunUp ? "Sunlit" : <span className="font-semibold text-limit">Dark</span>}
             <span className="text-ink-2">{" · "}</span>
@@ -296,7 +297,7 @@ export default function TimelineStrip({
           </span>
         </span>
         <span className="inline-flex items-baseline gap-1.5">
-          <StateSwatch body="earth" up={earthUp} />
+          <StateSwatch body="earth" up={earthUp} className="shrink-0 self-center" />
           <span>
             {earthUp ? "Earth in view" : <span className="font-semibold text-limit">No Earth contact</span>}
             <span className="text-ink-2">{" · "}</span>
@@ -415,7 +416,6 @@ function Band({
 }
 
 function RowCaption({ row, main, startMs, endMs }: { row: Row; main: boolean; startMs: number; endMs: number }) {
-  const pctText = (v: number) => `${Math.round(v * 100)}%`;
   // Text sits on paper above the playhead line, so the line reads as passing behind it.
   const knock = "relative z-10 bg-paper";
   return (
@@ -427,18 +427,9 @@ function RowCaption({ row, main, startMs, endMs }: { row: Row; main: boolean; st
         </span>
       ) : null}
       <span className={`${knock} text-ink-2 tabular-nums`}>
-        Sun {pctText(row.sunlit)} · Earth {pctText(row.earthVisible)}
+        Sun {pct(row.sunlit)} · Earth {pct(row.earthVisible)}
         {row.longestDarkHours > 0 ? ` · longest dark ${fmtDuration(row.longestDarkHours)}` : ""}
       </span>
     </div>
-  );
-}
-
-function StateSwatch({ body, up }: { body: Body; up: boolean }) {
-  const cls = body === "sun" ? (up ? "fill-sun" : "fill-umbra") : up ? "fill-earth" : "fill-umbra-soft";
-  return (
-    <svg width={10} height={10} viewBox="0 0 10 10" className="shrink-0 self-center" aria-hidden="true">
-      <rect width={10} height={10} className={cls} />
-    </svg>
   );
 }

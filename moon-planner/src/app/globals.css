@@ -8,20 +8,21 @@
 @theme inline {
   --font-sans: var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
 
-  --color-paper: #eef1f0;
-  --color-paper-2: #e3e8e7; /* rails, toolbars */
-  --color-paper-3: #d6dddc; /* pressed, selected rows */
-  --color-ink: #121a22;
-  --color-ink-2: #3a4752; /* secondary text, >= 4.5:1 on paper */
-  --color-ink-3: #5d6a74; /* tertiary, large text only */
-  --color-rule: #b9c3c2; /* 1px hairlines */
-  --color-umbra: #3d5466;
-  --color-umbra-soft: #c3ced3;
-  --color-sun: #f0b400;
-  --color-sun-ink: #7a5600; /* sun-coloured text on paper */
-  --color-earth: #2453c2;
-  --color-earth-soft: #c9d5f1;
-  --color-limit: #c42b1c;
+  /* Values come from src/lib/tokens.ts (TOKENS), written into :root by the root layout. */
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-paper-3: var(--paper-3);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-rule: var(--rule);
+  --color-umbra: var(--umbra);
+  --color-umbra-soft: var(--umbra-soft);
+  --color-sun: var(--sun);
+  --color-sun-ink: var(--sun-ink);
+  --color-earth: var(--earth);
+  --color-earth-soft: var(--earth-soft);
+  --color-limit: var(--limit);
 }
 
 html,

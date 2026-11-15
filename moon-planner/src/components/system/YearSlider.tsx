@@ -5,19 +5,11 @@
 // window shaded on it.
 
 import { useEffect, useRef } from "react";
+import { DAY, HOUR, MONTHS, fmtFull } from "@/lib/format";
+import { PlayMark } from "../ui";
 
-const HOUR = 3_600_000;
-const DAY = 24 * HOUR;
 /** Playback covers this much time per millisecond: six days each second. */
 const PLAY_RATE = (6 * DAY) / 1000;
-export const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-export function fmtUtc(ms: number) {
-  const d = new Date(ms);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}, ${p(d.getUTCHours())}:${p(d.getUTCMinutes())} UTC`;
-}
-
 /** While playing, advances the caller's clock from wherever it is now and wraps at the end of the span. */
 export function useYearPlayback(playing: boolean, span: { startMs: number; endMs: number } | null, ms: number, onScrub?: (ms: number) => void) {
   const clock = useRef(ms);
@@ -41,14 +33,6 @@ export function useYearPlayback(playing: boolean, span: { startMs: number; endMs
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [playing, startMs, endMs, onScrub]);
-}
-
-function PlayIcon({ playing }: { playing: boolean }) {
-  return (
-    <svg viewBox="0 0 16 16" className="size-3.5" aria-hidden="true" fill="currentColor">
-      {playing ? <path d="M3.5 2.5h3v11h-3zM9.5 2.5h3v11h-3z" /> : <path d="M4 2.5 13 8l-9 5.5z" />}
-    </svg>
-  );
 }
 
 export default function YearSlider({
@@ -78,7 +62,7 @@ export default function YearSlider({
         aria-label={playing ? "Pause" : `Play through ${year}`}
         className="grid size-9 shrink-0 place-items-center border border-ink text-ink transition-colors duration-150 hover:bg-paper-3"
       >
-        <PlayIcon playing={playing} />
+        <PlayMark playing={playing} />
       </button>
       <div className="min-w-0 flex-1">
         <div className="relative">
@@ -97,7 +81,7 @@ export default function YearSlider({
             value={Math.round(ms)}
             onChange={(e) => onScrub(Number(e.target.value))}
             aria-label={`Time in ${year}`}
-            aria-valuetext={fmtUtc(ms)}
+            aria-valuetext={fmtFull(ms)}
           />
         </div>
         <div className="relative mt-0.5 h-4" aria-hidden="true">

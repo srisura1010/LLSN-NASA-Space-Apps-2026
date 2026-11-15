@@ -6,7 +6,7 @@
 // carries the same lines to the Sun and Earth, so the geometry can be followed
 // from here down to the site.
 
-import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Line, OrbitControls } from "@react-three/drei";
 import { Color, Matrix4, Quaternion, Vector3, type Camera, type Group, type ShaderMaterial, type Texture } from "three";
@@ -27,7 +27,11 @@ import {
   type SystemState,
   type Vec3,
 } from "@/lib/system";
-import YearSlider, { MONTHS, fmtUtc, useYearPlayback } from "./YearSlider";
+import { RENDER, TOKENS } from "@/lib/tokens";
+import { MONTHS, fmtFull, fmtInt, fmtLatLon, fmtSigned } from "@/lib/format";
+import { hasWebGL } from "@/lib/webgl";
+import { ErrorBoundary, Row, SectionLabel, Segmented, ToggleButton, buttonClass } from "../ui";
+import YearSlider, { useYearPlayback } from "./YearSlider";
 import { ZoomHint } from "../levels/LevelNav";
 import { useZoomGate } from "../levels/useZoomGate";
 import {
@@ -52,6 +56,7 @@ import {
 } from "../moon/marks";
 import { MoonGlobe, Rim, loadFineTextures, loadTextures, type FineTextures, type Textures } from "../moon/moonMaterial";
 import { AzimuthFan, EarthGlobe, LaunchLegend, LaunchSiteTag, OverheadTag, loadEarthTexture, loadFineEarthTexture, onEarth, type LaunchSiteMark } from "./earthGlobe";
+import { HOUR } from "@/lib/format";
 
 export type { LaunchSiteMark } from "./earthGlobe";
 
@@ -101,7 +106,6 @@ type Discs = { ex: number; ey: number; er: number; mx: number; my: number; mr: n
 const GLIDE_MS = 520;
 const reducedMotion = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const RAD = Math.PI / 180;
 /** Scene units per km: 1 au is 100 units. */
@@ -112,17 +116,17 @@ const BODY_STRETCH = 800;
 const SUN_STRETCH = 15;
 const FOV = 35;
 
-const INK = "#121a22";
-const INK_2 = "#3a4752";
-const RULE = "#b9c3c2";
-const PAPER = "#eef1f0";
-const SUN = "#f0b400";
-const EARTH_LIT = "#2453c2";
-const EARTH_DARK = "#273a52";
-const MOON_LIT = "#c4cacb";
+const INK = TOKENS.ink;
+const INK_2 = TOKENS.ink2;
+const RULE = TOKENS.rule;
+const PAPER = TOKENS.paper;
+const SUN = TOKENS.sun;
+const EARTH_LIT = RENDER.earthSea;
+const EARTH_DARK = RENDER.earthNight;
+const MOON_LIT = RENDER.moonLimb;
 /** The line from Earth to the Moon. */
-const MOON_LINE = "#3a4752";
-const UMBRA = "#3d5466";
+const MOON_LINE = TOKENS.ink2;
+const UMBRA = TOKENS.umbra;
 
 /** Ecliptic x, y, z in km to scene units with ecliptic north up. */
 const toScene = (v: Vec3, k = U): Vec3 => [v[0] * k, v[2] * k, -v[1] * k];
@@ -131,9 +135,7 @@ const mul = (a: Vec3, k: number): Vec3 => [a[0] * k, a[1] * k, a[2] * k];
 const unit = (a: Vec3): Vec3 => mul(a, 1 / Math.hypot(a[0], a[1], a[2]));
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 
-const fmtInt = (n: number) => Math.round(n).toLocaleString("en-US");
-const fmtSigned = (n: number, digits = 1) => `${n < 0 ? "−" : "+"}${Math.abs(n).toFixed(digits)}°`;
-const fmtLatLon = (p: LatLon) => `${Math.abs(p.lat).toFixed(1)}° ${p.lat < 0 ? "S" : "N"}, ${Math.abs(p.lon).toFixed(1)}° ${p.lon < 0 ? "W" : "E"}`;
+const fmtPlace = (p: LatLon) => fmtLatLon(p.lat, p.lon, 1);
 
 /**
  * The rotation that carries a body's own scene axes (x through its 0° N 0° E, y through its north pole) into this
@@ -962,25 +964,6 @@ function Scene({
 
 // ---------- Fallback when WebGL is missing ----------
 
-function hasWebGL() {
-  try {
-    const c = document.createElement("canvas");
-    return Boolean(c.getContext("webgl2") ?? c.getContext("webgl"));
-  } catch {
-    return false;
-  }
-}
-
-class GlBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
-  state = { failed: false };
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-  render() {
-    return this.state.failed ? this.props.fallback : this.props.children;
-  }
-}
-
 /** A flat plan from ecliptic north, drawn without WebGL. The Earth-Moon distance is stretched 50 times. */
 function PlanFallback({ data, state }: { data: SystemData; state: SystemState }) {
   const k = 100 / AU_KM;
@@ -1016,52 +999,11 @@ function PlanFallback({ data, state }: { data: SystemData; state: SystemState })
 
 // ---------- Controls and readout ----------
 
-function Segmented<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: T;
-  options: { id: T; label: string }[];
-  onChange: (v: T) => void;
-}) {
+function FaceButton({ on = false, onClick, children }: { on?: boolean; onClick: () => void; children: ReactNode }) {
   return (
-    <div role="group" aria-label={label} className="flex border border-ink">
-      {options.map((o, i) => {
-        const on = o.id === value;
-        return (
-          <button
-            key={o.id}
-            type="button"
-            aria-pressed={on}
-            onClick={() => onChange(o.id)}
-            className={`h-8 px-3 text-[0.8rem] whitespace-nowrap transition-colors duration-150 focus-visible:outline-offset-2 ${
-              i ? "border-l border-ink" : ""
-            } ${on ? "bg-ink font-semibold text-paper" : "font-medium text-ink hover:bg-paper-3"}`}
-          >
-            {o.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-/** One of the buttons that turn the Earth framing to face a place. */
-function FaceButton({ on, onClick, children }: { on?: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      aria-pressed={on}
-      onClick={onClick}
-      className={`h-8 border border-ink px-2.5 text-[0.8rem] whitespace-nowrap transition-colors duration-150 focus-visible:outline-offset-2 ${
-        on ? "bg-ink font-semibold text-paper" : "font-medium text-ink hover:bg-paper-3"
-      }`}
-    >
+    <ToggleButton on={on} onClick={onClick}>
       {children}
-    </button>
+    </ToggleButton>
   );
 }
 
@@ -1073,23 +1015,9 @@ function PhaseDisc({ illuminated, waxing }: { illuminated: number; waxing: boole
   return (
     <svg viewBox="-24 -24 48 48" className="size-14 shrink-0" aria-hidden="true">
       <circle r={r} fill={UMBRA} />
-      <path d={d} fill="#dfe4e3" transform={waxing ? undefined : "scale(-1 1)"} />
+      <path d={d} fill={RENDER.moonLit} transform={waxing ? undefined : "scale(-1 1)"} />
       <circle r={r} fill="none" stroke={INK} strokeWidth={1} />
     </svg>
-  );
-}
-
-function Row({ label, value, note }: { label: string; value: ReactNode; note?: ReactNode }) {
-  return (
-    <tr className="border-b border-rule align-baseline">
-      <th scope="row" className="py-2 pr-2 text-left text-[0.844rem] font-normal whitespace-nowrap text-ink-2">
-        {label}
-      </th>
-      <td className="py-2 text-right text-[0.95rem] font-semibold whitespace-nowrap text-ink tabular-nums">
-        {value}
-        {note && <span className="block text-[0.8rem] font-normal text-ink-2">{note}</span>}
-      </td>
-    </tr>
   );
 }
 
@@ -1097,8 +1025,6 @@ function fmtLight(s: number) {
   if (s < 60) return `${s.toFixed(3)} s`;
   return `${Math.floor(s / 60)} min ${Math.round(s % 60)} s`;
 }
-
-const H3 = "border-b border-ink pb-1.5 text-[0.75rem] font-semibold tracking-[0.08em] text-ink uppercase";
 
 function Legend({ launch }: { launch: boolean }) {
   const item = "flex items-center gap-2.5 py-1 text-[0.844rem] leading-snug text-ink-2";
@@ -1140,10 +1066,10 @@ function Readout({
   const el = (v?: number | null) => (v == null || !Number.isFinite(v) ? "Not available" : fmtSigned(v, 2));
   return (
     <div>
-      <h3 className={H3}>Circumstances</h3>
+      <SectionLabel>Circumstances</SectionLabel>
       <table className="w-full border-collapse">
         <tbody>
-          <Row label="Time" value={fmtUtc(state.ms)} />
+          <Row label="Time" value={fmtFull(state.ms)} />
           <Row label="Earth to Sun" value={`${state.sunEarthAu.toFixed(4)} au`} note={`${fmtInt(state.sunEarthKm / 1000)},000 km`} />
           <Row label="Earth to Moon" value={`${fmtInt(state.earthMoonKm)} km`} note={`${(state.earthMoonKm / EARTH_RADIUS_KM).toFixed(1)} Earth radii`} />
           <Row label="Moon illuminated" value={`${(state.illuminated * 100).toFixed(1)} %`} note={`Phase angle ${state.phaseAngleDeg.toFixed(1)}°`} />
@@ -1162,7 +1088,7 @@ function Readout({
 
       {siteName && (
         <>
-          <h3 className={`mt-6 ${H3}`}>At {siteName}</h3>
+          <SectionLabel className="mt-6">At {siteName}</SectionLabel>
           <table className="w-full border-collapse">
             <tbody>
               <Row label="Sun elevation" value={el(sunEl)} />
@@ -1178,14 +1104,14 @@ function Readout({
 
       {earthFrame && (
         <>
-          <h3 className={`mt-6 ${H3}`}>On Earth</h3>
+          <SectionLabel className="mt-6">On Earth</SectionLabel>
           <table className="w-full border-collapse">
             <tbody>
-              <Row label="Sun overhead at" value={fmtLatLon(earthFrame.subSolar)} />
-              <Row label="Moon overhead at" value={fmtLatLon(earthFrame.subLunar)} />
+              <Row label="Sun overhead at" value={fmtPlace(earthFrame.subSolar)} />
+              <Row label="Moon overhead at" value={fmtPlace(earthFrame.subLunar)} />
               {launchSite && (
                 <>
-                  <Row label="Launch site" value={launchSite.name} note={fmtLatLon(launchSite)} />
+                  <Row label="Launch site" value={launchSite.name} note={fmtPlace(launchSite)} />
                   <Row label="Sun elevation there" value={fmtSigned(elevationDeg(launchSite.lat, launchSite.lon, earthFrame.sunKm, EARTH_RADIUS_KM), 1)} />
                   <Row label="Moon elevation there" value={fmtSigned(elevationDeg(launchSite.lat, launchSite.lon, earthFrame.moonKm, EARTH_RADIUS_KM), 1)} />
                 </>
@@ -1482,6 +1408,7 @@ export default function SystemView({
     [report],
   );
   const inText = framing.id === "system" ? "Keep zooming in for the Earth–Moon framing" : focus.id === "earth" ? "Keep zooming to open the Earth view" : "Keep zooming to open the Moon level";
+  const inLabel = framing.id === "system" ? "Earth–Moon framing" : focus.id === "earth" ? "Open Earth view" : "Open Moon level";
   const hintText =
     hint === "in"
       ? inText
@@ -1492,6 +1419,11 @@ export default function SystemView({
         : framing.id === "pair" && nudge && nudge === focus.id && (nudge === "earth" || onOpenMoon)
           ? inText
           : null;
+  const hintAction = !hintText
+    ? null
+    : hint === "out"
+      ? { label: framing.id === "earth" ? "Earth–Moon framing" : "Sun–Earth–Moon framing", onClick: zoomOut }
+      : { label: inLabel, onClick: zoomIn };
 
   // A click or double-click on a body centres the view on it; a double-click on empty paper frames both again.
   const bodyAt = (e: { clientX: number; clientY: number; currentTarget: HTMLElement }): Focus | null => {
@@ -1541,7 +1473,7 @@ export default function SystemView({
       <section aria-label="Sun, Earth and Moon diagram" className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-rule px-4 py-2.5">
           <h2 className="text-[1.068rem] leading-snug font-semibold text-ink">
-            The Sun, Earth and Moon{state ? `, ${fmtUtc(state.ms)}` : ""}
+            The Sun, Earth and Moon{state ? `, ${fmtFull(state.ms)}` : ""}
           </h2>
           <div className="flex flex-wrap gap-2.5">
             <Segmented
@@ -1572,7 +1504,6 @@ export default function SystemView({
                 { id: "true", label: "True scale" },
               ]}
             />
-            {levelNav}
           </div>
         </header>
 
@@ -1650,7 +1581,8 @@ export default function SystemView({
           }}
           className="relative isolate min-h-[22rem] flex-1 overflow-hidden bg-paper focus-visible:outline-2 focus-visible:-outline-offset-2"
         >
-          <ZoomHint text={hintText} progress={progress} />
+          {levelNav && <div className="pointer-events-none absolute top-2 left-2 z-20">{levelNav}</div>}
+          <ZoomHint text={hintText} progress={progress} action={hintAction} />
           {load.status === "loading" && (
             <p role="status" className="absolute inset-0 grid place-items-center text-[0.844rem] text-ink-2">
               Loading the 2027 ephemeris
@@ -1667,7 +1599,7 @@ export default function SystemView({
                     setLoad({ status: "loading" });
                     setAttempt((n) => n + 1);
                   }}
-                  className="mt-3 h-8 border border-ink px-3 text-[0.8rem] font-semibold text-ink hover:bg-paper-3"
+                  className={`mt-3 ${buttonClass.secondary}`}
                 >
                   Try again
                 </button>
@@ -1676,7 +1608,7 @@ export default function SystemView({
           )}
           {data && state && !gl && <PlanFallback data={data} state={state} />}
           {data && state && frame && earthFrame && geo && gl && (
-            <GlBoundary fallback={<PlanFallback data={data} state={state} />}>
+            <ErrorBoundary fallback={<PlanFallback data={data} state={state} />}>
               <Canvas
                 flat
                 frameloop="demand"
@@ -1723,7 +1655,7 @@ export default function SystemView({
                   </div>
                 ))}
               </div>
-            </GlBoundary>
+            </ErrorBoundary>
           )}
         </div>
 
@@ -1751,7 +1683,7 @@ export default function SystemView({
         ) : (
           <p className="text-[0.844rem] text-ink-2">{load.status === "error" ? "No values to show." : "Loading values"}</p>
         )}
-        <h3 className={`mt-6 ${H3}`}>Marks</h3>
+        <SectionLabel className="mt-6">Marks</SectionLabel>
         <div className="mt-1.5">
           <Legend launch={Boolean(launchSites?.length)} />
         </div>

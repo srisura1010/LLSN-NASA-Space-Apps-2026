@@ -18,6 +18,7 @@ import {
   type GridHorizonProfile,
 } from "./horizonFromGrid";
 import { latLonToXY, type HeightGrid, type HorizonProfile } from "./terrain";
+import { DAY, HOUR } from "./format";
 
 export const CUSTOM_SITE_ID = "custom";
 
@@ -26,8 +27,6 @@ export const CUSTOM_MIN_LAT = -89.9;
 /** Northernmost supported latitude: the edge of the LOLA south pole grid. */
 export const CUSTOM_MAX_LAT = -80;
 
-const HOUR = 3_600_000;
-const DAY = 86_400_000;
 const API_PATH = "/api/horizons";
 const STEP = "1 h";
 const TIMEOUT_MS = 60_000;
@@ -108,6 +107,42 @@ export function isCustomSiteSupported(lat: number, lon: number): { ok: boolean; 
     };
   }
   return { ok: true };
+}
+
+/** Closest a site may be to either pole: local north, and so azimuth, is undefined at a pole. */
+export const POLE_MARGIN_DEG = 0.1;
+
+export type SitePointCheck =
+  | { ok: true; lat: number; lon: number; source: "polar" | "moontrek" }
+  | { ok: false; field: "lat" | "lon"; reason: string };
+
+/**
+ * The one rule for where a site can be opened at the site level, used by the
+ * custom-site form, the Moon level's "Open site level" and zooming in on the
+ * globe. Any point on the Moon up to 0.1° from either pole. South of 80° S
+ * the terrain comes from the polar LOLA grids (and the point must sit inside
+ * them); anywhere else from the NASA Moon Trek mosaics. Longitude is
+ * returned wrapped to −180..180.
+ */
+export function validateSitePoint(lat: number, lon: number): SitePointCheck {
+  if (!Number.isFinite(lat)) return { ok: false, field: "lat", reason: "Enter a latitude in degrees, for example −85.5 or 85.5 S." };
+  if (!Number.isFinite(lon)) return { ok: false, field: "lon", reason: "Enter a longitude in degrees, for example 31.2 or 45 W." };
+  if (lat < -90 || lat > 90) return { ok: false, field: "lat", reason: "Latitude runs from −90 (the south pole) to 90 (the north pole)." };
+  if (lon < -180 || lon > 360) return { ok: false, field: "lon", reason: "Longitude runs from −180 to 180 degrees east (or 0 to 360)." };
+  if (Math.abs(lat) > 90 - POLE_MARGIN_DEG) {
+    return {
+      ok: false,
+      field: "lat",
+      reason: `Too close to the pole: local north, and so azimuth, is undefined there. Keep the latitude between −${90 - POLE_MARGIN_DEG} and ${90 - POLE_MARGIN_DEG}.`,
+    };
+  }
+  const lonNorm = normalizeLongitude(lon);
+  if (lat <= CUSTOM_MAX_LAT) {
+    const polar = isCustomSiteSupported(lat, lonNorm);
+    if (!polar.ok) return { ok: false, field: "lat", reason: polar.reason ?? "That point is outside the polar terrain grid." };
+    return { ok: true, lat, lon: lonNorm, source: "polar" };
+  }
+  return { ok: true, lat, lon: lonNorm, source: "moontrek" };
 }
 
 // ---------- Time ----------

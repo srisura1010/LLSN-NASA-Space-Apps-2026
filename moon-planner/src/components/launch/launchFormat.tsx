@@ -2,19 +2,16 @@
 
 import type { LaunchSite } from "@/lib/launchSites";
 import { azimuthGapDeg, COSTLY_INCLINATION_DEG, type LaunchOpportunity, type Rating } from "@/lib/launchWindow";
-import { AlertMark } from "../navigator/SiteBulletin";
+import { AlertMark } from "../ui";
 
-export const HOUR_MS = 3_600_000;
-export const DAY_MS = 24 * HOUR_MS;
+export { DAY_MS, HOUR_MS } from "@/lib/format";
+import { DAY_MS, fmtDay, fmtMinutes } from "@/lib/format";
+export { fmtMinutes };
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const two = (n: number) => String(n).padStart(2, "0");
 
 /** "10 Nov" */
-export function fmtDate(ms: number, withYear = false): string {
-  const d = new Date(ms);
-  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}${withYear ? ` ${d.getUTCFullYear()}` : ""}`;
-}
+export const fmtDate = (ms: number, withYear = false) => fmtDay(ms, withYear);
 
 /** "21:57" */
 export function fmtClock(ms: number): string {
@@ -24,13 +21,6 @@ export function fmtClock(ms: number): string {
 
 /** "10 Nov 2027, 21:57" (UTC; the caller says so). */
 export const fmtDateTime = (ms: number, withYear = true) => `${fmtDate(ms, withYear)}, ${fmtClock(ms)}`;
-
-/** "12 h 27 min", "39 min" */
-export function fmtMinutes(min: number): string {
-  const m = Math.round(min);
-  if (m < 60) return `${m} min`;
-  return m % 60 === 0 ? `${m / 60} h` : `${Math.floor(m / 60)} h ${m % 60} min`;
-}
 
 const utcDay = (ms: number) => Math.floor(ms / DAY_MS);
 
@@ -47,7 +37,7 @@ export function fmtOffset(hours: number): string {
   return `${Math.abs(hours).toFixed(1)} h ${hours < 0 ? "early" : "late"}`;
 }
 
-export const fmtDeg = (v: number, digits = 1) => `${v.toFixed(digits)}°`;
+export { fmtDeg } from "@/lib/format";
 
 export const STATUS_LABEL: Record<Rating, string> = { good: "Usable", costly: "Usable at a cost", blocked: "Blocked" };
 
@@ -87,4 +77,4 @@ export function Status({ rating, className = "" }: { rating: Rating; className?:
   );
 }
 
-export const capsLabel = "text-[0.75rem] font-semibold uppercase tracking-[0.06em] text-ink-2";
+export { capsLabel } from "../ui";

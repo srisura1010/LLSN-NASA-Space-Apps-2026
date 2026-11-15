@@ -9,10 +9,10 @@
 
 import { Vector3, type Camera } from "three";
 import { sampleAt, type SiteData } from "@/lib/sky";
-import { contactEvents, isRise, type ContactKind } from "../plot/contacts";
+import { contactEvents, isRise, isUp, type ContactKind } from "@/lib/contacts";
 import { bearingAt, type V2 } from "./geo";
+import { HOUR } from "@/lib/format";
 
-const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 /** Synodic month: a window this long carries the Sun once round the ring. */
 const LUNATION = 29.53 * DAY;
@@ -71,7 +71,7 @@ export function buildRoseData(
     times.sort((a, b) => a - b);
     const upAt = (ms: number) => {
       const s = sampleAt(site, ms);
-      return { az: body === "sun" ? s.sunAz : s.earthAz, up: body === "sun" ? s.sunFraction > 0 : s.earthUp };
+      return { az: body === "sun" ? s.sunAz : s.earthAz, up: isUp(site, body, ms) };
     };
     const samples: Sample[] = [];
     for (const ms of times) {

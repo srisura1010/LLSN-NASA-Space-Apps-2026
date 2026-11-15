@@ -3,46 +3,39 @@
 import dynamic from "next/dynamic";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
-  Component,
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
-  type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { loadSite, rankSites, sampleAt, type MissionScore, type SiteData } from "@/lib/sky";
-import { formatLatLon, sites } from "@/lib/sites";
+import { covers, loadSite, rankSites, sampleAt, type MissionScore, type SiteData } from "@/lib/sky";
+import { isUp } from "@/lib/contacts";
+import { sites } from "@/lib/sites";
+import { DAY, HOUR, fmtLatLon } from "@/lib/format";
+import { DATA_END_MS } from "@/lib/mission";
 import { launchSites } from "@/lib/launchSites";
-import { customHorizonMethod, loadCustomSite } from "@/lib/customSite";
-import { POINT_SITE_ID, SMOOTH_METHOD, buildSmoothSite, isSmoothSite } from "@/lib/anySite";
+import { customHorizonMethod, loadCustomSite, validateSitePoint } from "@/lib/customSite";
+import { SMOOTH_METHOD, buildSmoothSite, isSmoothSite } from "@/lib/anySite";
 import { buildGlobalSite, isGlobalSite, loadLocalTerrain } from "@/lib/localTerrain";
-import { siteTarget, viewCentre } from "../moon/siteTarget";
 import { loadSystem, type SystemData } from "@/lib/system";
+import { CUSTOM_ID, PLAN_KEYS, POINT_ID, POLAR_CUSTOM_LAT, readUrl, writeUrl, type View } from "@/state/url";
+import { PlanProvider, stateFromUrl, usePlan, usePlanField, usePlanStore, type PlanState } from "@/state/plan";
+import { siteTarget, viewCentre } from "../moon/siteTarget";
 import HorizonPlot from "./HorizonPlot";
-import RegionTable, { CustomSiteForm, GAP_LIMITS, type CustomSiteState, type RankedRow } from "./RegionTable";
-import MissionControls, {
-  ChangeNote,
-  DATA_END_MS,
-  DATA_START_MS,
-  DAY,
-  DEFAULT_HOURS,
-  DEFAULT_START_MS,
-  HOUR,
-  MAX_HOURS,
-  MIN_HOURS,
-  fmtLength,
-  fmtSpan,
-  type WindowChange,
-} from "./MissionControls";
-import SiteBulletin, { covers } from "./SiteBulletin";
+import RegionTable, { CustomSiteForm, type CustomSiteState, type RankedRow } from "./RegionTable";
+import MissionControls, { ChangeNote } from "./MissionControls";
+import SiteBulletin from "./SiteBulletin";
 import ComparePanel, { tiedRanks, type CompareOption } from "./ComparePanel";
 import AboutPanel from "./AboutPanel";
-import LaunchPanel, { type LaunchPick } from "../launch/LaunchPanel";
+import LaunchPanel from "../launch/LaunchPanel";
 import LevelNav, { type Level } from "../levels/LevelNav";
+import { Drawer, ErrorBoundary, Toast } from "../ui";
+import AppBar, { type Mode } from "../shell/AppBar";
 
 const TerrainPlate = dynamic(() => import("./TerrainPlate"), { ssr: false, loading: () => <PlateLoading /> });
 
@@ -52,13 +45,11 @@ const MoonView = dynamic(() => import("../moon/MoonView"), { ssr: false, loading
 
 const Controls = memo(MissionControls);
 
-// ---------- Constants and URL state ----------
+// ---------- Constants ----------
 
-const CUSTOM_ID = "custom";
 const SITE_IDS = new Set(sites.map((s) => s.id));
 /** Top of the ranking for the default window (14 Nov 2027); shown until the ranking is ready. */
 const FALLBACK_SITE = "de-gerlache-2";
-const DEFAULT_GAP = 48;
 /** Extra track fetched for a custom site past the window, so one- and two-week slips stay covered. */
 const CUSTOM_MARGIN_MS = 14 * DAY;
 /** Playback runs through the whole window in this many milliseconds. */
@@ -67,130 +58,11 @@ const PLAY_SPAN_MS = 12_000;
 /** The launch sites in the shape the System view draws: marks plus the allowed azimuth fan. */
 const LAUNCH_MARKS = launchSites.map((s) => ({ id: s.id, name: s.name, group: s.group, lat: s.lat, lon: s.lon, azimuthRanges: s.azimuths.map((r) => [r.min, r.max] as [number, number]) }));
 
-type View = "navigator" | "moon" | "system" | "launch" | "compare" | "about";
-const TABS: { id: View; label: string }[] = [
-  { id: "navigator", label: "Navigator" },
-  { id: "moon", label: "Moon" },
-  { id: "system", label: "System" },
-  { id: "launch", label: "Launch" },
-  { id: "compare", label: "Compare" },
-  { id: "about", label: "About & data" },
-];
-
-type UrlState = {
-  site: string | null;
-  startMs: number;
-  hours: number;
-  view: View;
-  cmp: string[] | null;
-  custom: { lat: number; lon: number } | null;
-  /** A point picked at the Moon level, anywhere on the globe. */
-  pt: { lat: number; lon: number } | null;
-  atHours: number;
-  gap: number;
-};
-
-/**
- * Start time from the URL, floored to the hour (UTC). Accepts a date
- * (2027-07-15), the form this page writes (2027-07-15T06:00Z) and a full
- * ISO time (2027-07-15T06:00:00.000Z). Impossible dates are rejected.
- */
-function parseStartParam(v: string | null): number | null {
-  if (!v) return null;
-  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2})(?::?(\d{2})(?::?(\d{2})(?:\.\d+)?)?)?)?Z?$/i.exec(v.trim());
-  if (!m) return null;
-  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  const h = m[4] ? Number(m[4]) : 0;
-  if (h > 23 || Number(m[5] ?? 0) > 59 || Number(m[6] ?? 0) > 59) return null;
-  const ms = Date.UTC(y, mo - 1, d, h);
-  const t = new Date(ms);
-  if (t.getUTCFullYear() !== y || t.getUTCMonth() !== mo - 1 || t.getUTCDate() !== d) return null;
-  return ms;
-}
-
-function readUrl(p: URLSearchParams): UrlState {
-  let hours = Number(p.get("hours"));
-  if (!Number.isFinite(hours) || hours < MIN_HOURS || hours > MAX_HOURS) hours = DEFAULT_HOURS;
-  let startMs = parseStartParam(p.get("start")) ?? DEFAULT_START_MS;
-  if (startMs < DATA_START_MS || startMs >= DATA_END_MS) startMs = DEFAULT_START_MS;
-  if (startMs + hours * HOUR > DATA_END_MS) startMs = Math.floor((DATA_END_MS - hours * HOUR) / HOUR) * HOUR;
-
-  let custom: UrlState["custom"] = null;
-  const c = /^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/.exec(p.get("custom") ?? "");
-  if (c) {
-    const lat = Number(c[1]);
-    const lon = Number(c[2]);
-    // South of 80° S the custom site uses the polar LOLA grids; anywhere else, the Moon Trek mosaics.
-    if (lat <= 90 && lat >= -90 && lon >= -180 && lon <= 360) custom = { lat, lon: lat > POLAR_CUSTOM_LAT && lon > 180 ? lon - 360 : lon };
-  }
-  let pt: UrlState["pt"] = null;
-  const q = /^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/.exec(p.get("pt") ?? "");
-  if (q) {
-    const lat = Number(q[1]);
-    const lon = Number(q[2]);
-    if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 360) pt = { lat, lon: lon > 180 ? lon - 360 : lon };
-  }
-  const valid = (id: string) => SITE_IDS.has(id) || (id === CUSTOM_ID && !!custom) || (id === POINT_SITE_ID && !!pt);
-  const siteParam = p.get("site");
-  const viewParam = p.get("view");
-  const cmp = (p.get("cmp") ?? "").split(",").filter(valid).slice(0, 3);
-  const at = Number(p.get("at"));
-  const gap = Number(p.get("gap"));
-  return {
-    site: siteParam && valid(siteParam) ? siteParam : null,
-    startMs,
-    hours,
-    view: TABS.some((t) => t.id === viewParam) ? (viewParam as View) : "navigator",
-    cmp: cmp.length ? cmp : null,
-    custom,
-    pt,
-    atHours: Number.isFinite(at) && at > 0 && at <= hours ? at : 0,
-    gap: GAP_LIMITS.includes(gap) ? gap : DEFAULT_GAP,
-  };
-}
-
-function isoStart(ms: number): string {
-  const d = new Date(ms);
-  const two = (n: number) => String(n).padStart(2, "0");
-  return `${d.getUTCFullYear()}-${two(d.getUTCMonth() + 1)}-${two(d.getUTCDate())}T${two(d.getUTCHours())}:00Z`;
-}
-
-function writeUrl(s: {
-  site: string;
-  startMs: number;
-  hours: number;
-  view: View;
-  cmp: string[] | null;
-  custom: { lat: number; lon: number } | null;
-  pt: { lat: number; lon: number } | null;
-  atHours: number;
-  gap: number;
-}): string {
-  const parts = [`site=${encodeURIComponent(s.site)}`, `start=${isoStart(s.startMs)}`, `hours=${Number(s.hours.toFixed(3))}`];
-  if (s.view !== "navigator") parts.push(`view=${s.view}`);
-  if (s.cmp?.length) parts.push(`cmp=${s.cmp.map(encodeURIComponent).join(",")}`);
-  if (s.custom) parts.push(`custom=${s.custom.lat.toFixed(4)},${s.custom.lon.toFixed(4)}`);
-  if (s.pt) parts.push(`pt=${Number(s.pt.lat.toFixed(4))},${Number(s.pt.lon.toFixed(4))}`);
-  if (s.atHours > 0.05) parts.push(`at=${Number(s.atHours.toFixed(1))}`);
-  if (s.gap !== DEFAULT_GAP) parts.push(`gap=${s.gap}`);
-  return parts.join("&");
-}
-
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
 // ---------- Small pieces ----------
-
-class PanelBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
-  state = { failed: false };
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-  render() {
-    return this.state.failed ? this.props.fallback : this.props.children;
-  }
-}
 
 function PanelProblem({ children }: { children: ReactNode }) {
   return (
@@ -224,49 +96,6 @@ function MoonLoading() {
   );
 }
 
-function Tabs({ view, onChange, className = "" }: { view: View; onChange: (v: View) => void; className?: string }) {
-  const refs = useRef<(HTMLButtonElement | null)[]>([]);
-  function onKey(e: KeyboardEvent<HTMLButtonElement>, i: number) {
-    const n = TABS.length;
-    const next =
-      e.key === "ArrowRight" ? (i + 1) % n : e.key === "ArrowLeft" ? (i - 1 + n) % n : e.key === "Home" ? 0 : e.key === "End" ? n - 1 : -1;
-    if (next < 0) return;
-    e.preventDefault();
-    onChange(TABS[next].id);
-    refs.current[next]?.focus();
-  }
-  return (
-    <div role="tablist" aria-label="Views" className={`flex ${className}`}>
-      {TABS.map((t, i) => {
-        const on = view === t.id;
-        return (
-          <button
-            key={t.id}
-            ref={(el) => {
-              refs.current[i] = el;
-            }}
-            type="button"
-            role="tab"
-            id={`tab-${t.id}`}
-            aria-selected={on}
-            aria-controls={on ? `view-${t.id}` : undefined}
-            tabIndex={on ? 0 : -1}
-            onClick={() => onChange(t.id)}
-            onKeyDown={(e) => onKey(e, i)}
-            className={`h-10 flex-1 px-2 text-[0.79rem] whitespace-nowrap transition-colors duration-150 focus-visible:outline-offset-[-2px] sm:px-3.5 sm:text-[0.844rem] xl:flex-none ${
-              on
-                ? "font-semibold text-ink shadow-[inset_0_-2px_0_var(--color-ink)]"
-                : "font-medium text-ink-2 hover:text-ink hover:shadow-[inset_0_-1px_0_var(--color-ink-2)]"
-            }`}
-          >
-            {t.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 /** The three zoom levels and the tabs that show them, from the outermost in. */
 const LEVEL_VIEWS: { level: Level; view: View }[] = [
   { level: "system", view: "system" },
@@ -277,39 +106,6 @@ const LEVEL_VIEWS: { level: Level; view: View }[] = [
 const LEVEL_FADE_MS = 200;
 
 type SiteMeta = { id: string; name: string; lat: number; lon: number; custom: boolean };
-
-/**
- * The bulletin's masthead: its name, the issue (the window on show) and the
- * data it was computed from, with the three views as its sections.
- */
-const Masthead = memo(function Masthead({
-  startMs,
-  endMs,
-  hours,
-  view,
-  onView,
-}: {
-  startMs: number;
-  endMs: number;
-  hours: number;
-  view: View;
-  onView: (v: View) => void;
-}) {
-  return (
-    <header className="flex flex-col border-b border-ink bg-paper xl:flex-row xl:items-end xl:justify-between xl:gap-8 xl:pl-4">
-      <div className="flex min-w-0 flex-wrap items-baseline gap-x-4 gap-y-0.5 px-4 pt-2 pb-1.5 xl:px-0">
-        <h1 className="text-[1rem] leading-tight font-bold tracking-[0.08em] text-ink uppercase">Landing window bulletin</h1>
-        <p className="text-[0.844rem] text-ink tabular-nums">
-          <span className="sr-only">Window </span>
-          {fmtSpan(startMs, endMs)}
-          <span className="text-ink-2">, {fmtLength(hours)}</span>
-        </p>
-        <p className="text-[0.75rem] text-ink-2">Data: JPL Horizons, hourly for 2027 · LOLA LDEM_80S, 80 m</p>
-      </div>
-      <Tabs view={view} onChange={onView} className="border-t border-rule xl:border-t-0" />
-    </header>
-  );
-});
 
 /** Fig. 1's title: the plate's number and the site it is centred on. */
 function PlateTitle({ meta }: { meta: SiteMeta }) {
@@ -353,25 +149,16 @@ function BandSkeleton() {
 
 export function NavigatorSkeleton() {
   return (
-    <div className="relative flex flex-col xl:h-[calc(100dvh-2.75rem)] xl:overflow-hidden" aria-busy="true">
+    <div className="relative flex h-dvh min-h-[38rem] flex-col overflow-hidden" aria-busy="true">
       <p className="sr-only" role="status">
         Loading the Navigator
       </p>
-      <div className="flex items-baseline gap-4 border-b border-ink bg-paper px-4 pt-3 pb-2.5" aria-hidden="true">
+      <div className="flex h-14 shrink-0 items-center gap-6 border-b border-ink bg-paper px-4" aria-hidden="true">
         <div className="h-4 w-56 bg-paper-3" />
-        <div className="h-3.5 w-80 bg-paper-3" />
+        <div className="mx-auto h-4 w-52 bg-paper-3" />
+        <div className="h-9 w-44 bg-paper-3" />
       </div>
-      <div className="border-b border-rule bg-paper-2 px-4 py-3">
-        <div className="flex flex-wrap gap-5" aria-hidden="true">
-          {[15, 10, 15, 11].map((w, i) => (
-            <div key={i} className="flex flex-col gap-1.5">
-              <div className="h-3 w-20 bg-paper-3" />
-              <div className="h-8 bg-paper-3" style={{ width: `${w}rem` }} />
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="grid flex-1 grid-cols-1 md:grid-cols-[minmax(19rem,22rem)_minmax(0,1fr)] xl:grid-cols-[24rem_minmax(0,1fr)_21rem]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(19rem,22rem)_minmax(0,1fr)] xl:grid-cols-[24rem_minmax(0,1fr)_21rem]">
         <div className="space-y-3 border-b border-rule bg-paper-2 px-4 py-4 md:border-r md:border-b-0" aria-hidden="true">
           <div className="h-5 w-3/4 bg-paper-3" />
           {Array.from({ length: 9 }, (_, i) => (
@@ -388,106 +175,98 @@ export function NavigatorSkeleton() {
 // ---------- The app ----------
 
 type Load = { status: "loading" } | { status: "ready"; data: SiteData } | { status: "error"; message: string };
-type CustomRecord = {
-  lat: number;
-  lon: number;
-  status: "loading" | "ready" | "error";
-  data?: SiteData;
-  message?: string;
-  /** Why the terrain around a point north of 80° S did not load; its data then has a smooth horizon. */
-  terrainError?: string;
-};
-/** Custom sites north of this latitude take their terrain from NASA Moon Trek (src/lib/localTerrain.ts). */
-const POLAR_CUSTOM_LAT = -80;
-/** A custom-site load: the point and the window it must cover. Each new object starts a load. */
-type CustomRequest = { lat: number; lon: number; fromMs: number; toMs: number };
-
 /** Same point to the 4 decimals the URL keeps. */
 const samePoint = (a: { lat: number; lon: number }, b: { lat: number; lon: number }) =>
   Math.abs(a.lat - b.lat) < 5e-5 && Math.abs(a.lon - b.lon) < 5e-5;
 
 export default function NavigatorApp() {
   const params = useSearchParams();
-  // Launch from Earth: the chosen launch site and lift-off, shared by the Launch tab and the System view.
-  const [launchSiteId, setLaunchSiteId] = useState<string | null>(null);
-  const [launchPick, setLaunchPick] = useState<LaunchPick | null>(null);
+  return (
+    <PlanProvider initial={() => stateFromUrl(readUrl(new URLSearchParams(params.toString())))}>
+      <Navigator />
+    </PlanProvider>
+  );
+}
+
+function Navigator() {
+  const params = useSearchParams();
+  const pathname = usePathname();
+  const query = params.toString();
+  const [home] = useState(pathname);
+  const store = usePlanStore();
+
+  // The shared plan (src/state/plan.tsx); each field keeps the name and shape it had as local state.
+  const [view, setView] = usePlanField("view");
+  const [aboutOpen, setAboutOpen] = usePlanField("aboutOpen");
+  const [startMs, setStartMs] = usePlanField("startMs");
+  const [durationHours, setDurationHours] = usePlanField("durationHours");
+  const [nowMs, setNowMs] = usePlanField("nowMs");
+  const [selectedId, setSelectedId] = usePlanField("selectedId");
+  const [change, setChange] = usePlanField("change");
+  const [gap, setGap] = usePlanField("gap");
+  const [picked, setPicked] = usePlanField("picked");
+  const [playing, setPlaying] = usePlanField("playing");
+  const [custom, setCustom] = usePlanField("custom");
+  const [customReq, setCustomReq] = usePlanField("customReq");
+  const customLat = custom?.lat;
+  const customLon = custom?.lon;
+  // A point picked at the Moon level; its smooth-horizon tracks come from the ephemeris.
+  const [point, setPoint] = usePlanField("point");
+  // Launch from Earth: the chosen launch site, lift-off and transfer time, shared by the Launch tab and the System view.
+  const [launchSiteId, setLaunchSiteId] = usePlanField("launchSiteId");
+  const [launchPick, setLaunchPick] = usePlanField("launchPick");
+  const [transitDays, setTransitDays] = usePlanField("transitDays");
   const transferArc = useMemo(
     () => (launchPick ? { launchMs: launchPick.launchMs, arrivalMs: launchPick.arrivalMs, launchSiteId: launchPick.launchSiteId } : null),
     [launchPick],
   );
-  const pathname = usePathname();
-  const query = params.toString();
-  const [init] = useState(() => readUrl(new URLSearchParams(query)));
-  const [home] = useState(pathname);
 
-  const [view, setView] = useState<View>(init.view);
-  const [startMs, setStartMs] = useState(init.startMs);
-  const [durationHours, setDurationHours] = useState(init.hours);
-  const [nowMs, setNowMs] = useState(init.startMs + init.atHours * HOUR);
-  const [selectedId, setSelectedId] = useState<string | null>(init.site);
-  const [change, setChange] = useState<WindowChange | null>(null);
-  const [gap, setGap] = useState(init.gap);
-  const [picked, setPicked] = useState<string[] | null>(init.cmp);
-  const [playing, setPlaying] = useState(false);
   const [loads, setLoads] = useState<Record<string, Load>>(() =>
     Object.fromEntries(sites.map((s) => [s.id, { status: "loading" } as Load])),
   );
-  const [custom, setCustom] = useState<CustomRecord | null>(() =>
-    init.custom ? { ...init.custom, status: "loading" } : null,
-  );
-  const [customReq, setCustomReq] = useState<CustomRequest | null>(() =>
-    init.custom ? { ...init.custom, fromMs: init.startMs, toMs: init.startMs + init.hours * HOUR } : null,
-  );
-
-  // A point picked at the Moon level, and the ephemeris its smooth-horizon tracks are computed from.
-  const [point, setPoint] = useState<{ lat: number; lon: number } | null>(init.pt);
   const [system, setSystem] = useState<SystemData | null>(null);
 
   // ---- URL in ----
   // The page stays mounted across client navigations (and is kept alive while
   // another route shows), so a later visit with new search params, such as a
-  // second pick on the landing page, must reset the view. Our own URL writes
+  // second pick on the landing page, must reset the plan. Our own URL writes
   // come back here too; they are recognised and skipped. A link that names no
   // site or window (the navbar's bare /tool, or ?view=about) keeps the current
   // plan and only switches the tab it names; the URL is then written back.
-  const [seenQuery, setSeenQuery] = useState(query);
-  const [ownQuery, setOwnQuery] = useState<string | null>(null);
-  const [urlEpoch, setUrlEpoch] = useState(0);
-  if (pathname === home && query !== seenQuery) {
-    setSeenQuery(query);
+  // Applied before paint, in one store update.
+  const seenQuery = useRef(query);
+  const ownQuery = useRef<string | null>(null);
+  const urlEpoch = usePlan((s) => s.urlEpoch);
+  useLayoutEffect(() => {
+    if (pathname !== home || query === seenQuery.current) return;
+    seenQuery.current = query;
+    if (query === ownQuery.current) return;
     const incoming = new URLSearchParams(query);
-    const namesPlan = ["site", "start", "hours", "custom", "cmp", "pt"].some((k) => incoming.has(k));
-    if (query !== ownQuery && !namesPlan && incoming.has("view")) {
-      setView(readUrl(incoming).view);
-      setUrlEpoch((n) => n + 1);
-    } else if (query !== ownQuery && namesPlan) {
+    const namesPlan = PLAN_KEYS.some((k) => incoming.has(k));
+    if (!namesPlan && incoming.has("view")) {
+      store.setState((s) => ({ view: readUrl(incoming).view, urlEpoch: s.urlEpoch + 1 }));
+    } else if (namesPlan) {
       const u = readUrl(incoming);
-      setView(u.view);
-      setStartMs(u.startMs);
-      setDurationHours(u.hours);
-      setNowMs(u.startMs + u.atHours * HOUR);
-      setSelectedId(u.site);
-      setChange(null);
-      setGap(u.gap);
-      setPicked(u.cmp);
-      setPoint(u.pt);
-      setPlaying(false);
-      setUrlEpoch((n) => n + 1);
+      const next = stateFromUrl(u);
+      const prev = store.getState().custom;
       const uEnd = u.startMs + u.hours * HOUR;
-      if (!u.custom) {
-        setCustom(null);
-        setCustomReq(null);
-      } else if (
-        !custom ||
-        !samePoint(custom, u.custom) ||
-        custom.status === "error" ||
-        (custom.status === "ready" && !(custom.data && covers(custom.data, u.startMs, uEnd)))
-      ) {
-        setCustom({ ...u.custom, status: "loading" });
-        setCustomReq({ ...u.custom, fromMs: u.startMs, toMs: uEnd });
+      // Keep a custom site that is already loaded for this point and window.
+      const keepCustom =
+        !!u.custom &&
+        !!prev &&
+        samePoint(prev, u.custom) &&
+        prev.status !== "error" &&
+        !(prev.status === "ready" && !(prev.data && covers(prev.data, u.startMs, uEnd)));
+      const update: Partial<PlanState> = { ...next, systemMs: null, urlEpoch: store.getState().urlEpoch + 1 };
+      if (keepCustom) {
+        delete update.custom;
+        delete update.customReq;
       }
+      store.setState(update);
+    } else {
+      store.setState((s) => ({ urlEpoch: s.urlEpoch + 1 }));
     }
-  }
+  }, [query, pathname, home, store]);
 
   const endMs = startMs + durationHours * HOUR;
 
@@ -547,7 +326,7 @@ export default function NavigatorApp() {
     return () => {
       alive = false;
     };
-  }, [customReq]);
+  }, [customReq, setCustom]);
 
   // The ephemeris is only needed once a point is picked; loadSystem caches it for the Moon and System levels.
   const wantSystem = !!point && !system;
@@ -609,7 +388,7 @@ export default function NavigatorApp() {
   else if (selectedId && SITE_IDS.has(selectedId)) effectiveId = selectedId;
   else effectiveId = ranking[0]?.siteId ?? FALLBACK_SITE;
 
-  const customName = custom ? formatLatLon(custom.lat, custom.lon) : "";
+  const customName = custom ? fmtLatLon(custom.lat, custom.lon) : "";
   const nameOf = useCallback(
     (id: string) => (id === CUSTOM_ID ? customName : (sites.find((s) => s.id === id)?.name ?? id)),
     [customName],
@@ -647,7 +426,7 @@ export default function NavigatorApp() {
     effectiveRef.current = effectiveId;
   }, [effectiveId]);
 
-  const select = useCallback((id: string) => setSelectedId(id), []);
+  const select = useCallback((id: string) => setSelectedId(id), [setSelectedId]);
 
   // ---- Window changes ----
 
@@ -674,7 +453,7 @@ export default function NavigatorApp() {
         }
       }
     },
-    [startMs, durationHours, custom],
+    [setSelectedId, setNowMs, setStartMs, setDurationHours, custom, setChange, startMs, durationHours, setCustom, setCustomReq],
   );
 
   const undoChange = useCallback(() => {
@@ -682,7 +461,7 @@ export default function NavigatorApp() {
     applyWindow(change.fromStartMs, change.fromHours, null);
   }, [change, applyWindow]);
 
-  const dismissChange = useCallback(() => setChange(null), []);
+  const dismissChange = useCallback(() => setChange(null), [setChange]);
 
   const moveStart = useCallback(
     (ms: number) => applyWindow(ms, durationHours, "Best start in the next two weeks"),
@@ -697,7 +476,7 @@ export default function NavigatorApp() {
       setSelectedId(CUSTOM_ID);
       setCustomReq({ lat, lon, fromMs: startMs, toMs: endMs });
     },
-    [startMs, endMs],
+    [setCustom, setSelectedId, setCustomReq, startMs, endMs],
   );
 
   const retrySelected = useCallback(() => {
@@ -711,26 +490,26 @@ export default function NavigatorApp() {
     setCustom(null);
     setSelectedId((prev) => (prev === CUSTOM_ID ? null : prev));
     setPicked((prev) => (prev ? prev.filter((p) => p !== CUSTOM_ID) : prev));
-  }, []);
+  }, [setCustom, setCustomReq, setPicked, setSelectedId]);
 
   // ---- Picked point ----
 
   const pickPoint = useCallback((p: { lat: number; lon: number } | null) => {
     setPoint(p);
-    if (!p) setPicked((prev) => (prev ? prev.filter((id) => id !== POINT_SITE_ID) : prev));
-  }, []);
+    if (!p) setPicked((prev) => (prev ? prev.filter((id) => id !== POINT_ID) : prev));
+  }, [setPicked, setPoint]);
 
   // ---- Time ----
 
   const scrub = useCallback((ms: number) => {
     setPlaying(false);
     setNowMs(ms);
-  }, []);
+  }, [setNowMs, setPlaying]);
 
   // The System view's rail covers all of 2027. Inside the mission window it moves the shared clock;
   // outside it, the System and Moon levels share their own time, which is kept when stepping between them and
   // dropped at the site level, which only covers the window.
-  const [systemMs, setSystemMs] = useState<number | null>(null);
+  const [systemMs, setSystemMs] = usePlanField("systemMs");
   const systemNow = systemMs ?? nowMs;
   const scrubSystem = useCallback(
     (ms: number) => {
@@ -741,7 +520,7 @@ export default function NavigatorApp() {
         setSystemMs(ms);
       }
     },
-    [startMs, endMs, scrub],
+    [startMs, endMs, setSystemMs, scrub],
   );
   // How the level on show was reached by zoom or step: from the level above it, or from the one below.
   const [arrival, setArrival] = useState<"above" | "below" | null>(null);
@@ -757,7 +536,7 @@ export default function NavigatorApp() {
     if (v !== "moon" && v !== "system") setSystemMs(null);
     setArrival(from);
     setView(v);
-  }, []);
+  }, [setSystemMs, setView]);
   const changeView = useCallback(
     (v: View) => {
       window.clearTimeout(hop.current);
@@ -819,27 +598,48 @@ export default function NavigatorApp() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, startMs, endMs]);
+  }, [playing, startMs, endMs, setNowMs]);
 
-  const togglePlay = useCallback(() => setPlaying((p) => !p), []);
+  const togglePlay = useCallback(() => setPlaying((p) => !p), [setPlaying]);
 
   // ---- Views ----
 
+  // About & data opens as a drawer over the current mode.
   const pendingAnchor = useRef<string | null>(null);
   const showAbout = useCallback(() => {
     pendingAnchor.current = "about-check";
-    setView("about");
-  }, []);
+    setAboutOpen(true);
+  }, [setAboutOpen]);
+  const openAbout = useCallback(() => setAboutOpen(true), [setAboutOpen]);
+  const closeAbout = useCallback(() => setAboutOpen(false), [setAboutOpen]);
   useEffect(() => {
-    if (view !== "about" || !pendingAnchor.current) return;
+    if (!aboutOpen || !pendingAnchor.current) return;
     document.getElementById(pendingAnchor.current)?.scrollIntoView({ block: "start" });
     pendingAnchor.current = null;
-  }, [view]);
-  // A link such as /tool?view=about#about-ai opens on that section.
+  }, [aboutOpen]);
+  // A link such as /tool?view=about#about-ai opens on that section. The anchor is kept until the regions have
+  // loaded, because the check table above it grows when they do (and the URL write drops the hash).
+  const linkAnchor = useRef<string | null>(null);
   useEffect(() => {
     const id = window.location.hash.slice(1);
-    if (view === "about" && /^about-[a-z]+$/.test(id)) document.getElementById(id)?.scrollIntoView({ block: "start" });
-  }, [view, urlEpoch]);
+    if (/^about-[a-z]+$/.test(id)) linkAnchor.current = id;
+  }, [urlEpoch]);
+  useEffect(() => {
+    const id = linkAnchor.current;
+    if (!aboutOpen || !id) return;
+    document.getElementById(id)?.scrollIntoView({ block: "start" });
+    if (rankingReady) linkAnchor.current = null;
+  }, [aboutOpen, urlEpoch, rankingReady]);
+
+  // ---- Modes ----
+  // Plan holds the three zoom levels (site, Moon, System); switching back to Plan returns to the last one used.
+  const lastPlanView = useRef<View>(view === "launch" || view === "compare" ? "navigator" : view);
+  useEffect(() => {
+    if (view === "navigator" || view === "moon" || view === "system") lastPlanView.current = view;
+  }, [view]);
+  const mode: Mode = view === "launch" || view === "compare" ? view : "plan";
+  const changeMode = useCallback((m: Mode) => changeView(m === "plan" ? lastPlanView.current : m), [changeView]);
+  const [windowOpen, setWindowOpen] = useState(false);
 
   // ---- URL ----
 
@@ -852,19 +652,23 @@ export default function NavigatorApp() {
         hours: durationHours,
         view,
         cmp: picked,
-        custom: custom ? { lat: custom.lat, lon: custom.lon } : null,
+        custom: customLat !== undefined && customLon !== undefined ? { lat: customLat, lon: customLon } : null,
         pt: point,
         atHours: urlAt,
         gap,
+        launchSiteId,
+        launchPick,
+        transitDays,
+        about: aboutOpen,
       });
       const next = `${window.location.pathname}?${q}`;
       if (next !== window.location.pathname + window.location.search + window.location.hash) {
-        setOwnQuery(new URLSearchParams(q).toString());
+        ownQuery.current = new URLSearchParams(q).toString();
         window.history.replaceState(null, "", next);
       }
     }, 300);
     return () => window.clearTimeout(t);
-  }, [effectiveId, startMs, durationHours, view, picked, custom, point, urlAt, gap, seenQuery]);
+  }, [effectiveId, startMs, durationHours, view, picked, customLat, customLon, point, urlAt, gap, launchSiteId, launchPick, transitDays, aboutOpen, urlEpoch]);
 
   // ---- Derived props for panels ----
 
@@ -944,7 +748,7 @@ export default function NavigatorApp() {
   const compareOptions: CompareOption[] = useMemo(() => {
     const out: CompareOption[] = sites.map((s) => ({ id: s.id, name: s.name, site: rankable.get(s.id) ?? null }));
     if (custom) out.push({ id: CUSTOM_ID, name: customName, custom: true, site: customData });
-    if (point) out.push({ id: POINT_SITE_ID, name: formatLatLon(point.lat, point.lon), noTerrain: true, site: pointSite });
+    if (point) out.push({ id: POINT_ID, name: fmtLatLon(point.lat, point.lon), noTerrain: true, site: pointSite });
     return out;
   }, [rankable, custom, customName, customData, point, pointSite]);
 
@@ -957,7 +761,10 @@ export default function NavigatorApp() {
   /** Hand a picked point to the terrain-aware custom-site path and open it at the site level. */
   const pointToTerrain = useCallback(
     (lat: number, lon: number) => {
-      addCustom(lat, lon);
+      // The same rule as the custom-site form (validateSitePoint); PointPanel only offers it for points that pass.
+      const v = validateSitePoint(lat, lon);
+      if (!v.ok) return;
+      addCustom(v.lat, v.lon);
       changeView("navigator");
     },
     [addCustom, changeView],
@@ -972,15 +779,17 @@ export default function NavigatorApp() {
     (centre: { lat: number; lon: number } | null, byZoom: boolean) => {
       if (hop.current) return;
       const t = centre ? siteTarget(centre, point) : null;
-      if (t && t.kind !== "region") {
+      // A point the site level cannot open (within 0.1° of a pole, or off the polar grid) keeps the current site.
+      const v = t && t.kind !== "region" ? validateSitePoint(t.lat, t.lon) : null;
+      if (t && v?.ok) {
         if (t.kind === "centre") pickPoint({ lat: t.lat, lon: t.lon });
         // The same point, already loaded, is opened as it stands.
-        if (custom && custom.status === "ready" && samePoint(custom, t)) setSelectedId(CUSTOM_ID);
-        else addCustom(t.lat, t.lon);
+        if (custom && custom.status === "ready" && samePoint(custom, v)) setSelectedId(CUSTOM_ID);
+        else addCustom(v.lat, v.lon);
       }
       goLevel("site", byZoom);
     },
-    [point, custom, pickPoint, addCustom, goLevel],
+    [point, goLevel, pickPoint, custom, setSelectedId, addCustom],
   );
   const zoomToSite = useCallback((centre: { lat: number; lon: number }) => openSiteAt(centre, true), [openSiteAt]);
   /** The Moon level's step buttons: down to the site level follows the same rule as zooming in. */
@@ -998,10 +807,10 @@ export default function NavigatorApp() {
 
   /** Put the picked point in the Compare view, beside what is already there, and open it. */
   const comparePoint = useCallback(() => {
-    const base = comparePicked.filter((id) => id !== POINT_SITE_ID).slice(0, 2);
-    setPicked([...base, POINT_SITE_ID]);
+    const base = comparePicked.filter((id) => id !== POINT_ID).slice(0, 2);
+    setPicked([...base, POINT_ID]);
     changeView("compare");
-  }, [comparePicked, changeView]);
+  }, [comparePicked, setPicked, changeView]);
 
   const aboutEntries = useMemo(
     () => sites.map((s) => ({ id: s.id, name: s.name, site: rankable.get(s.id) ?? null })),
@@ -1010,8 +819,10 @@ export default function NavigatorApp() {
 
   const sun = sample ? { az: sample.sunAz, el: sample.sunEl } : null;
   const earth = sample ? { az: sample.earthAz, el: sample.earthEl } : null;
-  const customLat = custom?.lat;
-  const customLon = custom?.lon;
+  // Up or down at the time shown, from the one up test (isUp) every view uses.
+  const sunUpNow = selectedData ? isUp(selectedData, "sun", nowMs) : false;
+  const earthUpNow = selectedData ? isUp(selectedData, "earth", nowMs) : false;
+  const upNow = useMemo(() => ({ sun: sunUpNow, earth: earthUpNow }), [sunUpNow, earthUpNow]);
   const customPoint = useMemo(
     () => (customLat !== undefined && customLon !== undefined ? { lat: customLat, lon: customLon } : null),
     [customLat, customLon],
@@ -1043,32 +854,48 @@ export default function NavigatorApp() {
       onRetry: retryCustom,
     };
   }, [customLat, customTerrainData, customStatus, customMessage, customTerrainError, retryCustom]);
-  const windowLabel = `${fmtSpan(startMs, endMs)}, ${fmtLength(durationHours)}`;
   const plotHeight = usePlotHeight();
   // The Sun's and Earth's bearing paths on the plate cover the same window as Fig. 2.
   const plateTrack = useMemo(() => (selectedData ? { site: selectedData, startMs, endMs } : null), [selectedData, startMs, endMs]);
   const fade = `transition-opacity duration-200 motion-reduce:transition-none ${fading ? "opacity-0" : "opacity-100"}`;
 
   return (
-    <div className="relative flex flex-col xl:h-[calc(100dvh-2.75rem)] xl:min-h-[38rem] xl:overflow-hidden">
-      <Masthead startMs={startMs} endMs={endMs} hours={durationHours} view={view} onView={changeView} />
+    <div className="relative flex flex-col xl:h-dvh xl:min-h-[38rem] xl:overflow-hidden">
+      <h1 className="sr-only">Lunar Landing Site Navigator</h1>
+      <AppBar
+        mode={mode}
+        onMode={changeMode}
+        startMs={startMs}
+        endMs={endMs}
+        hours={durationHours}
+        windowOpen={windowOpen}
+        onWindowOpen={setWindowOpen}
+        onAbout={openAbout}
+        windowControls={(close) => (
+          <Controls
+            startMs={startMs}
+            durationHours={durationHours}
+            site={selectedData}
+            siteName={meta.name}
+            onApply={applyWindow}
+            onDone={close}
+            layout="stack"
+            className="p-4"
+          />
+        )}
+      />
 
-      <div className="border-b border-rule bg-paper-2">
-        <Controls
-          startMs={startMs}
-          durationHours={durationHours}
-          site={selectedData}
-          siteName={meta.name}
-          onApply={applyWindow}
-          className="px-4 pt-2 pb-2.5"
-        />
-      </div>
+      {note && (
+        <div className="pointer-events-none fixed top-16 right-3 z-50">
+          <Toast>{note}</Toast>
+        </div>
+      )}
 
       {view === "navigator" && (
         <div
           role="tabpanel"
-          id="view-navigator"
-          aria-labelledby="tab-navigator"
+          id="workspace"
+          aria-labelledby="mode-plan"
           className={`grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(19rem,22rem)_minmax(0,1fr)] xl:grid-cols-[24rem_minmax(0,1fr)_21rem] ${fade}`}
         >
           <div className="relative border-b border-rule bg-paper-2 md:row-span-2 md:border-r md:border-b-0 xl:row-span-1 xl:overflow-y-auto">
@@ -1082,8 +909,6 @@ export default function NavigatorApp() {
               onSelect={select}
               limitHours={gap}
               onLimitChange={setGap}
-              windowLabel={windowLabel}
-              note={note}
             />
             <CustomSiteForm state={customState} onSubmit={addCustom} onRemove={removeCustom} className="border-t border-rule" />
           </div>
@@ -1091,7 +916,7 @@ export default function NavigatorApp() {
           <div className="relative flex min-w-0 flex-col md:col-start-2 xl:overflow-y-auto">
             <section aria-label={`Fig. 1, terrain at ${meta.name}`} className="flex flex-col xl:min-h-[17rem] xl:flex-1">
               <div className="relative h-[24rem] overflow-hidden bg-paper-2 sm:h-[30rem] xl:h-auto xl:flex-1">
-                <PanelBoundary
+                <ErrorBoundary
                   fallback={
                     <PanelProblem>
                       The 3D terrain could not start in this browser, which may have WebGL turned off. The ranking, plots
@@ -1104,6 +929,7 @@ export default function NavigatorApp() {
                     onSelect={select}
                     sun={sun}
                     earth={earth}
+                    up={upNow}
                     regionValues={regionValues}
                     customSite={customPoint}
                     local={plateLocal}
@@ -1113,7 +939,7 @@ export default function NavigatorApp() {
                     levelNav={<LevelNav level="site" onLevel={stepLevel} />}
                     className="h-full w-full"
                   />
-                </PanelBoundary>
+                </ErrorBoundary>
               </div>
             </section>
 
@@ -1122,7 +948,7 @@ export default function NavigatorApp() {
               className="border-t border-ink bg-paper px-4 pt-1.5 pb-2.5 xl:shrink-0"
             >
               {selectedData ? (
-                <PanelBoundary
+                <ErrorBoundary
                   key={`plot-${effectiveId}`}
                   fallback={<PanelProblem>The horizon plot could not be drawn for {meta.name}.</PanelProblem>}
                 >
@@ -1139,7 +965,7 @@ export default function NavigatorApp() {
                     onTogglePlay={togglePlay}
                     className="w-full"
                   />
-                </PanelBoundary>
+                </ErrorBoundary>
               ) : selectedStatus === "error" ? (
                 <PanelProblem>No tracks for {meta.name}, so there is no horizon plot or time rail. The bulletin has the details.</PanelProblem>
               ) : (
@@ -1179,7 +1005,7 @@ export default function NavigatorApp() {
       )}
 
       {view === "system" && (
-        <div role="tabpanel" id="view-system" aria-labelledby="tab-system" className={`relative min-h-0 flex-1 xl:overflow-hidden ${fade}`}>
+        <div role="tabpanel" id="workspace" aria-labelledby="mode-plan" className={`relative min-h-0 flex-1 xl:overflow-hidden ${fade}`}>
           <SystemView
             nowMs={systemNow}
             onScrub={scrubSystem}
@@ -1200,7 +1026,7 @@ export default function NavigatorApp() {
       )}
 
       {view === "moon" && (
-        <div role="tabpanel" id="view-moon" aria-labelledby="tab-moon" className={`relative min-h-0 flex-1 xl:overflow-hidden ${fade}`}>
+        <div role="tabpanel" id="workspace" aria-labelledby="mode-plan" className={`relative min-h-0 flex-1 xl:overflow-hidden ${fade}`}>
           <MoonView
             nowMs={systemNow}
             onScrub={scrubSystem}
@@ -1223,7 +1049,7 @@ export default function NavigatorApp() {
       )}
 
       {view === "launch" && (
-        <div role="tabpanel" id="view-launch" aria-labelledby="tab-launch" className="relative flex min-h-0 flex-1 flex-col xl:overflow-hidden">
+        <div role="tabpanel" id="workspace" aria-labelledby="mode-launch" className="relative flex min-h-0 flex-1 flex-col xl:overflow-hidden">
           <LaunchPanel
             arrivalMs={startMs}
             windowHours={durationHours}
@@ -1231,13 +1057,16 @@ export default function NavigatorApp() {
             selectedLaunchSiteId={launchSiteId}
             onSelectLaunchSite={setLaunchSiteId}
             onPickOpportunity={setLaunchPick}
+            initialPick={launchPick}
+            transitDays={transitDays}
+            onTransitDaysChange={setTransitDays}
             className="min-h-0 flex-1 overflow-y-auto"
           />
         </div>
       )}
 
       {view === "compare" && (
-        <div role="tabpanel" id="view-compare" aria-labelledby="tab-compare" className="relative min-h-0 flex-1 xl:overflow-y-auto">
+        <div role="tabpanel" id="workspace" aria-labelledby="mode-compare" className="relative min-h-0 flex-1 xl:overflow-y-auto">
           <ComparePanel
             options={compareOptions}
             picked={comparePicked}
@@ -1252,16 +1081,23 @@ export default function NavigatorApp() {
             nowMs={nowMs}
             onScrub={scrub}
             limitHours={gap}
-            note={note}
           />
         </div>
       )}
 
-      {view === "about" && (
-        <div role="tabpanel" id="view-about" aria-labelledby="tab-about" className="relative min-h-0 flex-1 xl:overflow-y-auto">
-          <AboutPanel entries={aboutEntries} loading={!rankingReady} />
+      <Drawer open={aboutOpen} onClose={closeAbout} label="About & data">
+        <div className="sticky top-0 z-10 flex items-center gap-4 border-b border-ink bg-paper px-4 py-2.5 xl:px-8">
+          <p className="text-[0.75rem] font-semibold tracking-[0.08em] text-ink uppercase">About &amp; data</p>
+          <p className="hidden min-w-0 truncate text-[0.75rem] text-ink-2 sm:block">Data: JPL Horizons, hourly for 2027 · LOLA LDEM_80S, 80 m</p>
+          <button type="button" onClick={closeAbout} className="ml-auto inline-flex h-8 items-center gap-1.5 border border-ink px-2.5 text-[0.8rem] font-medium text-ink hover:bg-paper-3">
+            Close<span className="sr-only"> About &amp; data</span>
+            <svg viewBox="0 0 16 16" aria-hidden="true" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" />
+            </svg>
+          </button>
         </div>
-      )}
+        <AboutPanel entries={aboutEntries} loading={!rankingReady} />
+      </Drawer>
     </div>
   );
 }

@@ -1,4 +1,5 @@
-// Rise and set contacts of the Sun and Earth against a site's terrain horizon.
+// Rise and set of the Sun and Earth against a site's terrain horizon, and the
+// one test for whether a body is up (isUp). Every view asks these functions.
 //
 // A body counts as up while any part of its disc clears the terrain, the same
 // rule src/lib/sky.ts uses for its visibility flags, so contact times line up
@@ -86,15 +87,35 @@ function bodyContacts(site: SiteData, body: Body, startMs: number, endMs: number
   return out;
 }
 
-/** Every sunrise, sunset, Earthrise and Earthset in (startMs, endMs], in time order. */
+const eventCache = new WeakMap<SiteData, Map<string, ContactEvent[]>>();
+
+/** Every sunrise, sunset, Earthrise and Earthset in (startMs, endMs], in time order. Cached per site and window. */
 export function contactEvents(site: SiteData, startMs: number, endMs: number): ContactEvent[] {
-  return [...bodyContacts(site, "sun", startMs, endMs), ...bodyContacts(site, "earth", startMs, endMs)].sort(
+  let bySite = eventCache.get(site);
+  if (!bySite) eventCache.set(site, (bySite = new Map()));
+  const key = `${startMs}|${endMs}`;
+  let hit = bySite.get(key);
+  if (!hit) {
+    if (bySite.size > 64) bySite.clear();
+    hit = [...bodyContacts(site, "sun", startMs, endMs), ...bodyContacts(site, "earth", startMs, endMs)].sort(
     (p, q) => p.ms - q.ms,
   );
+    bySite.set(key, hit);
+  }
+  return hit;
 }
 
-/** Whether the body is up at ms, consistent with the refined contact times. */
-export function isUpAt(site: SiteData, body: Body, ms: number): boolean {
+/** The same contacts with times rounded to the minute, as tables print them. */
+export function contactsInWindow(site: SiteData, startMs: number, endMs: number): ContactEvent[] {
+  return contactEvents(site, startMs, endMs).map((e) => ({ ...e, ms: Math.min(endMs, Math.round(e.ms / 60_000) * 60_000) }));
+}
+
+/**
+ * Whether a body is up at ms: any part of its disc clears the terrain
+ * horizon. The one up/down test in the app, consistent with the refined
+ * contact times and with windowStats.
+ */
+export function isUp(site: SiteData, body: Body, ms: number): boolean {
   const { sky } = site;
   const pos = Math.min(Math.max(stepIndex(site, ms), 0), sky.count - 1);
   const j = Math.floor(pos);
@@ -109,7 +130,7 @@ export function isUpAt(site: SiteData, body: Body, ms: number): boolean {
 export function visibilitySpans(site: SiteData, body: Body, startMs: number, endMs: number): VisibilitySpan[] {
   if (!(endMs > startMs)) return [];
   const spans: VisibilitySpan[] = [];
-  let up = isUpAt(site, body, startMs);
+  let up = isUp(site, body, startMs);
   let from = startMs;
   for (const e of bodyContacts(site, body, startMs, endMs)) {
     if (e.ms > from) spans.push({ startMs: from, endMs: e.ms, up });

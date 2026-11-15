@@ -8,11 +8,11 @@ import { eclipticToBody, moonAxes } from "./moonFrame";
 import type { SiteData, SkyData } from "./sky";
 import { C_KM_S, MOON_RADIUS_KM, type SystemData } from "./system";
 import type { HorizonProfile } from "./terrain";
+import { HOUR } from "./format";
 
 export const POINT_SITE_ID = "point";
 
 const RAD = Math.PI / 180;
-const HOUR = 3_600_000;
 /** Eye height above the sphere, the same 2 m mast the terrain horizons of the nine regions use. */
 export const SMOOTH_MAST_M = 2;
 /** Dip of a smooth sphere's horizon below the local horizontal from the mast, degrees (about -0.087). */

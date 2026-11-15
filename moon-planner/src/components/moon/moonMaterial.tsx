@@ -9,13 +9,14 @@ import { useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { BackSide, Color, NoColorSpace, RepeatWrapping, SRGBColorSpace, TextureLoader, Vector2, Vector3, type Mesh, type PerspectiveCamera, type ShaderMaterial, type Texture } from "three";
 import type { Vec3 } from "@/lib/system";
+import { RENDER, TOKENS } from "@/lib/tokens";
 import { GLOBE_VERT, globeFragment } from "./globeShader";
 import { TileLayer, type TileStatus } from "./tiles/TileLayer";
 
 export { PLATE_HALF_KM } from "./globeShader";
 
-const INK = "#121a22";
-const PAPER = "#eef1f0";
+const INK = TOKENS.ink;
+const PAPER = TOKENS.paper;
 const RAD = Math.PI / 180;
 
 /** The 2k colour map and the 1k elevation map come first; the 4k colour map and the fine relief replace and join them when loaded. */
@@ -130,10 +131,10 @@ export function MoonGlobe({
       uLines: { value: 1 },
       uDash: { value: 1 },
       uSunDir: { value: new Vector3(1, 0, 0) },
-      uDayLo: { value: new Color("#5b676d") },
-      uDayHi: { value: new Color("#f4f5f3") },
-      uNightLo: { value: new Color("#2e4455") },
-      uNightHi: { value: new Color("#496174") },
+      uDayLo: { value: new Color(RENDER.moonDayLo) },
+      uDayHi: { value: new Color(RENDER.moonDayHi) },
+      uNightLo: { value: new Color(RENDER.moonNightLo) },
+      uNightHi: { value: new Color(RENDER.moonNightHi) },
       uInk: { value: new Color(INK) },
       uPaper: { value: new Color(PAPER) },
     }),

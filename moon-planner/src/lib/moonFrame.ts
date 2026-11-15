@@ -7,9 +7,9 @@
 // use, which is below what this view can show.
 
 import { MOON_RADIUS_KM, positionsAt, type SystemData, type Vec3 } from "./system";
+import { DAY_MS } from "./format";
 
 const RAD = Math.PI / 180;
-const DAY_MS = 86_400_000;
 const J2000_MS = Date.UTC(2000, 0, 1, 12, 0, 0);
 /** TDB minus UTC: 32.184 s plus 37 leap seconds (unchanged since 2017). */
 const TDB_MINUS_UTC_MS = 69_184;

@@ -3,6 +3,7 @@
 // (scripts/process-dem.ts). Everything here is pure and client-safe.
 
 import { horizonElevationAt, type HorizonProfile } from "./terrain";
+import { HOUR, fmtDuration, pct } from "./format";
 
 export type SkyData = {
   siteId: string;
@@ -22,7 +23,6 @@ export const SUN_RADIUS_DEG = 0.2665;
 /** Apparent angular radius of Earth's disc from the Moon (deg), mean. */
 export const EARTH_RADIUS_DEG = 0.95;
 
-const HOUR = 3_600_000;
 
 // ---------- Loading ----------
 
@@ -53,6 +53,12 @@ export function rangeOf(sky: SkyData): { startMs: number; endMs: number } {
   return { startMs: sky.startMs, endMs: sky.startMs + (sky.count - 1) * sky.stepMs };
 }
 
+/** True when the site's tracks cover [startMs, endMs]. */
+export function covers(site: SiteData, startMs: number, endMs: number): boolean {
+  const r = rangeOf(site.sky);
+  return startMs >= r.startMs && endMs <= r.endMs;
+}
+
 /** Linear interpolation of an azimuth series, handling the 360° wrap. */
 function lerpAz(a: number, b: number, f: number): number {
   let d = b - a;
@@ -70,10 +76,11 @@ export type SkySample = {
   /** Terrain horizon elevation under the Sun / Earth (deg). */
   sunHorizon: number;
   earthHorizon: number;
-  /** Fraction of the Sun's disc above the terrain (0..1, linear approximation). */
+  /**
+   * Fraction of the Sun's disc above the terrain (0..1, linear approximation),
+   * for "n% of disc up". Whether a body is up at all is isUp() in ./contacts.
+   */
   sunFraction: number;
-  /** Any part of Earth's disc above the terrain (direct-to-Earth line of sight). */
-  earthUp: boolean;
 };
 
 export function sampleAt({ sky, horizon }: SiteData, ms: number): SkySample {
@@ -95,7 +102,6 @@ export function sampleAt({ sky, horizon }: SiteData, ms: number): SkySample {
     sunHorizon,
     earthHorizon,
     sunFraction: discFraction(sunEl - sunHorizon, SUN_RADIUS_DEG),
-    earthUp: earthEl + EARTH_RADIUS_DEG > earthHorizon,
   };
 }
 
@@ -222,7 +228,13 @@ export function nextEvent(site: SiteData, ms: number, body: "sun" | "earth"): Ne
 
 // ---------- Ranking ----------
 
-export type MissionScore = WindowStats & { siteId: string; score: number; reasons: string[] };
+/** The three weighted parts of a score, each already multiplied by its weight; they add up to the score. */
+export type ScoreParts = { power: number; earth: number; dark: number };
+
+export type MissionScore = WindowStats & { siteId: string; score: number; parts: ScoreParts; reasons: string[] };
+
+/** Score weights: mean Sun power, time with Earth in view, keeping the longest dark spell short. */
+export const SCORE_WEIGHTS = { power: 0.45, earth: 0.3, dark: 0.25 } as const;
 
 /**
  * Score a mission window. Weights: power 45%, Earth contact 30%, shortest
@@ -230,13 +242,18 @@ export type MissionScore = WindowStats & { siteId: string; score: number; reason
  */
 export function scoreWindow(siteId: string, s: WindowStats): MissionScore {
   const darkPenalty = s.hours > 0 ? Math.min(1, s.longestDarkHours / s.hours) : 1;
-  const score = 0.45 * s.sunPower + 0.3 * s.earthVisible + 0.25 * (1 - darkPenalty);
+  const parts: ScoreParts = {
+    power: SCORE_WEIGHTS.power * s.sunPower,
+    earth: SCORE_WEIGHTS.earth * s.earthVisible,
+    dark: SCORE_WEIGHTS.dark * (1 - darkPenalty),
+  };
+  const score = parts.power + parts.earth + parts.dark;
   const reasons: string[] = [];
-  reasons.push(`Sun up ${Math.round(s.sunlit * 100)}% of the window`);
-  reasons.push(`Earth in view ${Math.round(s.earthVisible * 100)}%`);
-  if (s.longestDarkHours > 0) reasons.push(`longest dark spell ${formatHours(s.longestDarkHours)}`);
+  reasons.push(`Sun up ${pct(s.sunlit)} of the window`);
+  reasons.push(`Earth in view ${pct(s.earthVisible)}`);
+  if (s.longestDarkHours > 0) reasons.push(`longest dark spell ${fmtDuration(s.longestDarkHours)}`);
   else reasons.push("no darkness");
-  return { ...s, siteId, score, reasons };
+  return { ...s, siteId, score, parts, reasons };
 }
 
 const TIE = 1e-9;
@@ -253,9 +270,30 @@ export function compareScores(a: MissionScore, b: MissionScore): number {
   return 0;
 }
 
+const scoreCache = new WeakMap<SiteData, Map<string, MissionScore>>();
+
+/**
+ * Window statistics and score for one site over [startMs, endMs]: the one
+ * stats source every panel reads. Cached per site object and window, so the
+ * ranking, the details panel, Compare, the timeline captions and the plots
+ * share a single computation.
+ */
+export function missionScore(site: SiteData, startMs: number, endMs: number, siteId = site.sky.siteId): MissionScore {
+  let bySite = scoreCache.get(site);
+  if (!bySite) scoreCache.set(site, (bySite = new Map()));
+  const key = `${siteId}|${startMs}|${endMs}`;
+  let hit = bySite.get(key);
+  if (!hit) {
+    if (bySite.size > 256) bySite.clear();
+    hit = scoreWindow(siteId, windowStats(site, startMs, endMs));
+    bySite.set(key, hit);
+  }
+  return hit;
+}
+
 export function rankSites(sites: Map<string, SiteData>, startMs: number, durationHours: number): MissionScore[] {
   const endMs = startMs + durationHours * HOUR;
-  return [...sites.entries()].map(([id, d]) => scoreWindow(id, windowStats(d, startMs, endMs))).sort(compareScores);
+  return [...sites.entries()].map(([id, d]) => missionScore(d, startMs, endMs, id)).sort(compareScores);
 }
 
 /** Best start time for a mission of durationHours, searched every stepHours in [fromMs, toMs]. */
@@ -269,20 +307,3 @@ export function bestStart(site: SiteData, fromMs: number, toMs: number, duration
   return best;
 }
 
-// ---------- Formatting ----------
-
-export function formatHours(h: number): string {
-  if (h < 1) return `${Math.round(h * 60)} min`;
-  if (h < 48) return `${Math.round(h)} h`;
-  const d = Math.floor(h / 24);
-  const r = Math.round(h - d * 24);
-  return r ? `${d} d ${r} h` : `${d} d`;
-}
-
-export function formatUtc(ms: number): string {
-  const d = new Date(ms);
-  const mon = d.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
-  const hh = String(d.getUTCHours()).padStart(2, "0");
-  const mm = String(d.getUTCMinutes()).padStart(2, "0");
-  return `${d.getUTCDate()} ${mon} ${d.getUTCFullYear()}, ${hh}:${mm} UTC`;
-}

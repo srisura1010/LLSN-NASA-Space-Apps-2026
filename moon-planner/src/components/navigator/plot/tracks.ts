@@ -3,8 +3,8 @@
 // time ticks aligned to UTC hours.
 
 import type { SiteData } from "@/lib/sky";
-import { bodyAt, bodyOf, type Body, type ContactEvent } from "./contacts";
-import { DAY_MS, HOUR_MS } from "./format";
+import { bodyAt, bodyOf, type Body, type ContactEvent } from "@/lib/contacts";
+import { DAY_MS, HOUR_MS } from "@/lib/format";
 import { azDelta, azToU, pxPerDegX, pxPerDegY, xOfU, yOfEl, type Frame } from "./scale";
 
 export type Pt = { x: number; y: number };

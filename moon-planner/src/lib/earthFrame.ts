@@ -8,11 +8,11 @@
 
 import { eclipticToEquatorial, type LatLon } from "./moonFrame";
 import { positionsAt, type SystemData, type Vec3 } from "./system";
+import { DAY_MS } from "./format";
 
 const RAD = Math.PI / 180;
 const ARCSEC = RAD / 3600;
 const TAU = 2 * Math.PI;
-const DAY_MS = 86_400_000;
 const J2000_MS = Date.UTC(2000, 0, 1, 12, 0, 0);
 
 const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];

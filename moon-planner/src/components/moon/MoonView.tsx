@@ -4,7 +4,7 @@
 // IAU/WGCCRE rotation model and lit from the Sun's real direction. It sits
 // between the System level and the site-level terrain plate.
 
-import { Component, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Line, OrbitControls } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
@@ -13,7 +13,11 @@ import type { SmoothSiteData } from "@/lib/anySite";
 import { bodyToLatLon, elevationDeg, moonFrameAt, type LatLon, type MoonFrame } from "@/lib/moonFrame";
 import { sites, type Site } from "@/lib/sites";
 import { EARTH_RADIUS_KM, loadSystem, stateAt, systemEndMs, type SystemData, type SystemState, type Vec3 } from "@/lib/system";
-import YearSlider, { fmtUtc, useYearPlayback } from "../system/YearSlider";
+import { RENDER, TOKENS } from "@/lib/tokens";
+import { fmtFull, fmtInt, fmtLat, fmtLon, fmtSigned } from "@/lib/format";
+import { hasWebGL } from "@/lib/webgl";
+import { ErrorBoundary, Row, SectionLabel, Segmented, ToggleButton, buttonClass } from "../ui";
+import YearSlider, { useYearPlayback } from "../system/YearSlider";
 import { ZoomHint } from "../levels/LevelNav";
 import { useZoomGate } from "../levels/useZoomGate";
 import { BearingTag, Bearing, CLUSTER_AT, ClusterMark, Flag, HIT, LABEL_TEXT, LINE_NAMES, LIFT, LineLegend, LabelProjector, OVER, POLE_DIR, RAY, Ray, arcTowards, handoff, onGlobe, toScene, type Label } from "./marks";
@@ -51,11 +55,11 @@ export type MoonViewProps = {
   className?: string;
 };
 
-const INK = "#121a22";
-const PAPER = "#eef1f0";
-const SUN = "#f0b400";
-const SUN_INK = "#7a5600";
-const EARTH = "#2453c2";
+const INK = TOKENS.ink;
+const PAPER = TOKENS.paper;
+const SUN = TOKENS.sun;
+const SUN_INK = TOKENS.sunInk;
+const EARTH = TOKENS.earth;
 
 /**
  * Earlier landings, shown for context. Apollo lunar module positions from the NASA NSSDCA table of lunar landing
@@ -78,10 +82,7 @@ const LANDINGS: { id: string; short: string; name: string; lat: number; lon: num
 const QUICK_PICKS = ["apollo-11", "apollo-15", "chandrayaan-3", "change-6"].map((id) => LANDINGS.find((l) => l.id === id)!);
 
 const RAD = Math.PI / 180;
-const fmtInt = (n: number) => Math.round(n).toLocaleString("en-US");
-const fmtSigned = (n: number, digits = 2) => `${n < 0 ? "−" : "+"}${Math.abs(n).toFixed(digits)}°`;
-const fmtLat = (v: number, digits = 2) => `${Math.abs(v).toFixed(digits)}° ${v < 0 ? "S" : "N"}`;
-const fmtLon = (v: number, digits = 2) => `${Math.abs(v).toFixed(digits)}° ${v < 0 ? "W" : "E"}`;
+
 
 /** A region's USGS outline draped on the sphere. */
 function Outline({ points, selected }: { points: Vec3[]; selected: boolean }) {
@@ -349,25 +350,6 @@ function RegionMark({ site, selected, callout, outlined, onSelect }: { site: Sit
 
 // ---------- Fallback when WebGL is missing ----------
 
-function hasWebGL() {
-  try {
-    const c = document.createElement("canvas");
-    return Boolean(c.getContext("webgl2") ?? c.getContext("webgl"));
-  } catch {
-    return false;
-  }
-}
-
-class GlBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
-  state = { failed: false };
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-  render() {
-    return this.state.failed ? this.props.fallback : this.props.children;
-  }
-}
-
 /** A flat chart of the south polar cap to 60° S, 0° up and 90° E to the right, drawn without WebGL. */
 function PolarFallback({ frame, selectedId, onSelect }: { frame: MoonFrame; selectedId: string | null; onSelect: (id: string) => void }) {
   const xy = (lat: number, lon: number): [number, number] => {
@@ -387,11 +369,11 @@ function PolarFallback({ frame, selectedId, onSelect }: { frame: MoonFrame; sele
         the edge point to the longitudes where the Sun and Earth are overhead; the table values are unaffected.
       </p>
       <svg viewBox="-125 -125 250 250" role="group" aria-label="Chart of the lunar south polar cap with the nine regions" className="min-h-0 flex-1">
-        <circle r={90} fill="#dfe4e3" stroke={INK} strokeWidth={1} vectorEffect="non-scaling-stroke" />
-        <circle r={60} fill="none" stroke="#b9c3c2" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+        <circle r={90} fill={RENDER.moonLit} stroke={INK} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+        <circle r={60} fill="none" stroke={TOKENS.rule} strokeWidth={1} vectorEffect="non-scaling-stroke" />
         <circle r={30} fill="none" stroke={INK} strokeWidth={1} vectorEffect="non-scaling-stroke" />
-        <line x1={0} y1={-90} x2={0} y2={90} stroke="#b9c3c2" strokeWidth={1} vectorEffect="non-scaling-stroke" />
-        <line x1={-90} y1={0} x2={90} y2={0} stroke="#b9c3c2" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+        <line x1={0} y1={-90} x2={0} y2={90} stroke={TOKENS.rule} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+        <line x1={-90} y1={0} x2={90} y2={0} stroke={TOKENS.rule} strokeWidth={1} vectorEffect="non-scaling-stroke" />
         <line x1={s0[0]} y1={s0[1]} x2={s1[0]} y2={s1[1]} stroke={SUN_INK} strokeWidth={3} vectorEffect="non-scaling-stroke" />
         <line x1={e0[0]} y1={e0[1]} x2={e1[0]} y2={e1[1]} stroke={EARTH} strokeWidth={3} vectorEffect="non-scaling-stroke" />
         <text x={s1[0] * 1.07} y={s1[1] * 1.07 + 1.5} textAnchor="middle" className={label}>Sun</text>
@@ -415,31 +397,13 @@ function PolarFallback({ frame, selectedId, onSelect }: { frame: MoonFrame; sele
 
 // ---------- Controls and readout ----------
 
-const BUTTON = "h-8 border border-ink px-3 text-[0.8rem] whitespace-nowrap transition-colors duration-150 focus-visible:outline-offset-2";
-
-function Row({ label, value, note }: { label: string; value: ReactNode; note?: ReactNode }) {
-  return (
-    <tr className="border-b border-rule align-baseline">
-      <th scope="row" className="py-2 pr-3 text-left text-[0.844rem] font-normal text-ink-2">
-        {label}
-      </th>
-      <td className="py-2 text-right text-[0.95rem] font-semibold whitespace-nowrap text-ink">
-        {value}
-        {note && <span className="block text-[0.8rem] font-normal text-ink-2">{note}</span>}
-      </td>
-    </tr>
-  );
-}
-
-const H3 = "border-b border-ink pb-1.5 text-[0.75rem] font-semibold tracking-[0.08em] text-ink uppercase";
-
 function Readout({ frame, state, site }: { frame: MoonFrame; state: SystemState; site: Site | null }) {
   return (
     <div>
-      <h3 className={H3}>Circumstances</h3>
+      <SectionLabel>Circumstances</SectionLabel>
       <table className="w-full border-collapse">
         <tbody>
-          <Row label="Time" value={fmtUtc(frame.ms)} />
+          <Row label="Time" value={fmtFull(frame.ms)} />
           <Row label="Sub-solar point" value={`${fmtLat(frame.subSolar.lat)}, ${fmtLon(frame.subSolar.lon)}`} note="where the Sun is overhead" />
           <Row
             label="Sub-Earth point"
@@ -451,14 +415,14 @@ function Readout({ frame, state, site }: { frame: MoonFrame; state: SystemState;
         </tbody>
       </table>
 
-      <h3 className={`mt-6 ${H3}`}>{site ? `At ${site.name}` : "At the selected region"}</h3>
+      <SectionLabel className="mt-6">{site ? `At ${site.name}` : "At the selected region"}</SectionLabel>
       {site ? (
         <>
           <table className="w-full border-collapse">
             <tbody>
               <Row label="Position" value={`${fmtLat(site.lat)}, ${fmtLon(site.lon)}`} />
-              <Row label="Sun elevation" value={fmtSigned(elevationDeg(site.lat, site.lon, frame.sunKm))} />
-              <Row label="Earth elevation" value={fmtSigned(elevationDeg(site.lat, site.lon, frame.earthKm))} />
+              <Row label="Sun elevation" value={fmtSigned(elevationDeg(site.lat, site.lon, frame.sunKm), 2)} />
+              <Row label="Earth elevation" value={fmtSigned(elevationDeg(site.lat, site.lon, frame.earthKm), 2)} />
             </tbody>
           </table>
           <p className="mt-2 text-[0.8rem] leading-snug text-ink-2">
@@ -669,6 +633,12 @@ export default function MoonView({
       ? "Keep zooming out to open the System level"
       : null;
 
+  const hintAction = target
+    ? { label: target.kind === "region" ? `Open ${site ? site.name : "site level"}` : "Open site level", onClick: openCentre }
+    : hint === "out" && onOpenSystem
+      ? { label: "Open System level", onClick: onOpenSystem }
+      : null;
+
   const span = useMemo(() => (data ? { startMs: data.startMs, endMs: systemEndMs(data) } : null), [data]);
   useYearPlayback(playing, span, ms, onScrub);
 
@@ -726,54 +696,27 @@ export default function MoonView({
     <div className={`flex min-h-0 flex-col xl:flex-row ${className}`}>
       <section aria-label="Globe of the Moon" className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-rule px-4 py-2.5">
-          <h2 className="text-[1.068rem] leading-snug font-semibold text-ink">The Moon{frame ? `, ${fmtUtc(frame.ms)}` : ""}</h2>
+          <h2 className="text-[1.068rem] leading-snug font-semibold text-ink">The Moon{frame ? `, ${fmtFull(frame.ms)}` : ""}</h2>
           <div className="flex flex-wrap gap-2.5">
-            <div role="group" aria-label="View from" className="flex border border-ink">
-              {(
-                [
-                  ["pole", "South pole"],
-                  ["near", "Near side"],
-                  ["sun", "Sun side"],
-                ] as const
-              ).map(([id, text], i) => {
-                const on = framing.id === id;
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    aria-pressed={on}
-                    disabled={!frame}
-                    onClick={() => frameTo(id)}
-                    className={`h-8 px-3 text-[0.8rem] whitespace-nowrap transition-colors duration-150 focus-visible:outline-offset-2 ${i ? "border-l border-ink" : ""} ${
-                      on ? "bg-ink font-semibold text-paper" : "font-medium text-ink hover:bg-paper-3"
-                    }`}
-                  >
-                    {text}
-                  </button>
-                );
-              })}
-            </div>
-            <button
-              type="button"
-              aria-pressed={showLandings}
-              onClick={() => setShowLandings((v) => !v)}
-              className={`${BUTTON} ${showLandings ? "bg-paper-3 font-semibold text-ink" : "font-medium text-ink hover:bg-paper-3"}`}
-            >
+            <Segmented
+              label="View from"
+              value={framing.id as FramingId}
+              disabled={!frame}
+              onChange={frameTo}
+              options={[
+                { id: "pole", label: "South pole" },
+                { id: "near", label: "Near side" },
+                { id: "sun", label: "Sun side" },
+              ]}
+            />
+            <ToggleButton on={showLandings} soft onClick={() => setShowLandings((v) => !v)} className="px-3">
               Earlier landings
-            </button>
+            </ToggleButton>
             {onPoint && (
-              <button
-                type="button"
-                aria-pressed={pickMode}
-                disabled={!frame || !gl}
-                onClick={() => setPickMode((v) => !v)}
-                title="Click the globe to drop a pin and read the Sun and Earth there. Shift-click works at any time."
-                className={`${BUTTON} disabled:cursor-not-allowed disabled:border-rule disabled:text-ink-3 ${pickMode ? "bg-ink font-semibold text-paper" : "font-medium text-ink hover:bg-paper-3"}`}
-              >
+              <ToggleButton on={pickMode} disabled={!frame || !gl} onClick={() => setPickMode((v) => !v)} title="Click the globe to drop a pin and read the Sun and Earth there. Shift-click works at any time." className="px-3">
                 Pick a point
-              </button>
+              </ToggleButton>
             )}
-            {levelNav}
           </div>
         </header>
 
@@ -783,7 +726,8 @@ export default function MoonView({
           onPointerUpCapture={onPressUp}
           className={`relative isolate min-h-[24rem] flex-1 overflow-hidden bg-paper ${pickMode ? "cursor-crosshair" : ""}`}
         >
-          <ZoomHint text={hintText} progress={progress} />
+          {levelNav && <div className="pointer-events-none absolute top-2 left-2 z-20">{levelNav}</div>}
+          <ZoomHint text={hintText} progress={progress} action={hintAction} />
           {target && (
             // The spot the hint names: four hairline ticks about the view centre, cased in paper so they read on the night side.
             <svg data-centre-mark aria-hidden="true" viewBox="-14 -14 28 28" className="pointer-events-none absolute top-1/2 left-1/2 z-10 size-7 -translate-x-1/2 -translate-y-1/2">
@@ -812,7 +756,7 @@ export default function MoonView({
                     setLoad({ status: "loading" });
                     setAttempt((n) => n + 1);
                   }}
-                  className={`mt-3 ${BUTTON} font-semibold text-ink hover:bg-paper-3`}
+                  className={`mt-3 ${buttonClass.secondary}`}
                 >
                   Try again
                 </button>
@@ -821,7 +765,7 @@ export default function MoonView({
           )}
           {frame && !gl && fallback}
           {frame && textures && gl && (
-            <GlBoundary fallback={fallback}>
+            <ErrorBoundary fallback={fallback}>
               <Canvas
                 flat
                 frameloop="demand"
@@ -854,7 +798,7 @@ export default function MoonView({
                   </div>
                 ))}
               </div>
-            </GlBoundary>
+            </ErrorBoundary>
           )}
         </div>
 
@@ -871,17 +815,9 @@ export default function MoonView({
               <p data-tile-status className="text-[0.8rem] leading-snug whitespace-nowrap text-ink-2 tabular-nums sm:min-w-[23rem] sm:text-right">
                 {detailText}
               </p>
-              <button
-                type="button"
-                aria-pressed={detail}
-                onClick={() => setDetail((v) => !v)}
-                title="Load sharper surface tiles from NASA Moon Trek when zoomed in; needs a network connection"
-                className={`h-7 border border-ink px-2 text-[0.8rem] whitespace-nowrap transition-colors duration-150 focus-visible:outline-offset-2 ${
-                  detail ? "bg-paper-3 font-semibold text-ink" : "font-medium text-ink hover:bg-paper-3"
-                }`}
-              >
+              <ToggleButton on={detail} size="sm" soft onClick={() => setDetail((v) => !v)} title="Load sharper surface tiles from NASA Moon Trek when zoomed in; needs a network connection">
                 Detail tiles
-              </button>
+              </ToggleButton>
             </div>
           )}
         </div>
@@ -925,28 +861,21 @@ export default function MoonView({
           />
         )}
 
-        <h3 className={`mt-6 ${H3}`}>Regions</h3>
+        <SectionLabel className="mt-6">Regions</SectionLabel>
         <ul className="mt-2 flex flex-wrap gap-1.5">
           {sites.map((s) => {
             const on = s.id === selectedId;
             return (
               <li key={s.id}>
-                <button
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() => onSelect(s.id)}
-                  className={`h-7 border border-ink px-2 text-[0.8rem] whitespace-nowrap transition-colors duration-150 ${
-                    on ? "bg-ink font-semibold text-paper" : "font-medium text-ink hover:bg-paper-3"
-                  }`}
-                >
+                <ToggleButton on={on} size="sm" onClick={() => onSelect(s.id)}>
                   {s.name}
-                </button>
+                </ToggleButton>
               </li>
             );
           })}
         </ul>
 
-        <h3 className={`mt-6 ${H3}`}>Marks</h3>
+        <SectionLabel className="mt-6">Marks</SectionLabel>
         <div className="mt-1.5">
           <Legend showLandings={showLandings} showPoint={!!point} />
         </div>

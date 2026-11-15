@@ -1,95 +1,13 @@
 "use client";
 
 import { useId, useState } from "react";
-import { bestStart, scoreWindow, windowStats, type MissionScore, type SiteData } from "@/lib/sky";
-import { fmtDuration } from "./plot/format";
-import {
-  ArrowMark,
-  SelectField,
-  covers,
-  fieldControl,
-  fieldLabel,
-  pct,
-  primaryButton,
-  smallButton,
-  spell,
-} from "./SiteBulletin";
-
-// ---------- Time ----------
-
-export const HOUR = 3_600_000;
-export const DAY = 24 * HOUR;
-/** The precomputed Horizons tracks run hourly through 2027. */
-export const DATA_START_MS = Date.UTC(2027, 0, 1);
-export const DATA_END_MS = Date.UTC(2028, 0, 1);
-/**
- * 14 Nov 2027, 00:00 UTC: near the south pole's high Sun (subsolar point
- * about 1.5° S), so the nine regions spread from 0% to 100% Sun with no two
- * scores closer than 0.04. A June start leaves seven regions dark all window.
- */
-export const DEFAULT_START_MS = Date.UTC(2027, 10, 14);
-export const DEFAULT_HOURS = 156; // 6.5 days
-export const MIN_HOURS = 1;
-export const MAX_HOURS = 60 * 24;
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const MONTHS_LONG = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
+import { bestStart, covers, missionScore, type MissionScore, type SiteData } from "@/lib/sky";
+import { HOUR, MONTHS, MONTHS_LONG, fmtLength, fmtMonth, fmtShift, fmtSpell, fmtWhen, pct } from "@/lib/format";
+import { DATA_END_MS, DATA_START_MS, DATA_YEAR, MAX_HOURS, MIN_HOURS, SLIP_STEPS } from "@/lib/mission";
+import { ArrowMark, ErrorMark, SelectField, buttonClass, fieldControl, fieldLabel } from "../ui";
 
 const two = (n: number) => String(n).padStart(2, "0");
-
-/** "1 Jun 2027, 00:00" in UTC (the caller adds "UTC" where it is not already clear). */
-export function fmtWhen(ms: number, withYear = true): string {
-  const d = new Date(ms);
-  const day = `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}${withYear ? ` ${d.getUTCFullYear()}` : ""}`;
-  return `${day}, ${two(d.getUTCHours())}:${two(d.getUTCMinutes())}`;
-}
-
-/** "1 Jun 2027, 00:00 to 7 Jun, 12:00 UTC". */
-export function fmtSpan(startMs: number, endMs: number): string {
-  const sameYear = new Date(startMs).getUTCFullYear() === new Date(endMs).getUTCFullYear();
-  return `${fmtWhen(startMs)} to ${fmtWhen(endMs, !sameYear)} UTC`;
-}
-
 const trim = (v: number, digits: number) => String(Number(v.toFixed(digits)));
-
-/** "6.5 days", "36 hours", "1 day". */
-export function fmtLength(hours: number): string {
-  const d = hours / 24;
-  if (hours >= 24 && Math.abs(d * 2 - Math.round(d * 2)) < 1e-9) return `${trim(d, 1)} ${d === 1 ? "day" : "days"}`;
-  if (hours < 48) return `${trim(hours, 1)} ${hours === 1 ? "hour" : "hours"}`;
-  return fmtDuration(hours);
-}
-
-/** "+1 week", "+2 weeks", "+19 d 23 h", "−3 d". */
-export function fmtShift(ms: number): string {
-  const sign = ms < 0 ? "−" : "+";
-  const abs = Math.abs(ms);
-  if (abs > 0 && abs % (7 * DAY) === 0) {
-    const w = abs / (7 * DAY);
-    return `${sign}${w} ${w === 1 ? "week" : "weeks"}`;
-  }
-  return `${sign}${fmtDuration(abs / HOUR)}`;
-}
-
-export function monthLabel(month: number): string {
-  return `${MONTHS_LONG[month]} 2027`;
-}
-
-/** The tracks' one year; the start control picks a day and month in it. */
-const DATA_YEAR = new Date(DATA_START_MS).getUTCFullYear();
 
 function daysInMonth(month: number): number {
   return new Date(Date.UTC(DATA_YEAR, month + 1, 0)).getUTCDate();
@@ -214,16 +132,16 @@ export function ChangeNote({
             )}
             <Delta label="Sun up" from={pct(before.sunlit)} to={pct(after.sunlit)} />
             <Delta label="Earth in view" from={pct(before.earthVisible)} to={pct(after.earthVisible)} />
-            <Delta label="Longest dark" from={spell(before.longestDarkHours)} to={spell(after.longestDarkHours)} />
+            <Delta label="Longest dark" from={fmtSpell(before.longestDarkHours)} to={fmtSpell(after.longestDarkHours)} />
           </dl>
         </>
       )}
       <div className="mt-2.5 flex flex-wrap gap-2">
-        <button type="button" onClick={onUndo} className={smallButton}>
-          Back to the plan
+        <button type="button" onClick={onUndo} className={buttonClass.primary}>
+          Undo<span className="sr-only">: back to the planned start</span>
         </button>
-        <button type="button" onClick={onDismiss} className={smallButton}>
-          Keep the new start
+        <button type="button" onClick={onDismiss} className={buttonClass.secondary}>
+          Keep new start
         </button>
       </div>
     </div>
@@ -237,27 +155,21 @@ type FieldError = { field: "start" | "length" | "window"; message: string };
 type Props = {
   startMs: number;
   durationHours: number;
-  /** Selected site, searched by "Find best start in". */
+  /** Selected site, the one "Best start for … in" searches. */
   site: SiteData | null;
   siteName: string;
   /** reason is null for a typed change, or names a slip or search (shown in the change note). */
   onApply: (startMs: number, durationHours: number, reason: string | null) => void;
+  /** Called after a search or slip moved the start, e.g. to close the popover. */
+  onDone?: () => void;
+  /** "row" lays the fields out side by side; "stack" one above another (the window popover). */
+  layout?: "row" | "stack";
   className?: string;
 };
 
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
-function ErrorMark() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" className="mt-[0.15em] size-3.5 shrink-0">
-      <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M8 4.75v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <circle cx="8" cy="11.1" r="0.9" fill="currentColor" />
-    </svg>
-  );
-}
-
-export default function MissionControls({ startMs, durationHours, site, siteName, onApply, className = "" }: Props) {
+export default function MissionControls({ startMs, durationHours, site, siteName, onApply, onDone, layout = "row", className = "" }: Props) {
   const id = useId();
   const errorId = `${id}-error`;
   const infoId = `${id}-info`;
@@ -355,7 +267,7 @@ export default function MissionControls({ startMs, durationHours, site, siteName
     if (!site) return;
     const from = Date.UTC(2027, month, 1);
     const to = Date.UTC(2027, month + 1, 1) - HOUR;
-    const name = monthLabel(month);
+    const name = fmtMonth(month);
     if (!covers(site, from, Math.min(DATA_END_MS, to + durationHours * HOUR))) {
       setInfo(`${siteName} only has tracks for the current window, so a month search needs one of the nine regions.`);
       return;
@@ -368,31 +280,34 @@ export default function MissionControls({ startMs, durationHours, site, siteName
       return;
     }
     const inMonth = startMs >= from && startMs <= to;
-    const current = inMonth ? scoreWindow(site.sky.siteId, windowStats(site, startMs, startMs + durationHours * HOUR)) : null;
+    const current = inMonth ? missionScore(site, startMs, startMs + durationHours * HOUR) : null;
     if (current && best.score <= current.score + 1e-9) {
       setInfo(`${fmtWhen(startMs)} UTC is already the best ${fmtLength(durationHours)} start in ${name} for ${siteName}.`);
       return;
     }
     setInfo(null);
     onApply(best.startMs, durationHours, `Best start in ${name}`);
+    onDone?.();
   }
 
-  function slip(days: number) {
+  function slip(ms: number) {
     setError(null);
     setInfo(null);
-    onApply(startMs + days * DAY, durationHours, "Slip");
+    onApply(startMs + ms, durationHours, "Slip");
+    onDone?.();
   }
 
   const start = dayMonth(dateDraft);
   const startInvalid = error?.field === "start" || error?.field === "window";
   const lengthInvalid = error?.field === "length" || error?.field === "window";
   const describedBy = [error ? errorId : null, info ? infoId : null].filter(Boolean).join(" ") || undefined;
-  const slipBlocked = (days: number) => startMs + days * DAY + durationHours * HOUR > DATA_END_MS;
+  const slipBlocked = (ms: number) => startMs + ms + durationHours * HOUR > DATA_END_MS;
+  const stack = layout === "stack";
 
   return (
     <div className={className}>
       <form
-        className="flex flex-wrap items-end gap-x-5 gap-y-3"
+        className={stack ? "grid gap-4" : "flex flex-wrap items-end gap-x-5 gap-y-3"}
         onSubmit={(e) => {
           e.preventDefault();
           edit(dateDraft, hourDraft, lenDraft, unit, true);
@@ -505,7 +420,7 @@ export default function MissionControls({ startMs, durationHours, site, siteName
 
         <div role="group" aria-labelledby={`${id}-find`} className="min-w-0">
           <span id={`${id}-find`} className={fieldLabel}>
-            Find best start in
+            Best start for <span className="normal-case tracking-normal">{siteName}</span> in
           </span>
           <div className="mt-1 flex">
             <label htmlFor={`${id}-search`} className="sr-only">
@@ -522,7 +437,7 @@ export default function MissionControls({ startMs, durationHours, site, siteName
             >
               {MONTHS_LONG.map((m, i) => (
                 <option key={m} value={i}>
-                  {monthLabel(i)}
+                  {fmtMonth(i)}
                 </option>
               ))}
             </SelectField>
@@ -531,7 +446,7 @@ export default function MissionControls({ startMs, durationHours, site, siteName
               onClick={search}
               disabled={!site}
               aria-describedby={info ? infoId : undefined}
-              className={`${primaryButton} -ml-px`}
+              className={`${buttonClass.primary} -ml-px`}
             >
               Search
             </button>
@@ -543,24 +458,18 @@ export default function MissionControls({ startMs, durationHours, site, siteName
             Slip start
           </span>
           <div className="mt-1 flex">
-            <button
-              type="button"
-              onClick={() => slip(7)}
-              disabled={slipBlocked(7)}
-              title={slipBlocked(7) ? "A one-week slip would run past the end of the 2027 tracks" : undefined}
-              className={smallButton}
-            >
-              +1 week
-            </button>
-            <button
-              type="button"
-              onClick={() => slip(14)}
-              disabled={slipBlocked(14)}
-              title={slipBlocked(14) ? "A two-week slip would run past the end of the 2027 tracks" : undefined}
-              className={`${smallButton} -ml-px`}
-            >
-              +2 weeks
-            </button>
+            {SLIP_STEPS.filter((s) => s.ms > 0).map((s, i) => (
+              <button
+                key={s.label}
+                type="button"
+                onClick={() => slip(s.ms)}
+                disabled={slipBlocked(s.ms)}
+                title={slipBlocked(s.ms) ? `A ${s.label.slice(1)} slip would run past the end of the 2027 tracks` : undefined}
+                className={`${buttonClass.secondary} ${i ? "-ml-px" : ""}`}
+              >
+                {s.label}
+              </button>
+            ))}
           </div>
         </div>
       </form>

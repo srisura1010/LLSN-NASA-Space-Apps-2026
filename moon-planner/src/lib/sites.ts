@@ -19,8 +19,3 @@ export const sites: LandingSite[] = [
 export type Site = LandingSite;
 export const SITES = sites;
 
-export function formatLatLon(lat: number, lon: number): string {
-  const ns = lat < 0 ? "S" : "N";
-  const ew = lon < 0 ? "W" : "E";
-  return `${Math.abs(lat).toFixed(2)}° ${ns}, ${Math.abs(lon).toFixed(2)}° ${ew}`;
-}

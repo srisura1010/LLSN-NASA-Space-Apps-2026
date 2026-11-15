@@ -1,5 +1,7 @@
 // Shared constants for the terrain plate.
 
+import { TOKENS } from "@/lib/tokens";
+
 /** Vertical exaggeration of the displayed relief. Shadows are traced at true scale. */
 export const EXAGGERATION = 3.5;
 
@@ -9,23 +11,8 @@ export const M_PER_UNIT = 1000;
 /** Apparent solar radius (rad), matching SUN_RADIUS_DEG in src/lib/sky.ts. */
 export const SUN_RADIUS_RAD = (0.2665 * Math.PI) / 180;
 
-/** Colours from the bulletin tokens in src/app/globals.css, as sRGB hex. */
-export const TOKENS = {
-  paper: "#eef1f0",
-  paper2: "#e3e8e7",
-  paper3: "#d6dddc",
-  ink: "#121a22",
-  ink2: "#3a4752",
-  ink3: "#5d6a74",
-  rule: "#b9c3c2",
-  umbra: "#3d5466",
-  umbraSoft: "#c3ced3",
-  sun: "#f0b400",
-  sunInk: "#7a5600",
-  earth: "#2453c2",
-  earthSoft: "#c9d5f1",
-  limit: "#c42b1c",
-} as const;
+/** Colours from the bulletin tokens (src/lib/tokens.ts), as sRGB hex. */
+export { TOKENS };
 
 export type RGB = [number, number, number];
 

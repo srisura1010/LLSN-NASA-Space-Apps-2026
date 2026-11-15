@@ -1,159 +1,14 @@
 "use client";
 
-import { memo, useMemo, type ReactNode, type SelectHTMLAttributes } from "react";
-import { bestStart, rangeOf, sampleAt, type MissionScore, type SiteData } from "@/lib/sky";
+import { memo, useMemo, type ReactNode } from "react";
+import { contactsInWindow, isUp } from "@/lib/contacts";
+import { DAY_MS, HOUR_MS, fmtDayTime, fmtDeg, fmtDuration, fmtLatLon, fmtSigned, fmtSpell, pct, pct1, pts } from "@/lib/format";
 import { moonTrekUrl } from "@/lib/moontrek";
-import { formatLatLon } from "@/lib/sites";
+import { bestStart, covers, sampleAt, type MissionScore, type SiteData } from "@/lib/sky";
 import { compareWithNasa } from "@/lib/validation";
-import { contactEvents } from "./plot/contacts";
-import { fmtDuration } from "./plot/format";
-
-// ---------- Shared number formats ----------
-
-/** Share (0..1) as a whole percentage that never rounds a partial value to 0 or 100. */
-export function pct(v: number): string {
-  if (!Number.isFinite(v)) return "n/a";
-  if (v <= 0) return "0%";
-  if (v >= 1) return "100%";
-  const r = Math.round(v * 100);
-  if (r === 0) return "<1%";
-  if (r === 100) return ">99%";
-  return `${r}%`;
-}
-
-/** Share (0..1) as a percentage with one decimal. */
-export function pct1(v: number): string {
-  return `${(v * 100).toFixed(1)}%`;
-}
-
-/** Signed percentage points with a true minus sign. */
-export function pts(v: number): string {
-  const r = Math.round(v * 10) / 10;
-  if (r === 0) return "0.0";
-  return `${r > 0 ? "+" : "−"}${Math.abs(r).toFixed(1)}`;
-}
-
-export function degrees(v: number, signed = false): string {
-  const r = Math.round(v * 10) / 10;
-  const sign = r < 0 ? "−" : signed && r > 0 ? "+" : "";
-  return `${sign}${Math.abs(r).toFixed(1)}°`;
-}
-
-/** Duration of a dark or no-comms spell, or "None". */
-export function spell(hours: number): string {
-  return hours > 0 ? fmtDuration(hours) : "None";
-}
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-/** "4 Jun 15:42" in UTC. */
-export function dayClock(ms: number): string {
-  const d = new Date(ms);
-  const hh = String(d.getUTCHours()).padStart(2, "0");
-  const mm = String(d.getUTCMinutes()).padStart(2, "0");
-  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${hh}:${mm}`;
-}
-
-// ---------- Shared control styles ----------
-
-export const smallButton =
-  "inline-flex h-8 items-center gap-1.5 border border-ink bg-paper px-3 text-[0.844rem] font-medium text-ink transition-colors duration-150 hover:bg-paper-3 active:bg-umbra-soft disabled:cursor-not-allowed disabled:border-rule disabled:text-ink-3 disabled:hover:bg-paper";
-
-export const primaryButton =
-  "inline-flex h-8 items-center gap-1.5 border border-ink bg-ink px-3 text-[0.844rem] font-semibold text-paper transition-colors duration-150 hover:bg-umbra active:bg-ink-2 disabled:cursor-not-allowed disabled:border-rule disabled:bg-paper-3 disabled:text-ink-3";
-
-export const linkButton =
-  "text-left text-[0.844rem] font-medium text-earth underline decoration-1 underline-offset-[3px] hover:text-ink";
-
-export const fieldLabel = "block text-[0.75rem] font-semibold uppercase tracking-[0.08em] text-ink-2";
-
-export const fieldControl =
-  "h-8 rounded-none border border-rule bg-paper px-2 text-[0.95rem] text-ink caret-earth transition-colors duration-150 hover:border-ink-2 aria-invalid:border-ink aria-invalid:shadow-[inset_0_0_0_1px_var(--color-ink)] disabled:cursor-not-allowed disabled:text-ink-3";
-
-/**
- * A native select in the bulletin style: square, hairline border and a drawn
- * chevron instead of the browser's. Layout classes (width, joins) go on the
- * wrapper through wrapClassName; the select fills it.
- */
-export function SelectField({
-  wrapClassName = "",
-  className = "",
-  children,
-  ...rest
-}: SelectHTMLAttributes<HTMLSelectElement> & { wrapClassName?: string }) {
-  return (
-    <span className={`relative inline-flex ${wrapClassName}`}>
-      <select
-        {...rest}
-        className={`${fieldControl} peer w-full cursor-pointer appearance-none pr-7 [color-scheme:light] ${className}`}
-      >
-        {children}
-      </select>
-      <ChevronMark className="pointer-events-none absolute top-1/2 right-2 size-3.5 -translate-y-1/2 text-ink-2 peer-hover:text-ink peer-disabled:text-ink-3" />
-    </span>
-  );
-}
-
-// ---------- Drawn marks (16 px grid, 1.5 px strokes) ----------
-
-type MarkProps = { className?: string };
-
-export function SunMark({ className = "size-4" }: MarkProps) {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" className={`shrink-0 ${className}`}>
-      <circle cx="8" cy="8" r="5.25" className="fill-sun stroke-sun-ink" strokeWidth="1.5" />
-      <circle cx="8" cy="8" r="1.4" className="fill-sun-ink" />
-    </svg>
-  );
-}
-
-export function EarthMark({ className = "size-4" }: MarkProps) {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" className={`shrink-0 ${className}`}>
-      <circle cx="8" cy="8" r="5.25" className="fill-earth-soft stroke-earth" strokeWidth="1.5" />
-      <path d="M8 2.75v10.5M2.75 8h10.5" className="stroke-earth" strokeWidth="1.5" />
-    </svg>
-  );
-}
-
-export function AlertMark({ className = "size-3.5" }: MarkProps) {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" className={`shrink-0 ${className}`}>
-      <path d="M8 2.25 14.25 13.5H1.75Z" className="stroke-limit" strokeWidth="1.5" strokeLinejoin="round" />
-      <path d="M8 6.5v3.25" className="stroke-limit" strokeWidth="1.5" strokeLinecap="round" />
-      <circle cx="8" cy="11.6" r="0.9" className="fill-limit" />
-    </svg>
-  );
-}
-
-export function ArrowMark({ className = "size-3.5" }: MarkProps) {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" className={`inline-block shrink-0 align-[-0.15em] ${className}`}>
-      <path d="M2.5 8h10.5M9.25 4.25 13 8l-3.75 3.75" stroke="currentColor" strokeWidth="1.5" />
-    </svg>
-  );
-}
-
-export function ChevronMark({ className = "size-3.5" }: MarkProps) {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" className={`shrink-0 ${className}`}>
-      <path d="M4 6.25 8 10.25l4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" />
-    </svg>
-  );
-}
-
-export function ExternalMark({ className = "size-3.5" }: MarkProps) {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" className={`shrink-0 ${className}`}>
-      <path d="M9.5 2.75h3.75V6.5M13.25 2.75 7.5 8.5M11.75 9.5v3.75h-9v-9H6.5" stroke="currentColor" strokeWidth="1.5" />
-    </svg>
-  );
-}
-
-// ---------- Contacts ----------
+import { EarthMark, ExternalMark, Panel, Row, SunMark, AlertMark, buttonClass } from "../ui";
 
 export type ContactKind = "sunrise" | "sunset" | "earthrise" | "earthset";
-export type Contact = { kind: ContactKind; atMs: number; az: number };
 
 export const CONTACT_LABEL: Record<ContactKind, string> = {
   sunrise: "Sunrise",
@@ -162,35 +17,15 @@ export const CONTACT_LABEL: Record<ContactKind, string> = {
   earthset: "Earthset",
 };
 
-/**
- * Sunrise/sunset (any of the Sun's disc clears the terrain, or the last of it
- * drops behind) and Earthrise/Earthset inside the window, to the minute. Uses
- * the same solver as the horizon plot and timeline, so the times agree.
- */
-export function contactsFor(site: SiteData, startMs: number, endMs: number): Contact[] {
-  return contactEvents(site, startMs, endMs).map((e) => ({
-    kind: e.kind,
-    atMs: Math.min(endMs, Math.round(e.ms / 60_000) * 60_000),
-    az: e.az,
-  }));
-}
-
 /** Plain description of the sky at one moment, for the opening and closing contacts. */
 export function skyState(site: SiteData, ms: number): string {
   const s = sampleAt(site, ms);
-  const sun = s.sunFraction >= 1 ? "Sun up" : s.sunFraction > 0 ? `Sun ${pct(s.sunFraction)} up` : "Sun hidden";
-  return `${sun}, Earth ${s.earthUp ? "in view" : "hidden"}`;
-}
-
-/** True when the site's tracks cover [startMs, endMs]. */
-export function covers(site: SiteData, startMs: number, endMs: number): boolean {
-  const r = rangeOf(site.sky);
-  return startMs >= r.startMs && endMs <= r.endMs;
+  const sun = !isUp(site, "sun", ms) ? "Sun hidden" : s.sunFraction >= 1 ? "Sun up" : `Sun ${pct(s.sunFraction)} up`;
+  return `${sun}, Earth ${isUp(site, "earth", ms) ? "in view" : "hidden"}`;
 }
 
 // ---------- The bulletin ----------
 
-const DAY_MS = 86_400_000;
 const LOOKAHEAD_DAYS = 14;
 
 type Props = {
@@ -221,61 +56,6 @@ type Props = {
   className?: string;
 };
 
-function Section({ title, note, children }: { title: string; note?: string; children: ReactNode }) {
-  return (
-    <section className="border-t border-rule px-5 pt-3.5 pb-4">
-      <h3 className="flex items-baseline justify-between gap-3 text-[0.75rem] font-semibold uppercase tracking-[0.08em] text-ink">
-        {title}
-        {note && <span className="text-[0.75rem] font-normal normal-case tracking-normal text-ink-2">{note}</span>}
-      </h3>
-      <div className="mt-2">{children}</div>
-    </section>
-  );
-}
-
-function Row({
-  label,
-  mark,
-  value,
-  was,
-  flagged,
-  flagNote,
-}: {
-  label: string;
-  mark?: ReactNode;
-  value: string;
-  was?: string;
-  flagged?: boolean;
-  flagNote?: string;
-}) {
-  return (
-    <tr className="border-b border-rule last:border-b-0">
-      <th scope="row" className="py-1.5 pr-3 text-left align-baseline text-[0.844rem] font-normal text-ink-2">
-        <span className="inline-flex items-center gap-1.5">
-          {mark}
-          {label}
-        </span>
-      </th>
-      <td className="py-1.5 text-right align-baseline whitespace-nowrap">
-        {was !== undefined && was !== value && (
-          <span className="mr-2 text-[0.75rem] text-ink-2">
-            <span className="sr-only">was </span>
-            {was}
-            <ArrowMark className="ml-1 size-3" />
-          </span>
-        )}
-        <span
-          className={`inline-flex items-center gap-1 text-[0.95rem] font-medium ${flagged ? "font-semibold text-limit" : "text-ink"}`}
-        >
-          {flagged && <AlertMark />}
-          {value}
-          {flagged && flagNote && <span className="sr-only">, {flagNote}</span>}
-        </span>
-      </td>
-    </tr>
-  );
-}
-
 function ContactRow({
   name,
   mark,
@@ -300,7 +80,7 @@ function ContactRow({
         </span>
         <span className="mt-0.5 block text-[0.75rem] text-ink-2">{detail}</span>
       </th>
-      <td className="py-1.5 text-right align-top whitespace-nowrap text-ink">{dayClock(at)}</td>
+      <td className="py-1.5 text-right align-top whitespace-nowrap text-ink">{fmtDayTime(at)}</td>
     </tr>
   );
 }
@@ -343,12 +123,12 @@ function SiteBulletin({
   onRetry,
   className = "",
 }: Props) {
-  const contacts = useMemo(() => (site ? contactsFor(site, startMs, endMs) : []), [site, startMs, endMs]);
+  const contacts = useMemo(() => (site ? contactsInWindow(site, startMs, endMs) : []), [site, startMs, endMs]);
 
   const better = useMemo(() => {
     if (!site || !score) return null;
     const to = startMs + LOOKAHEAD_DAYS * DAY_MS;
-    if (!covers(site, startMs, to + durationHours * 3_600_000)) return null;
+    if (!covers(site, startMs, to + durationHours * HOUR_MS)) return null;
     const best = bestStart(site, startMs, to, durationHours, 1);
     return best && best.startMs !== startMs && best.score > score.score + 1e-9 ? best : null;
   }, [site, score, startMs, durationHours]);
@@ -366,7 +146,7 @@ function SiteBulletin({
           {name}
         </h2>
         <p className="mt-1 text-[0.844rem] text-ink-2">
-          {custom ? (customNote ?? "Custom site, tracks fetched live from JPL Horizons") : formatLatLon(lat, lon)}
+          {custom ? (customNote ?? "Custom site, tracks fetched live from JPL Horizons") : fmtLatLon(lat, lon)}
         </p>
         <a
           href={moonTrekUrl(lat, lon)}
@@ -378,9 +158,6 @@ function SiteBulletin({
           <ExternalMark className="size-3" />
           <span className="sr-only"> (opens NASA Moon Trek in a new tab)</span>
         </a>
-        <p className="mt-0.5 text-[0.844rem] text-ink-2 tabular-nums">
-          Window {dayClock(startMs)} to {dayClock(endMs)} UTC
-        </p>
         {score && rank !== null && (
           <p className="mt-2 text-[0.95rem] text-ink">
             Rank <strong className="font-semibold">{rank}</strong> of {total}, score{" "}
@@ -405,7 +182,7 @@ function SiteBulletin({
               ? error
               : `The Sun and Earth tracks for ${name} did not load${error ? ` (${error})` : ""}. Check the connection and try again.`}
           </p>
-          <button type="button" onClick={onRetry} className={`${smallButton} mt-3`}>
+          <button type="button" onClick={onRetry} className={`${buttonClass.secondary} mt-3`}>
             Try again
           </button>
         </div>
@@ -413,33 +190,33 @@ function SiteBulletin({
 
       {status === "ready" && site && score && (
         <>
-          <Section title="Circumstances">
+          <Panel title="Circumstances">
             <table className="w-full tabular-nums">
               <caption className="sr-only">Sunlight and Earth visibility for {name} over the mission window</caption>
               <tbody>
-                <Row label="Sun up" mark={<SunMark className="size-3.5" />} value={pct(score.sunlit)} was={before ? pct(before.sunlit) : undefined} />
-                <Row label="Mean disc power" value={pct(score.sunPower)} was={before ? pct(before.sunPower) : undefined} />
-                <Row label="Earth in view" mark={<EarthMark className="size-3.5" />} value={pct(score.earthVisible)} was={before ? pct(before.earthVisible) : undefined} />
-                <Row label="Sun and Earth" value={pct(score.both)} was={before ? pct(before.both) : undefined} />
+                <Row dense label="Sun up" mark={<SunMark className="size-3.5" />} value={pct(score.sunlit)} was={before ? pct(before.sunlit) : undefined} />
+                <Row dense label="Mean disc power" value={pct(score.sunPower)} was={before ? pct(before.sunPower) : undefined} />
+                <Row dense label="Earth in view" mark={<EarthMark className="size-3.5" />} value={pct(score.earthVisible)} was={before ? pct(before.earthVisible) : undefined} />
+                <Row dense label="Sun and Earth" value={pct(score.both)} was={before ? pct(before.both) : undefined} />
                 <Row
                   label="Longest dark"
-                  value={spell(score.longestDarkHours)}
-                  was={before ? spell(before.longestDarkHours) : undefined}
+                  value={fmtSpell(score.longestDarkHours)}
+                  was={before ? fmtSpell(before.longestDarkHours) : undefined}
                   flagged={darkOver}
                   flagNote={limitText}
                 />
                 <Row
                   label="Longest without comms"
-                  value={spell(score.longestNoCommsHours)}
-                  was={before ? spell(before.longestNoCommsHours) : undefined}
+                  value={fmtSpell(score.longestNoCommsHours)}
+                  was={before ? fmtSpell(before.longestNoCommsHours) : undefined}
                   flagged={commsOver}
                   flagNote={limitText}
                 />
                 <Row
                   label="Mean Sun clearance"
-                  value={score.sunlit > 0 ? degrees(score.meanSunClearance) : "Never up"}
+                  value={score.sunlit > 0 ? fmtDeg(score.meanSunClearance) : "Never up"}
                 />
-                <Row label="Peak Sun clearance" value={degrees(score.maxSunClearance, true)} />
+                <Row dense label="Peak Sun clearance" value={fmtSigned(score.maxSunClearance)} />
               </tbody>
             </table>
             {(darkOver || commsOver) && (
@@ -448,9 +225,9 @@ function SiteBulletin({
                 <span>Red marks a gap {limitText}. Change the limit under the region table.</span>
               </p>
             )}
-          </Section>
+          </Panel>
 
-          <Section title="Contacts" note="Times in UTC">
+          <Panel title="Contacts" note="Times in UTC">
             <table className="w-full tabular-nums">
               <caption className="sr-only">Sunrise, sunset, Earthrise and Earthset inside the window</caption>
               <tbody className="text-[0.844rem]">
@@ -465,19 +242,19 @@ function SiteBulletin({
                 )}
                 {contacts.map((c) => (
                   <ContactRow
-                    key={`${c.kind}-${c.atMs}`}
+                    key={`${c.kind}-${c.ms}`}
                     name={CONTACT_LABEL[c.kind]}
                     mark={c.kind.startsWith("sun") ? <SunMark className="size-3.5" /> : <EarthMark className="size-3.5" />}
-                    at={c.atMs}
-                    detail={`azimuth ${degrees(c.az)}`}
+                    at={c.ms}
+                    detail={`azimuth ${fmtDeg(c.az)}`}
                   />
                 ))}
                 <ContactRow name="Window closes" at={endMs} detail={skyState(site, endMs)} strong last />
               </tbody>
             </table>
-          </Section>
+          </Panel>
 
-          <Section title="Why it ranks here">
+          <Panel title="Why it ranks here">
             <p className="text-[0.844rem] leading-relaxed text-pretty text-ink-2">
               Score is 45% mean Sun power, 30% time with Earth in view and 25% for keeping the longest dark spell short.
               Equal scores go to the higher peak Sun clearance, then to more time with Earth in view.
@@ -493,12 +270,12 @@ function SiteBulletin({
             {better ? (
               <div className="mt-3 border border-rule bg-paper-2 px-3 py-2.5">
                 <p className="text-[0.844rem] leading-snug text-ink">
-                  Starting <strong className="font-semibold">{dayClock(better.startMs)} UTC</strong> instead scores{" "}
+                  Starting <strong className="font-semibold">{fmtDayTime(better.startMs)} UTC</strong> instead scores{" "}
                   {better.score.toFixed(2)}: Sun up {pct(better.sunlit)}, Earth {pct(better.earthVisible)}, longest dark{" "}
-                  {spell(better.longestDarkHours)}. It is the best start in the next {LOOKAHEAD_DAYS} days.
+                  {fmtSpell(better.longestDarkHours)}. It is the best start in the next {LOOKAHEAD_DAYS} days.
                 </p>
-                <button type="button" onClick={() => onUseStart(better.startMs)} className={`${smallButton} mt-2`}>
-                  Move start to {dayClock(better.startMs)}
+                <button type="button" onClick={() => onUseStart(better.startMs)} className={`${buttonClass.secondary} mt-2`}>
+                  Move start to {fmtDayTime(better.startMs)}
                 </button>
               </div>
             ) : (
@@ -506,9 +283,9 @@ function SiteBulletin({
                 No later start in the next {LOOKAHEAD_DAYS} days scores higher here.
               </p>
             )}
-          </Section>
+          </Panel>
 
-          <Section title="Checked against NASA">
+          <Panel title="Checked against NASA">
             {nasa?.nasa && nasa.diffPts ? (
               <>
                 <table className="w-full tabular-nums text-[0.844rem]">
@@ -555,10 +332,10 @@ function SiteBulletin({
                 </p>
               </>
             )}
-            <button type="button" onClick={onShowAbout} className={`${linkButton} mt-2`}>
+            <button type="button" onClick={onShowAbout} className={`${buttonClass.link} mt-2`}>
               How the numbers are made and checked
             </button>
-          </Section>
+          </Panel>
         </>
       )}
     </div>

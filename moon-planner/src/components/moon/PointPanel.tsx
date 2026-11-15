@@ -4,42 +4,24 @@
 // mission window at any point picked on the globe or typed in, measured
 // against a smooth horizon (src/lib/anySite.ts).
 
-import { useId, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useId, useMemo, useState, type FormEvent } from "react";
 import { SMOOTH_LABEL, parseCoordinate, type SmoothSiteData } from "@/lib/anySite";
-import { isCustomSiteSupported } from "@/lib/customSite";
-import { sampleAt, windowStats } from "@/lib/sky";
-import { fmtLength, fmtSpan } from "../navigator/MissionControls";
-import { fieldControl, fieldLabel, pct, primaryButton, smallButton, spell } from "../navigator/SiteBulletin";
+import { validateSitePoint } from "@/lib/customSite";
+import { missionScore, sampleAt } from "@/lib/sky";
+import { fmtLat, fmtLon, pct, fmtSpell } from "@/lib/format";
+import { Row, SectionLabel, ToggleButton, fieldControl, fieldLabel, buttonClass } from "../ui";
 import TimelineStrip from "../navigator/TimelineStrip";
-import { isUpAt, nextContact } from "../navigator/plot/contacts";
-import { fmtDayTime, fmtSigned } from "../navigator/plot/format";
+import { isUp, nextContact } from "@/lib/contacts";
+import { fmtDayTime, fmtSigned } from "@/lib/format";
 
 export type PickedPoint = { lat: number; lon: number };
 export type QuickPick = { id: string; name: string; lat: number; lon: number };
 
-const HOUR = 3_600_000;
-const H3 = "border-b border-ink pb-1.5 text-[0.75rem] font-semibold tracking-[0.08em] text-ink uppercase";
 const GROUP = "pt-3 pb-1 text-left text-[0.75rem] font-semibold tracking-[0.06em] text-ink-2 uppercase";
 
-const fmtLat = (v: number) => `${Math.abs(v).toFixed(2)}° ${v < 0 ? "S" : "N"}`;
-const fmtLon = (v: number) => `${Math.abs(v).toFixed(2)}° ${v < 0 ? "W" : "E"}`;
 /** The text put back in the entry boxes for a point: a number and a letter, as the form reads them. */
 const boxLat = (v: number) => `${Number(Math.abs(v).toFixed(4))} ${v < 0 ? "S" : "N"}`;
 const boxLon = (v: number) => `${Number(Math.abs(v).toFixed(4))} ${v < 0 ? "W" : "E"}`;
-
-function Row({ label, name, value, note }: { label: string; name: string; value: ReactNode; note?: ReactNode }) {
-  return (
-    <tr className="border-b border-rule align-baseline">
-      <th scope="row" className="py-1.5 pr-3 text-left text-[0.844rem] font-normal whitespace-nowrap text-ink-2">
-        {label}
-      </th>
-      <td data-pt={name} className="py-1.5 text-right text-[0.95rem] font-semibold whitespace-nowrap text-ink tabular-nums">
-        {value}
-        {note && <span className="block text-[0.8rem] font-normal whitespace-normal text-ink-2">{note}</span>}
-      </td>
-    </tr>
-  );
-}
 
 function EntryForm({ point, onSet }: { point: PickedPoint | null; onSet: (lat: number, lon: number) => void }) {
   const id = useId();
@@ -92,7 +74,7 @@ function EntryForm({ point, onSet }: { point: PickedPoint | null; onSet: (lat: n
             className={`${fieldControl} mt-1 w-full tabular-nums placeholder:text-ink-3`}
           />
         </div>
-        <button type="submit" className={primaryButton}>
+        <button type="submit" className={buttonClass.primary}>
           Set point
         </button>
       </div>
@@ -134,22 +116,23 @@ export default function PointPanel({
   quickPicks: QuickPick[];
   className?: string;
 }) {
-  const stats = useMemo(() => (site && windowMs ? windowStats(site, windowMs.startMs, windowMs.endMs) : null), [site, windowMs]);
+  const stats = useMemo(() => (site && windowMs ? missionScore(site, windowMs.startMs, windowMs.endMs) : null), [site, windowMs]);
   const now = useMemo(() => {
     if (!site) return null;
     const s = sampleAt(site, nowMs);
-    const sunUp = isUpAt(site, "sun", nowMs);
-    const earthUp = isUpAt(site, "earth", nowMs);
+    const sunUp = isUp(site, "sun", nowMs);
+    const earthUp = isUp(site, "earth", nowMs);
     return { s, sunUp, earthUp, sunNext: nextContact(site, "sun", nowMs), earthNext: nextContact(site, "earth", nowMs) };
   }, [site, nowMs]);
   // South of 80° S the site level uses the polar LOLA grids; anywhere else it fetches terrain from NASA Moon Trek.
   const polar = !!point && point.lat <= -80;
-  const terrain = point ? (polar ? isCustomSiteSupported(point.lat, point.lon) : { ok: true, reason: undefined }) : null;
+  const check = point ? validateSitePoint(point.lat, point.lon) : null;
+  const terrain = check ? (check.ok ? { ok: true, reason: undefined } : { ok: false, reason: check.reason }) : null;
   const year = site ? new Date(site.sky.startMs).getUTCFullYear() : 2027;
 
   return (
     <div className={className}>
-      <h3 className={H3}>At this point</h3>
+      <SectionLabel>At this point</SectionLabel>
       {!point && (
         <p className="mt-2 text-[0.844rem] leading-snug text-ink-2">
           Read the Sun and Earth anywhere on the Moon for the mission window. Turn on Pick a point and click the globe,
@@ -161,18 +144,18 @@ export default function PointPanel({
         <>
           <table className="w-full border-collapse">
             <tbody>
-              <Row label="Position" name="position" value={`${fmtLat(point.lat)}, ${fmtLon(point.lon)}`} />
+              <Row dense label="Position" name="position" value={`${fmtLat(point.lat)}, ${fmtLon(point.lon)}`} />
               {stats && windowMs && (
                 <>
                   <tr>
                     <th colSpan={2} scope="colgroup" className={GROUP}>
-                      Window: {fmtSpan(windowMs.startMs, windowMs.endMs)}, {fmtLength((windowMs.endMs - windowMs.startMs) / HOUR)}
+                      Over the mission window
                     </th>
                   </tr>
-                  <Row label="Sun up" name="sun-up" value={pct(stats.sunlit)} />
-                  <Row label="Earth in view" name="earth-up" value={pct(stats.earthVisible)} />
-                  <Row label="Longest dark" name="dark" value={spell(stats.longestDarkHours)} />
-                  <Row label="Longest without Earth" name="no-earth" value={spell(stats.longestNoCommsHours)} />
+                  <Row dense label="Sun up" name="sun-up" value={pct(stats.sunlit)} />
+                  <Row dense label="Earth in view" name="earth-up" value={pct(stats.earthVisible)} />
+                  <Row dense label="Longest dark" name="dark" value={fmtSpell(stats.longestDarkHours)} />
+                  <Row dense label="Longest without Earth" name="no-earth" value={fmtSpell(stats.longestNoCommsHours)} />
                 </>
               )}
               {now && (
@@ -182,13 +165,13 @@ export default function PointPanel({
                       At the time shown
                     </th>
                   </tr>
-                  <Row label="Sun elevation" name="sun-el" value={fmtSigned(now.s.sunEl, 2)} note={now.sunUp ? "up" : "below the horizon"} />
+                  <Row dense label="Sun elevation" name="sun-el" value={fmtSigned(now.s.sunEl, 2)} note={now.sunUp ? "up" : "below the horizon"} />
                   <Row
                     label={now.sunUp ? "Next sunset" : "Next sunrise"}
                     name="sun-next"
                     value={now.sunNext ? `${fmtDayTime(now.sunNext.ms)} UTC` : `None in ${year}`}
                   />
-                  <Row label="Earth elevation" name="earth-el" value={fmtSigned(now.s.earthEl, 2)} note={now.earthUp ? "in view" : "below the horizon"} />
+                  <Row dense label="Earth elevation" name="earth-el" value={fmtSigned(now.s.earthEl, 2)} note={now.earthUp ? "in view" : "below the horizon"} />
                   <Row
                     label={now.earthUp ? "Next Earthset" : "Next Earthrise"}
                     name="earth-next"
@@ -229,16 +212,16 @@ export default function PointPanel({
 
           <div className="mt-3 flex flex-wrap gap-2">
             {terrain?.ok && onTerrain && (
-              <button type="button" onClick={() => onTerrain(point.lat, point.lon)} className={primaryButton}>
+              <button type="button" onClick={() => onTerrain(point.lat, point.lon)} className={buttonClass.primary}>
                 {polar ? "Use LOLA terrain" : "Open site level"}
               </button>
             )}
             {onCompare && (
-              <button type="button" onClick={onCompare} disabled={!site} className={smallButton}>
+              <button type="button" onClick={onCompare} disabled={!site} className={buttonClass.secondary}>
                 Add to Compare
               </button>
             )}
-            <button type="button" onClick={onClear} className={smallButton}>
+            <button type="button" onClick={onClear} className={buttonClass.secondary}>
               Clear point
             </button>
           </div>
@@ -260,16 +243,9 @@ export default function PointPanel({
           const on = !!point && Math.abs(point.lat - q.lat) < 1e-4 && Math.abs(point.lon - q.lon) < 1e-4;
           return (
             <li key={q.id}>
-              <button
-                type="button"
-                aria-pressed={on}
-                onClick={() => onSet(q.lat, q.lon)}
-                className={`h-7 border border-ink px-2 text-[0.8rem] whitespace-nowrap transition-colors duration-150 ${
-                  on ? "bg-ink font-semibold text-paper" : "font-medium text-ink hover:bg-paper-3"
-                }`}
-              >
+              <ToggleButton on={on} size="sm" onClick={() => onSet(q.lat, q.lon)}>
                 {q.name}
-              </button>
+              </ToggleButton>
             </li>
           );
         })}

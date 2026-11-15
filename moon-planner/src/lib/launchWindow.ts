@@ -5,6 +5,7 @@
 import { type AzimuthRange, type LaunchSite, launchSites } from "./launchSites";
 import { eclipticToEquatorial } from "./moonFrame";
 import { positionsAt, type SystemData, type Vec3 } from "./system";
+import { DAY_MS, HOUR_MS } from "./format";
 
 export const LAUNCH_METHOD = [
   "Estimate only: simplified geometry, not a trajectory design.",
@@ -19,8 +20,6 @@ export const LAUNCH_METHOD = [
 
 const RAD = Math.PI / 180;
 const DEG = 180 / Math.PI;
-const HOUR_MS = 3_600_000;
-const DAY_MS = 86_400_000;
 const J2000_MS = Date.UTC(2000, 0, 1, 12);
 
 export const MU_EARTH = 398_600.4418; // km^3/s^2

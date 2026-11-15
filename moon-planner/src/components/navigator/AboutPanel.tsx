@@ -3,7 +3,8 @@
 import { memo, type ReactNode } from "react";
 import type { SiteData } from "@/lib/sky";
 import { NASA_REFERENCE_SOURCE, compareWithNasa } from "@/lib/validation";
-import { EarthMark, ExternalMark, SunMark, pct1, pts } from "./SiteBulletin";
+import { pct1, pts } from "@/lib/format";
+import { EarthMark, ExternalMark, SunMark } from "../ui";
 
 type Entry = { id: string; name: string; site: SiteData | null };
 
@@ -26,7 +27,7 @@ const SECTIONS = [
 
 function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
-    <section id={id} aria-labelledby={`${id}-h`} className="scroll-mt-6 border-t border-rule pt-5 mt-9 first:mt-0">
+    <section id={id} aria-labelledby={`${id}-h`} className="scroll-mt-16 border-t border-rule pt-5 mt-9 first:mt-0">
       <h3 id={`${id}-h`} className="text-[1.068rem] font-semibold leading-snug text-ink text-balance">
         {title}
       </h3>
@@ -199,7 +200,7 @@ function AboutPanel({ entries, loading }: Props) {
   return (
     <div className="mx-auto w-full max-w-[72rem] px-4 py-6 xl:grid xl:grid-cols-[13rem_minmax(0,1fr)] xl:gap-12 xl:px-8 xl:py-8">
       <nav aria-label="On this page" className="hidden xl:block">
-        <ol className="sticky top-0 space-y-1.5 border-l border-rule pl-3 text-[0.844rem]">
+        <ol className="sticky top-16 space-y-1.5 border-l border-rule pl-3 text-[0.844rem]">
           {SECTIONS.map(([href, label]) => (
             <li key={href}>
               <a href={`#${href}`} className="text-ink-2 underline-offset-[3px] hover:text-ink hover:underline">

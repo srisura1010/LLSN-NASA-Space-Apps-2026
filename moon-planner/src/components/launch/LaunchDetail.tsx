@@ -5,7 +5,7 @@
 
 import type { LaunchSite } from "@/lib/launchSites";
 import { formatAzimuthRanges, type LaunchOpportunity } from "@/lib/launchWindow";
-import { ExternalMark } from "../navigator/SiteBulletin";
+import { ExternalMark } from "../ui";
 import {
   DAY_MS,
   HOUR_MS,

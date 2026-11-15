@@ -13,12 +13,13 @@ import { Line } from "@react-three/drei";
 import { Color, LinearMipmapLinearFilter, NoColorSpace, RepeatWrapping, TextureLoader, Vector3, type Mesh, type PerspectiveCamera, type ShaderMaterial, type Texture } from "three";
 import { alongAzimuth } from "@/lib/earthFrame";
 import type { Vec3 } from "@/lib/system";
+import { RENDER, TOKENS } from "@/lib/tokens";
 import { GLOBE_VERT } from "../moon/globeShader";
 import { Cased, Flag, HIT, LABEL_TEXT, LIFT, toScene } from "../moon/marks";
 import { Rim, screenRadius } from "../moon/moonMaterial";
 
-const INK = "#121a22";
-const PAPER = "#eef1f0";
+const INK = TOKENS.ink;
+const PAPER = TOKENS.paper;
 
 /** What the System level needs to know of a launch site; src/lib/launchSites.ts's LaunchSite satisfies it. */
 export type LaunchSiteMark = {
@@ -133,11 +134,11 @@ export function EarthGlobe({ map, sunDir }: { map: Texture; sunDir: Vec3 }) {
     () => ({
       uMap: { value: null as Texture | null },
       uSunDir: { value: new Vector3(1, 0, 0) },
-      uSea: { value: new Color("#2453c2") },
-      uSeaNight: { value: new Color("#273a52") },
-      uLandLo: { value: new Color("#8d9897") },
-      uLandHi: { value: new Color("#f1f3f1") },
-      uLandNight: { value: new Color("#3d5466") },
+      uSea: { value: new Color(RENDER.earthSea) },
+      uSeaNight: { value: new Color(RENDER.earthNight) },
+      uLandLo: { value: new Color(RENDER.earthLandLo) },
+      uLandHi: { value: new Color(RENDER.earthLandHi) },
+      uLandNight: { value: new Color(RENDER.earthLandNight) },
       uInk: { value: new Color(INK) },
       uPaper: { value: new Color(PAPER) },
       uPx: { value: 1 },
