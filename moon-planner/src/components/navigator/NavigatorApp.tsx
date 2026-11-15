@@ -39,6 +39,8 @@ import AboutPanel from "./AboutPanel";
 
 const TerrainPlate = dynamic(() => import("./TerrainPlate"), { ssr: false, loading: () => <PlateLoading /> });
 
+const SystemView = dynamic(() => import("../system/SystemView"), { ssr: false, loading: () => <SystemLoading /> });
+
 const Controls = memo(MissionControls);
 
 // ---------- Constants and URL state ----------
@@ -53,9 +55,10 @@ const CUSTOM_MARGIN_MS = 14 * DAY;
 /** Playback runs through the whole window in this many milliseconds. */
 const PLAY_SPAN_MS = 12_000;
 
-type View = "navigator" | "compare" | "about";
+type View = "navigator" | "system" | "compare" | "about";
 const TABS: { id: View; label: string }[] = [
   { id: "navigator", label: "Navigator" },
+  { id: "system", label: "System" },
   { id: "compare", label: "Compare" },
   { id: "about", label: "About & data" },
 ];
@@ -178,6 +181,14 @@ function PlateLoading() {
   );
 }
 
+function SystemLoading() {
+  return (
+    <div role="status" className="grid h-full min-h-[22rem] place-items-center bg-paper">
+      <p className="text-[0.844rem] text-ink-2">Loading the Sun, Earth and Moon diagram</p>
+    </div>
+  );
+}
+
 function Tabs({ view, onChange, className = "" }: { view: View; onChange: (v: View) => void; className?: string }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   function onKey(e: KeyboardEvent<HTMLButtonElement>, i: number) {
@@ -279,7 +290,7 @@ const subscribeResize = (cb: () => void) => {
 function usePlotHeight(): number | undefined {
   return useSyncExternalStore(
     subscribeResize,
-    () => (window.innerWidth >= 1280 ? Math.round(Math.min(220, Math.max(140, window.innerHeight * 0.165))) : undefined),
+    () => (window.innerWidth >= 1280 ? Math.round(Math.min(220, Math.max(124, window.innerHeight * 0.165))) : undefined),
     () => undefined,
   );
 }
@@ -602,6 +613,31 @@ export default function NavigatorApp() {
     setNowMs(ms);
   }, []);
 
+  // The System view's rail covers all of 2027. Inside the mission window it moves the shared clock;
+  // outside it, the System view keeps its own time until the tab is left.
+  const [systemMs, setSystemMs] = useState<number | null>(null);
+  const systemNow = systemMs ?? nowMs;
+  const scrubSystem = useCallback(
+    (ms: number) => {
+      if (ms >= startMs && ms <= endMs) {
+        setSystemMs(null);
+        scrub(ms);
+      } else {
+        setSystemMs(ms);
+      }
+    },
+    [startMs, endMs, scrub],
+  );
+  const changeView = useCallback((v: View) => {
+    setSystemMs(null);
+    setView(v);
+  }, []);
+  const systemSample = useMemo(
+    () => (view === "system" && selectedData ? sampleAt(selectedData, systemNow) : null),
+    [view, selectedData, systemNow],
+  );
+  const systemWindow = useMemo(() => ({ startMs, endMs }), [startMs, endMs]);
+
   useEffect(() => {
     if (!playing) return;
     let raf = 0;
@@ -758,7 +794,7 @@ export default function NavigatorApp() {
 
   return (
     <div className="relative flex flex-col xl:h-[calc(100dvh-2.75rem)] xl:min-h-[38rem] xl:overflow-hidden">
-      <Masthead startMs={startMs} endMs={endMs} hours={durationHours} view={view} onView={setView} />
+      <Masthead startMs={startMs} endMs={endMs} hours={durationHours} view={view} onView={changeView} />
 
       <div className="border-b border-rule bg-paper-2">
         <Controls
@@ -878,6 +914,20 @@ export default function NavigatorApp() {
               onRetry={retrySelected}
             />
           </section>
+        </div>
+      )}
+
+      {view === "system" && (
+        <div role="tabpanel" id="view-system" aria-labelledby="tab-system" className="relative min-h-0 flex-1 xl:overflow-hidden">
+          <SystemView
+            nowMs={systemNow}
+            onScrub={scrubSystem}
+            siteName={meta.name}
+            sunElevationDeg={systemSample?.sunEl}
+            earthElevationDeg={systemSample?.earthEl}
+            windowMs={systemWindow}
+            className="h-full"
+          />
         </div>
       )}
 

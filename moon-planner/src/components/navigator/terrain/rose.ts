@@ -363,7 +363,7 @@ export class RoseDrawer {
     });
 
     // ---- Bearing paths ----
-    const contactMarks: string[] = [];
+    const contactMarks: { x: number; y: number; rise: boolean }[] = [];
     for (const body of ["sun", "earth"] as const) {
       const path = d[body];
       const base = body === "sun" ? SUN_R : EARTH_R;
@@ -451,28 +451,28 @@ export class RoseDrawer {
 
       for (const ct of path.contacts) {
         const p = pos(ct.ms, ct.az);
-        contactMarks.push(`${f1(p.x)},${f1(p.y)},${isRise(ct.kind) ? 1 : 0}`);
+        contactMarks.push({ x: p.x, y: p.y, rise: isRise(ct.kind) });
       }
     }
 
     // Contacts: open circles, ink at a rise, limit red at a set (as on the horizon plot).
-    if (n.contacts) {
-      const key = contactMarks.join(";");
-      if (n.contacts.dataset.key !== key) {
-        n.contacts.dataset.key = key;
-        const ns = "http://www.w3.org/2000/svg";
-        while (n.contacts.firstChild) n.contacts.removeChild(n.contacts.firstChild);
-        for (const m of contactMarks) {
-          const [x, y, rise] = m.split(",");
-          const el = document.createElementNS(ns, "circle");
-          el.setAttribute("cx", x);
-          el.setAttribute("cy", y);
-          el.setAttribute("r", "3.5");
-          el.setAttribute("stroke-width", "1.5");
-          el.setAttribute("class", rise === "1" ? "fill-paper stroke-ink" : "fill-paper stroke-limit");
-          n.contacts.appendChild(el);
-        }
+    // The circles are kept and moved; only a change in their number adds or removes any.
+    const g = n.contacts;
+    if (g) {
+      while (g.childNodes.length < contactMarks.length) {
+        const el = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        el.setAttribute("r", "3.5");
+        el.setAttribute("stroke-width", "1.5");
+        g.appendChild(el);
       }
+      while (g.childNodes.length > contactMarks.length) g.removeChild(g.lastChild!);
+      contactMarks.forEach((m, i) => {
+        const el = g.childNodes[i] as SVGCircleElement;
+        el.setAttribute("cx", f1(m.x));
+        el.setAttribute("cy", f1(m.y));
+        const cls = m.rise ? "fill-paper stroke-ink" : "fill-paper stroke-limit";
+        if (el.getAttribute("class") !== cls) el.setAttribute("class", cls);
+      });
     }
 
     // The bodies now, on their paths.

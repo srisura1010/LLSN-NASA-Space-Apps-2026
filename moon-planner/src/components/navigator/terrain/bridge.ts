@@ -251,11 +251,24 @@ export class PlateBridge {
           r = [p.x - gap - e.w, top, p.x + 4, bottom];
         }
       }
+      // The pole mark always shows when in view; its name moves to the left, or drops, to stay clear.
+      let quiet = false;
+      if (e.kind === "pole" && overlaps(r, placed, 4)) {
+        const left: Rect = [p.x - 12 - e.w, r[1], p.x + 10, r[3]];
+        if (p.x - 12 - e.w >= 2 && !overlaps(left, placed, 4)) {
+          side = "left";
+          r = left;
+        } else {
+          quiet = true;
+          r = [p.x - 10, p.y - 10, p.x + 10, p.y + 10];
+        }
+      }
+      if (e.kind === "pole" && (el.dataset.quiet === "1") !== quiet) el.dataset.quiet = quiet ? "1" : "0";
       const inView = r[0] >= 0 && r[2] <= w && r[1] >= 0 && r[3] <= h;
       const onScreen = p.front && p.x >= 0 && p.x <= w && p.y >= 0 && p.y <= h && (e.kind === "flag" || inView);
       // Graticule and meridian labels also keep off the bearing rose.
       const clear = e.kind !== "quiet" || !ring || !overlaps(r, [ring.box], 0);
-      const show = onScreen && clear && (e.kind === "flag" || !overlaps(r, placed, 4));
+      const show = onScreen && clear && (e.kind === "flag" || e.kind === "pole" || !overlaps(r, placed, 4));
       if (show && el.dataset.side !== side) el.dataset.side = side;
       if (show) {
         // A flag claims its box and its staff, not the open space beside the staff.

@@ -49,3 +49,36 @@ body {
   scrollbar-color: var(--color-rule) transparent;
   scrollbar-width: thin;
 }
+
+/* Year rail in the System view: a hairline track with a square ink thumb. */
+.system-range {
+  appearance: none;
+  height: 1.5rem;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.system-range::-webkit-slider-runnable-track {
+  height: 1px;
+  background: var(--color-ink);
+}
+.system-range::-moz-range-track {
+  height: 1px;
+  background: var(--color-ink);
+}
+.system-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 9px;
+  height: 21px;
+  margin-top: -10px;
+  border: 0;
+  border-radius: 0;
+  background: var(--color-ink);
+}
+.system-range::-moz-range-thumb {
+  width: 9px;
+  height: 21px;
+  border: 0;
+  border-radius: 0;
+  background: var(--color-ink);
+}

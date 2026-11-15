@@ -99,7 +99,7 @@ export function LabelLayer({ bridge, labels }: { bridge: PlateBridge; labels: Pl
               </svg>
               <span
                 ref={setBox}
-                className="absolute left-[12px] top-0 -translate-y-1/2 whitespace-nowrap bg-paper/85 px-1 py-px text-[0.702rem] font-semibold uppercase leading-none tracking-[0.08em] text-ink group-data-[side=left]:left-auto group-data-[side=left]:right-[12px]"
+                className="absolute left-[12px] top-0 -translate-y-1/2 whitespace-nowrap bg-paper/85 px-1 py-px text-[0.702rem] font-semibold uppercase leading-none tracking-[0.08em] text-ink group-data-[quiet=1]:invisible group-data-[side=left]:left-auto group-data-[side=left]:right-[12px]"
               >
                 {l.text}
                 {l.detail ? <span className="ml-1.5 font-normal tracking-normal text-ink-2 normal-case tabular-nums">{l.detail}</span> : null}
@@ -134,7 +134,7 @@ export function LabelLayer({ bridge, labels }: { bridge: PlateBridge; labels: Pl
           <div
             key={`${l.id}:${l.kind}`}
             ref={(node) => bridge.attachLabel(l.id, "el", node)}
-            className="group pointer-events-none absolute left-0 top-0 will-change-transform"
+            className={`group pointer-events-none absolute left-0 top-0 will-change-transform ${l.kind === "flag" ? "z-10" : ""}`}
             style={hidden}
           >
             {body}

@@ -475,7 +475,7 @@ function SiteBulletin({
           </Section>
 
           <Section title="Why it ranks here">
-            <p className="text-[0.844rem] leading-relaxed text-ink-2">
+            <p className="text-[0.844rem] leading-relaxed text-pretty text-ink-2">
               Score is 45% mean Sun power, 30% time with Earth in view and 25% for keeping the longest dark spell short.
               Equal scores go to the higher peak Sun clearance, then to more time with Earth in view.
             </p>
@@ -499,7 +499,9 @@ function SiteBulletin({
                 </button>
               </div>
             ) : (
-              <p className="mt-3 text-[0.844rem] text-ink-2">No later start in the next {LOOKAHEAD_DAYS} days scores higher here.</p>
+              <p className="mt-3 text-[0.844rem] text-pretty text-ink-2">
+                No later start in the next {LOOKAHEAD_DAYS} days scores higher here.
+              </p>
             )}
           </Section>
 
@@ -537,7 +539,7 @@ function SiteBulletin({
                     </tr>
                   </tbody>
                 </table>
-                <p className="mt-2 text-[0.75rem] leading-snug text-ink-2">
+                <p className="mt-2 text-[0.75rem] leading-snug text-pretty text-ink-2">
                   NASA values: Mazarico et al. 2011, PGDA product 69, long-term averages. Ours cover 2027 only.
                 </p>
               </>

@@ -10,7 +10,8 @@
     "precompute": "tsx scripts/precompute-horizons.ts",
     "process-dem": "tsx scripts/process-dem.ts",
     "build-sky": "tsx scripts/build-sky.ts",
-    "build-validation": "tsx scripts/build-validation.ts"
+    "build-validation": "tsx scripts/build-validation.ts",
+    "build-system": "tsx scripts/build-system.ts"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",

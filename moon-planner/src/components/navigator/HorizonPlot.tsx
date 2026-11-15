@@ -71,6 +71,8 @@ type Props = {
 };
 
 const MIN_SVG_W = 640;
+/** In the Navigator's band a column this wide still fits all 360° without scrolling. */
+const MIN_SVG_W_RAIL = 480;
 /** The rail's label gutter (3.25rem) and gap (0.5rem): the plot frame starts there too, so time and azimuth axes share a left edge. */
 const RAIL_GUTTER_REM = 3.75;
 /** How close (px) a press has to land to a track to grab it. */
@@ -368,7 +370,8 @@ export default function HorizonPlot({
   const data = rangeOf(site.sky);
   const t0 = Math.max(startMs, data.startMs);
   const t1 = Math.min(endMs, data.endMs);
-  const svgW = containerW === null ? null : Math.max(containerW, MIN_SVG_W);
+  const svgW =
+    containerW === null ? null : Math.max(containerW, rail && containerW >= MIN_SVG_W_RAIL ? MIN_SVG_W_RAIL : MIN_SVG_W);
   const plotH = plotHeight ?? (svgW !== null && svgW < 900 ? 196 : 216);
   const overflow = svgW !== null && containerW !== null && svgW > containerW + 1;
   const minLeft = rail && !overflow ? Math.round(RAIL_GUTTER_REM * remPx) : 0;

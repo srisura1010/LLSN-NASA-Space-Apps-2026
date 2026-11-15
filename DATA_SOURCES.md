@@ -38,3 +38,17 @@ the United States; Space Apps asks that each source is credited.
   `sites.ts` to four decimal places (for example Haworth −86.7639, −22.7770).
 - **Credit line:** Artemis III candidate landing regions: U.S. Geological
   Survey (McClernan, 2024), doi:10.5066/P1MEQ6UK.
+
+## JPL Horizons vector tables (System view)
+
+- **Files:** `moon-planner/public/data/system/2027.json`, built by
+  `moon-planner/scripts/build-system.ts` (`npm run build-system`)
+- **Source:** NASA/JPL Solar System Dynamics, Horizons API,
+  https://ssd.jpl.nasa.gov/api/horizons.api (documentation:
+  https://ssd-api.jpl.nasa.gov/doc/horizons.html)
+- **Contents:** heliocentric positions of Earth (399) and the Moon (301) from
+  the Sun's centre (500@10), ecliptic J2000, km, hourly from 2027-01-01 to
+  2028-01-01 (TDB epochs; the file's `startMs` is the matching UTC instant),
+  rounded to 1 km.
+- **Credit line:** Ephemeris data from NASA/JPL Horizons, Solar System
+  Dynamics Group, Jet Propulsion Laboratory.

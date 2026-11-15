@@ -17,6 +17,7 @@ const SECTIONS = [
   ["about-method", "How the numbers are made"],
   ["about-ranking", "How regions are ranked"],
   ["about-limits", "Limits"],
+  ["about-system", "System level"],
   ["about-check", "Checked against NASA"],
   ["about-credits", "NASA data and credits"],
   ["about-ai", "How AI was used"],
@@ -55,6 +56,13 @@ const CREDITS: { name: string; use: string; who: string; href: string; link: str
     who: "NASA Jet Propulsion Laboratory, Solar System Dynamics",
     href: "https://ssd.jpl.nasa.gov/horizons/",
     link: "ssd.jpl.nasa.gov/horizons",
+  },
+  {
+    name: "JPL Horizons vector tables",
+    use: "Heliocentric positions of Earth and the Moon (ecliptic J2000, hourly through 2027) behind the System tab's diagram, distances, Moon phase and light time.",
+    who: "NASA Jet Propulsion Laboratory, Solar System Dynamics",
+    href: "https://ssd-api.jpl.nasa.gov/doc/horizons.html",
+    link: "ssd-api.jpl.nasa.gov/doc/horizons.html",
   },
   {
     name: "LRO LOLA south pole elevation model (LDEM_80S_80MPP)",
@@ -276,6 +284,17 @@ function AboutPanel({ entries, loading }: Props) {
                 horizon from the 640 m heightmap and, when NASA Moon Trek is reachable, 80 m terrain within 5 km.
               </li>
             </ul>
+          </Section>
+
+          <Section id="about-system" title="System level">
+            <p>
+              The System tab steps back from the surface to the geometry that causes everything else: where Earth is on
+              its orbit, where the Moon is around Earth, and which way the sunlight falls. It draws heliocentric
+              positions of Earth and the Moon from JPL Horizons vector tables, hourly through 2027 in the ecliptic J2000
+              frame, and shares the Navigator&apos;s clock. Distances, the Moon&apos;s illuminated fraction and light
+              time are computed from those vectors. The default drawing enlarges the bodies and stretches the Earth to
+              Moon distance so all three are visible, and says so; the true scale option keeps real ratios.
+            </p>
           </Section>
 
           <Section id="about-check" title="Checked against NASA">
