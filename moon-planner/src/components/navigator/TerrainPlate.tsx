@@ -32,7 +32,8 @@ import { RoseDrawer, buildRoseData } from "./terrain/rose";
 import { RoseLayer, ScaleBar } from "./terrain/RoseLayer";
 import TerrainScene from "./terrain/Scene";
 import { ZoomHint } from "../levels/LevelNav";
-import { ErrorBoundary } from "../ui";
+import { ErrorBoundary, Popover, toggleClass } from "../ui";
+import { useStored } from "@/state/stored";
 import { hasWebGL2 } from "@/lib/webgl";
 import { useZoomGate } from "../levels/useZoomGate";
 
@@ -77,6 +78,58 @@ const LEVEL_OUT_KM = 1100;
 /** The same for a plate around any point, which is half the size. */
 const LOCAL_LEVEL_OUT_KM = 700;
 const NO_REGIONS: null[] = sites.map(() => null);
+
+type Layers = { regions: boolean; graticule: boolean; rose: boolean; labels: boolean };
+const DEFAULT_LAYERS: Layers = { regions: true, graticule: true, rose: true, labels: true };
+const LAYERS: { id: keyof Layers; label: string }[] = [
+  { id: "regions", label: "Region outlines" },
+  { id: "graticule", label: "Graticule" },
+  { id: "rose", label: "Bearing rose" },
+  { id: "labels", label: "Region and landmark labels" },
+];
+
+/** The plate's key, in the Legend popover. */
+function PlateLegend({ lit, sunKnown, score, track }: { lit: boolean; sunKnown: boolean; score: boolean; track: boolean }) {
+  const item = "flex items-center gap-2.5 py-1 text-[0.844rem] text-ink";
+  return (
+    <ul className="m-0 list-none p-0">
+      {lit ? (
+        <>
+          <li className={item}>
+            <span
+              aria-hidden
+              className="block h-3 w-6 shrink-0 outline outline-1 -outline-offset-1 outline-rule"
+              style={{ background: `linear-gradient(90deg, ${rgbToHex(RELIEF.litLo)}, ${rgbToHex(RELIEF.litHi)})` }}
+            />
+            Sunlit ground
+          </li>
+          <li className={item}>
+            <span aria-hidden className="block h-3 w-6 shrink-0" style={{ background: rgbToHex(RELIEF.shadowLo) }} />
+            In shadow at the time shown
+          </li>
+        </>
+      ) : (
+        <li className={`${item} font-semibold`}>{sunKnown ? "No site selected: relief only" : "No Sun position for this time: relief only"}</li>
+      )}
+      {score && (
+        <li className={item}>
+          <span aria-hidden className="block h-3 w-6 shrink-0" style={{ background: `linear-gradient(90deg, ${TOKENS.umbra}, ${TOKENS.sun})` }} />
+          Region outline, by score (low to high)
+        </li>
+      )}
+      {track && (
+        <li className={item}>
+          <svg aria-hidden width="24" height="12" viewBox="0 0 22 12" className="shrink-0">
+            <path d="M1 11.5A10 10 0 0 1 21 11.5" className="fill-none stroke-ink" strokeWidth="1" />
+            <path d="M4.5 11.5A6.5 6.5 0 0 1 17.5 11.5" className="fill-none stroke-sun-ink" strokeWidth="3.5" />
+            <path d="M4.5 11.5A6.5 6.5 0 0 1 17.5 11.5" className="fill-none stroke-sun" strokeWidth="2" />
+          </svg>
+          Bearings to the Sun and Earth over the window, ticked as the horizon plot
+        </li>
+      )}
+    </ul>
+  );
+}
 
 /** Where f crosses `target` on a..b, or null when the ends do not bracket it. */
 function crossing(f: (t: number) => number, a: number, b: number, target: number): number | null {
@@ -149,6 +202,7 @@ export default function TerrainPlate({
   const [bridge] = useState(() => new PlateBridge());
   const [rose] = useState(() => new RoseDrawer(K));
   const descId = useId();
+  const [layers, setLayers] = useStored<Layers>("llsn.plate.layers", DEFAULT_LAYERS);
 
   useEffect(() => {
     bridge.setRose(rose);
@@ -404,6 +458,12 @@ export default function TerrainPlate({
     bridge.setIndicator("earth", place(earthBearing));
   }, [bridge, terrain, site, sunBearing, earthBearing, scenePoint]);
 
+  // Labels the Layers popover has turned off: graticule figures, and region chips and landmarks (the selected flag stays).
+  const shownLabels = useMemo(
+    () => labels.filter((l) => (l.kind === "quiet" ? layers.graticule : l.kind === "flag" ? true : layers.labels)),
+    [labels, layers.graticule, layers.labels],
+  );
+
   // ---------- Interaction ----------
 
   const onPick = useCallback(
@@ -457,46 +517,13 @@ export default function TerrainPlate({
   // than the slot's would push the scale bar and view tools out of sight.
   return (
     <figure className={`relative flex flex-col overflow-hidden bg-paper text-ink ${className ?? ""}`}>
-      <figcaption className="flex flex-wrap items-center justify-between gap-x-5 gap-y-1 border-b border-rule bg-paper px-4 py-1">
-        {caption}
-        <span className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[0.75rem] text-ink-2">
-          {lit ? (
-            <>
-              <span className="flex items-center gap-1.5">
-                <span
-                  aria-hidden
-                  className="block h-2.5 w-4 outline outline-1 -outline-offset-1 outline-rule"
-                  style={{ background: `linear-gradient(90deg, ${rgbToHex(RELIEF.litLo)}, ${rgbToHex(RELIEF.litHi)})` }}
-                />
-                Sunlit
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span aria-hidden className="block h-2.5 w-4" style={{ background: rgbToHex(RELIEF.shadowLo) }} />
-                Shadow
-              </span>
-            </>
-          ) : (
-            <span className="font-semibold text-ink">
-              {sun ? "No site selected: relief only" : "No Sun position for this time: relief only"}
-            </span>
-          )}
-          {regionValues && !localMode && (
-            <span className="flex items-center gap-1.5">
-              <span aria-hidden className="block h-2.5 w-6" style={{ background: `linear-gradient(90deg, ${TOKENS.umbra}, ${TOKENS.sun})` }} />
-              Score
-            </span>
-          )}
-          {track && (
-            <span className="flex items-center gap-1.5">
-              <svg aria-hidden width="22" height="12" viewBox="0 0 22 12" className="shrink-0">
-                <path d="M1 11.5A10 10 0 0 1 21 11.5" className="fill-none stroke-ink" strokeWidth="1" />
-                <path d="M4.5 11.5A6.5 6.5 0 0 1 17.5 11.5" className="fill-none stroke-sun-ink" strokeWidth="3.5" />
-                <path d="M4.5 11.5A6.5 6.5 0 0 1 17.5 11.5" className="fill-none stroke-sun" strokeWidth="2" />
-              </svg>
-              Bearings to the Sun and to Earth, ticked as Fig. 2
-            </span>
-          )}
-        </span>
+      {/* Top left of the stage: the level control and the figure title, over the plate. */}
+      <figcaption
+        ref={(el) => bridge.attachReserved("top-left", el)}
+        className="pointer-events-none absolute top-2 left-2 z-20 flex max-w-[calc(100%-11rem)] flex-wrap items-center gap-2"
+      >
+        {levelNav}
+        {caption && <span className="border border-rule bg-paper/90 px-2 py-1 leading-tight">{caption}</span>}
       </figcaption>
       <div
         ref={stageRef}
@@ -508,7 +535,38 @@ export default function TerrainPlate({
         aria-describedby={descId}
         onKeyDown={onKeyDown}
       >
-        {levelNav && <div className="pointer-events-none absolute top-2 left-2 z-20">{levelNav}</div>}
+        {/* The Legend and Layers popovers, top right of the stage. */}
+        <div ref={(el) => bridge.attachReserved("top-right", el)} className="absolute top-2 right-2 z-30 flex gap-1">
+          <Popover
+            label="Legend for the terrain plate"
+            button={<>Legend</>}
+            buttonClassName={toggleClass(false, "md")}
+            panelClassName="w-[19rem] p-3"
+          >
+            <PlateLegend lit={lit} sunKnown={!!sun} score={!!regionValues && !localMode} track={!!track} />
+          </Popover>
+          <Popover
+            label="Layers on the terrain plate"
+            button={<>Layers</>}
+            buttonClassName={toggleClass(false, "md")}
+            panelClassName="w-[15rem] p-2"
+          >
+            <fieldset>
+              <legend className="px-1 pb-1.5 text-[0.75rem] font-semibold tracking-[0.08em] text-ink-2 uppercase">Show on the plate</legend>
+              {LAYERS.map((l) => (
+                <label key={l.id} className="flex cursor-pointer items-center gap-2 px-1 py-1 text-[0.844rem] text-ink hover:bg-paper-2">
+                  <input
+                    type="checkbox"
+                    checked={layers[l.id]}
+                    onChange={(e) => setLayers({ ...layers, [l.id]: e.target.checked })}
+                    className="size-4 accent-[var(--color-ink)]"
+                  />
+                  {l.label}
+                </label>
+              ))}
+            </fieldset>
+          </Popover>
+        </div>
         <ZoomHint
           text={zoomHint === "out" && showCanvas ? "Keep zooming out for the Moon level, or" : null}
           progress={zoomProgress}
@@ -543,7 +601,8 @@ export default function TerrainPlate({
                   key={plateKey}
                   data={terrain}
                   range={range}
-                  regions={regions}
+                  regions={layers.regions ? regions : NO_REGIONS}
+                  graticule={layers.graticule}
                   selectedIndex={selectedIndex}
                   hoveredIndex={hovered}
                   onHover={setHovered}
@@ -560,8 +619,10 @@ export default function TerrainPlate({
               </Canvas>
             </div>
             <div className={`pointer-events-none absolute inset-0 transition-opacity duration-200 ${ready ? "opacity-100" : "opacity-0"}`}>
-              <RoseLayer drawer={rose} />
-              <LabelLayer bridge={bridge} labels={labels} />
+              <div className={layers.rose ? "contents" : "hidden"}>
+                <RoseLayer drawer={rose} />
+              </div>
+              <LabelLayer bridge={bridge} labels={shownLabels} />
               <Indicators bridge={bridge} sun={sun} earth={earth} />
             </div>
           </ErrorBoundary>

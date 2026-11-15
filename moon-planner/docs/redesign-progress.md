@@ -2,7 +2,7 @@
 
 This file and `docs/tool-ui-audit.md` are the starting point for the next session. Section numbers like §3.3 refer
 to the audit. The audit still describes the layout and metrics, but not the Phase 1–2 shell and file moves listed
-below. Status: **Phases 1 and 2 done. Phase 3 not started.** Nothing is committed.
+below. Status: **Phases 1, 2 and 3 done. Phase 4 not started.** Nothing is committed.
 
 ## Phase 1: foundation (done)
 
@@ -71,7 +71,59 @@ below. Status: **Phases 1 and 2 done. Phase 3 not started.** Nothing is committe
 `Segmented`, `SelectField`, `Panel`, `Row`, `StateSwatch`, `icons`, `ErrorBoundary`, `Popover`, `Drawer`, `Toast`),
 `src/components/shell/AppBar.tsx`, `docs/redesign-progress.md`.
 
-## Where Phase 3 starts
+## Phase 3: layout (done)
+
+- **Workspace:** at every Plan level (Site, Moon, System) the page is one shell: a left rail (300 px) with the
+  ranking, the gap select and a "+ Custom site" expander; the centre viewer (`data-viewer`); a right inspector
+  (340 px); and, at the Site level, a dock under the viewer.
+  - Rails are `src/components/shell/Rail.tsx`. From xl (1280 px) each collapses to a 36 px strip that keeps a
+    labelled button ("Regions", "Bulletin" or "Details"); focus moves to the counterpart button. Below xl the rails
+    stack with the viewer and are always open.
+  - Collapse states, the dock and the plate layers are kept per viewer in localStorage through
+    `src/state/stored.ts` (`useStored`, hydration-safe via useSyncExternalStore). Keys: `llsn.rail.left`,
+    `llsn.rail.right`, `llsn.dock.open`, `llsn.dock.h`, `llsn.plate.layers`.
+- **Moon and System in the viewer slot:** both now render inside `data-viewer`. Their side panel (circumstances,
+  point panel, marks, sources) is portalled into the inspector rail through a new `inspector` prop; without the prop
+  they still draw their own aside. The Moon panel's "Regions" buttons are hidden in the workspace (the ranking is
+  beside it). Their header, caption and YearSlider stay inside the view.
+- **Dock:** `src/components/navigator/Dock.tsx` wraps `HorizonPlot` in a new `dock` mode. Always visible: the
+  compact TimelineStrip and a one-line readout ([Horizon] toggle, Play, time, Sun and Earth az/el/state/next). The
+  panorama (Fig. 2) opens above them; its top edge is a `role="separator"` handle (drag, or arrow keys, Home, End).
+  Default: open when the window is at least 900 px tall, height `clamp(124, 0.165 x innerHeight, 200)`. The plot's
+  key moved into a "Key" popover in its caption. `Popover` gained `side="above"`.
+- **Terrain plate:** the caption bar is gone. The level control and "Fig. 1 Terrain at …" float at the top left;
+  Legend and Layers popovers at the top right. Layers: region outlines, graticule (a new `uGrat` shader uniform, via
+  `PlateRenderer.setGraticule`), bearing rose, region and landmark labels (the selected flag always stays). The Sun
+  and Earth plate indicators no longer print az/el; the dock readout carries them.
+- **Ranking:** columns are #, region (with "Sun · Earth · dark" on a second line), score (0 to 1, with a bar) and a
+  separate warning column: `AlertMark` as an inline SVG with `role="img"`, `aria-label` and `title` naming the
+  dark spell and/or comms gap and the limit. The old Sun/Earth share bars are gone; the footer explains the weights.
+- **Measured** (`data-viewer`): 1440x900 site 800x535 (was 720x405; +47% area) with the horizon plot open and both
+  rails; 1366x768 726x619 (plot closed by default); Moon/System at 1440x900 800x844. No page scroll at 1440x900 or
+  1366x768; 390x844 has no sideways overflow.
+- **Screenshots:** scratchpad `shots/phase3/`.
+
+### Unfinished or known issues (Phase 3)
+
+- At about 800 px viewer width the dock readout clips the "next contact" text (it truncates to "·"); the time and
+  az/el stay. A shorter format or a second line at narrow widths would fix it.
+- Moon and System still carry their long caption paragraphs and own YearSlider/Play inside the viewer (the Moon
+  caption is ~190 px tall at 800 px wide). The second Play/clock remains (Phase 4).
+- The dock is shown at the Site level only; Moon and System use their YearSlider.
+- Turning off "Region outlines" also removes the plate's click-to-pick regions (the chips still select).
+- Mouse click on the time rail was not confirmed by the test (keyboard scrubbing, drag of the dock and Play were).
+- Below xl the rails do not collapse, and the ranking still comes before the viewer on phones (Phase 5).
+
+## Where Phase 4 starts
+
+1. One clock and one Play: fold the Moon/System YearSlider and their Play into the dock (a year rail at those
+   levels), so the dock exists at all three levels.
+2. Move the Moon and System header controls (framing, scale, landings, pick a point) into compact toolbars or
+   popovers over the viewer, and shorten or fold their caption paragraphs into an info popover.
+3. "Why" bars in the bulletin from `missionScore().parts`, and tidy the dock readout's narrow-width format.
+4. Trim the bulletin so Circumstances and Contacts fit the inspector without scrolling at 1440x900.
+
+## Where Phase 3 started (done)
 
 1. Rework the `view === "navigator"` grid in the `Navigator` component's JSX in
    `src/components/navigator/NavigatorApp.tsx`:

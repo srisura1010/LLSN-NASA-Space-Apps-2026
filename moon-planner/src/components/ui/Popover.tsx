@@ -10,6 +10,7 @@ export function Popover({
   button,
   children,
   align = "end",
+  side = "below",
   open: openProp,
   onOpenChange,
   buttonClassName = "",
@@ -23,6 +24,8 @@ export function Popover({
   /** The panel's content, or a function given a close() to call. */
   children: ReactNode | ((close: () => void) => ReactNode);
   align?: "start" | "end";
+  /** Open under the trigger (default) or over it, for a trigger near the bottom of the screen. */
+  side?: "below" | "above";
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   buttonClassName?: string;
@@ -92,7 +95,7 @@ export function Popover({
           role="dialog"
           aria-label={label}
           tabIndex={-1}
-          className={`absolute top-full z-50 mt-1 border border-ink bg-paper shadow-[0_6px_24px_rgb(18_26_34/0.18)] outline-none ${
+          className={`absolute z-50 ${side === "above" ? "bottom-full mb-1" : "top-full mt-1"} border border-ink bg-paper shadow-[0_6px_24px_rgb(18_26_34/0.18)] outline-none ${
             align === "end" ? "right-0" : "left-0"
           } ${panelClassName}`}
         >

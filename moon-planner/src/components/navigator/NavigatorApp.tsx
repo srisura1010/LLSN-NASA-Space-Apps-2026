@@ -10,7 +10,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { covers, loadSite, rankSites, sampleAt, type MissionScore, type SiteData } from "@/lib/sky";
@@ -34,7 +33,10 @@ import ComparePanel, { tiedRanks, type CompareOption } from "./ComparePanel";
 import AboutPanel from "./AboutPanel";
 import LaunchPanel from "../launch/LaunchPanel";
 import LevelNav, { type Level } from "../levels/LevelNav";
-import { Drawer, ErrorBoundary, Toast } from "../ui";
+import { ChevronMark, Drawer, ErrorBoundary, Toast } from "../ui";
+import Rail from "../shell/Rail";
+import Dock from "./Dock";
+import { useStored } from "@/state/stored";
 import AppBar, { type Mode } from "../shell/AppBar";
 
 const TerrainPlate = dynamic(() => import("./TerrainPlate"), { ssr: false, loading: () => <PlateLoading /> });
@@ -118,29 +120,44 @@ function PlateTitle({ meta }: { meta: SiteMeta }) {
   );
 }
 
-const subscribeResize = (cb: () => void) => {
-  window.addEventListener("resize", cb);
-  return () => window.removeEventListener("resize", cb);
-};
-
-/**
- * Height of the horizon plot's drawing area. On wide screens the bottom band
- * has to fit under the plate in one screen, so it follows the window height.
- */
-function usePlotHeight(): number | undefined {
-  return useSyncExternalStore(
-    subscribeResize,
-    () => (window.innerWidth >= 1280 ? Math.round(Math.min(220, Math.max(124, window.innerHeight * 0.165))) : undefined),
-    () => undefined,
-  );
-}
-
 function BandSkeleton() {
   return (
     <div aria-hidden="true" className="flex flex-col gap-2">
       <div className="h-5 w-2/3 bg-paper-2 motion-safe:animate-pulse" />
       <div className="h-[13rem] bg-paper-2 motion-safe:animate-pulse" />
       <div className="h-10 bg-paper-2 motion-safe:animate-pulse" />
+    </div>
+  );
+}
+
+/** "+ Custom site": the custom-site form, folded under the ranking until asked for (open while a custom site is set). */
+function CustomSiteExpander({
+  state,
+  onSubmit,
+  onRemove,
+}: {
+  state: CustomSiteState;
+  onSubmit: (lat: number, lon: number) => void;
+  onRemove: () => void;
+}) {
+  const [shown, setOpen] = useState(!!state);
+  return (
+    <div className="border-t border-rule">
+      <button
+        type="button"
+        aria-expanded={shown}
+        aria-controls="custom-site-form"
+        onClick={() => setOpen(!shown)}
+        className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-[0.95rem] font-semibold text-ink transition-colors duration-150 hover:bg-paper-3"
+      >
+        <span>
+          <span aria-hidden="true">+ </span>Custom site
+        </span>
+        <ChevronMark className={`size-3.5 transition-transform duration-150 motion-reduce:transition-none ${shown ? "rotate-180" : ""}`} />
+      </button>
+      <div id="custom-site-form" hidden={!shown}>
+        <CustomSiteForm state={state} onSubmit={onSubmit} onRemove={onRemove} className="pt-0" />
+      </div>
     </div>
   );
 }
@@ -158,8 +175,8 @@ export function NavigatorSkeleton() {
         <div className="mx-auto h-4 w-52 bg-paper-3" />
         <div className="h-9 w-44 bg-paper-3" />
       </div>
-      <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(19rem,22rem)_minmax(0,1fr)] xl:grid-cols-[24rem_minmax(0,1fr)_21rem]">
-        <div className="space-y-3 border-b border-rule bg-paper-2 px-4 py-4 md:border-r md:border-b-0" aria-hidden="true">
+      <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[300px_minmax(0,1fr)_340px]">
+        <div className="space-y-3 border-b border-rule bg-paper-2 px-4 py-4 xl:border-r xl:border-b-0" aria-hidden="true">
           <div className="h-5 w-3/4 bg-paper-3" />
           {Array.from({ length: 9 }, (_, i) => (
             <div key={i} className="h-8 bg-paper-3" />
@@ -641,6 +658,13 @@ function Navigator() {
   const changeMode = useCallback((m: Mode) => changeView(m === "plan" ? lastPlanView.current : m), [changeView]);
   const [windowOpen, setWindowOpen] = useState(false);
 
+  // ---- Workspace layout (kept per viewer in localStorage) ----
+  const planView = view === "navigator" || view === "moon" || view === "system";
+  const [leftOpen, setLeftOpen] = useStored("llsn.rail.left", true);
+  const [rightOpen, setRightOpen] = useStored("llsn.rail.right", true);
+  // The inspector rail's body at the Moon and System levels; those views draw their side panel into it.
+  const [inspectorEl, setInspectorEl] = useState<HTMLDivElement | null>(null);
+
   // ---- URL ----
 
   const urlAt = playing ? 0 : Math.round(((nowMs - startMs) / HOUR) * 10) / 10;
@@ -854,7 +878,6 @@ function Navigator() {
       onRetry: retryCustom,
     };
   }, [customLat, customTerrainData, customStatus, customMessage, customTerrainError, retryCustom]);
-  const plotHeight = usePlotHeight();
   // The Sun's and Earth's bearing paths on the plate cover the same window as Fig. 2.
   const plateTrack = useMemo(() => (selectedData ? { site: selectedData, startMs, endMs } : null), [selectedData, startMs, endMs]);
   const fade = `transition-opacity duration-200 motion-reduce:transition-none ${fading ? "opacity-0" : "opacity-100"}`;
@@ -891,14 +914,17 @@ function Navigator() {
         </div>
       )}
 
-      {view === "navigator" && (
-        <div
-          role="tabpanel"
-          id="workspace"
-          aria-labelledby="mode-plan"
-          className={`grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(19rem,22rem)_minmax(0,1fr)] xl:grid-cols-[24rem_minmax(0,1fr)_21rem] ${fade}`}
-        >
-          <div className="relative border-b border-rule bg-paper-2 md:row-span-2 md:border-r md:border-b-0 xl:row-span-1 xl:overflow-y-auto">
+      {planView && (
+        <div role="tabpanel" id="workspace" aria-labelledby="mode-plan" className="flex min-h-0 flex-1 flex-col xl:flex-row">
+          <Rail
+            id="rail-regions"
+            side="left"
+            label="Regions"
+            open={leftOpen}
+            onOpenChange={setLeftOpen}
+            widthClass="xl:w-[300px]"
+            className="border-b bg-paper-2 xl:border-b-0"
+          >
             <RegionTable
               rows={rows}
               loading={!rankingReady}
@@ -910,141 +936,157 @@ function Navigator() {
               limitHours={gap}
               onLimitChange={setGap}
             />
-            <CustomSiteForm state={customState} onSubmit={addCustom} onRemove={removeCustom} className="border-t border-rule" />
-          </div>
+            <CustomSiteExpander state={customState} onSubmit={addCustom} onRemove={removeCustom} />
+          </Rail>
 
-          <div className="relative flex min-w-0 flex-col md:col-start-2 xl:overflow-y-auto">
-            <section aria-label={`Fig. 1, terrain at ${meta.name}`} className="flex flex-col xl:min-h-[17rem] xl:flex-1">
-              <div className="relative h-[24rem] overflow-hidden bg-paper-2 sm:h-[30rem] xl:h-auto xl:flex-1">
-                <ErrorBoundary
-                  fallback={
-                    <PanelProblem>
-                      The 3D terrain could not start in this browser, which may have WebGL turned off. The ranking, plots
-                      and bulletin still work.
-                    </PanelProblem>
-                  }
-                >
-                  <TerrainPlate
-                    selectedId={effectiveId}
-                    onSelect={select}
-                    sun={sun}
-                    earth={earth}
-                    up={upNow}
-                    regionValues={regionValues}
-                    customSite={customPoint}
-                    local={plateLocal}
-                    track={plateTrack}
-                    caption={<PlateTitle meta={meta} />}
-                    onZoomOut={zoomToMoon}
-                    levelNav={<LevelNav level="site" onLevel={stepLevel} />}
-                    className="h-full w-full"
-                  />
-                </ErrorBoundary>
-              </div>
-            </section>
-
-            <section
-              aria-label={`Fig. 2, horizon and time from ${meta.name}`}
-              className="border-t border-ink bg-paper px-4 pt-1.5 pb-2.5 xl:shrink-0"
+          <div className={`flex min-h-0 min-w-0 flex-1 flex-col ${fade}`}>
+            <div
+              data-viewer
+              className={`relative min-h-0 overflow-hidden bg-paper-2 xl:h-auto xl:flex-1 ${view === "navigator" ? "h-[26rem] sm:h-[30rem]" : ""}`}
             >
-              {selectedData ? (
-                <ErrorBoundary
-                  key={`plot-${effectiveId}`}
-                  fallback={<PanelProblem>The horizon plot could not be drawn for {meta.name}.</PanelProblem>}
-                >
-                  <HorizonPlot
-                    site={selectedData}
-                    siteName={meta.name}
-                    nowMs={nowMs}
-                    startMs={startMs}
-                    endMs={endMs}
-                    figure="Fig. 2"
-                    plotHeight={plotHeight}
-                    onScrub={scrub}
-                    playing={playing}
-                    onTogglePlay={togglePlay}
-                    className="w-full"
-                  />
-                </ErrorBoundary>
-              ) : selectedStatus === "error" ? (
-                <PanelProblem>No tracks for {meta.name}, so there is no horizon plot or time rail. The bulletin has the details.</PanelProblem>
-              ) : (
-                <BandSkeleton />
+              {view === "navigator" && (
+                <section aria-label={`Fig. 1, terrain at ${meta.name}`} className="h-full">
+                  <ErrorBoundary
+                    fallback={
+                      <PanelProblem>
+                        The 3D terrain could not start in this browser, which may have WebGL turned off. The ranking, plots
+                        and bulletin still work.
+                      </PanelProblem>
+                    }
+                  >
+                    <TerrainPlate
+                      selectedId={effectiveId}
+                      onSelect={select}
+                      sun={sun}
+                      earth={earth}
+                      up={upNow}
+                      regionValues={regionValues}
+                      customSite={customPoint}
+                      local={plateLocal}
+                      track={plateTrack}
+                      caption={<PlateTitle meta={meta} />}
+                      onZoomOut={zoomToMoon}
+                      levelNav={<LevelNav level="site" onLevel={stepLevel} />}
+                      className="h-full w-full"
+                    />
+                  </ErrorBoundary>
+                </section>
               )}
-            </section>
+
+              {view === "system" && (
+                <SystemView
+                  nowMs={systemNow}
+                  onScrub={scrubSystem}
+                  siteName={meta.name}
+                  sunElevationDeg={systemSample?.sunEl}
+                  earthElevationDeg={systemSample?.earthEl}
+                  windowMs={systemWindow}
+                  onOpenMoon={zoomToMoon}
+                  entry={arrival}
+                  levelNav={<LevelNav level="system" onLevel={stepLevel} />}
+                  launchSites={LAUNCH_MARKS}
+                  selectedLaunchSiteId={launchSiteId ?? undefined}
+                  onSelectLaunchSite={setLaunchSiteId}
+                  transferArc={transferArc}
+                  inspector={inspectorEl}
+                  className="h-full"
+                />
+              )}
+
+              {view === "moon" && (
+                <MoonView
+                  nowMs={systemNow}
+                  onScrub={scrubSystem}
+                  selectedId={effectiveId}
+                  onSelect={select}
+                  onOpenSite={zoomToSite}
+                  onOpenSystem={zoomToSystem}
+                  entry={arrival}
+                  entryPoint={moonEntryPoint}
+                  levelNav={<LevelNav level="moon" onLevel={stepFromMoon} />}
+                  windowMs={systemWindow}
+                  point={point}
+                  pointSite={pointSite}
+                  onPoint={pickPoint}
+                  onPointTerrain={pointToTerrain}
+                  onPointCompare={comparePoint}
+                  inspector={inspectorEl}
+                  className="h-full"
+                />
+              )}
+            </div>
+
+            {view === "navigator" && (
+              <Dock panelId="dock-horizon">
+                {(d) =>
+                  selectedData ? (
+                    <ErrorBoundary
+                      key={`plot-${effectiveId}`}
+                      fallback={<PanelProblem>The horizon plot could not be drawn for {meta.name}.</PanelProblem>}
+                    >
+                      <HorizonPlot
+                        site={selectedData}
+                        siteName={meta.name}
+                        nowMs={nowMs}
+                        startMs={startMs}
+                        endMs={endMs}
+                        figure="Fig. 2"
+                        plotHeight={d.plotHeight}
+                        onScrub={scrub}
+                        playing={playing}
+                        onTogglePlay={togglePlay}
+                        dock={{ open: d.open, controls: d.controls }}
+                        className="w-full"
+                      />
+                    </ErrorBoundary>
+                  ) : selectedStatus === "error" ? (
+                    <PanelProblem>No tracks for {meta.name}, so there is no horizon plot or time rail. The bulletin has the details.</PanelProblem>
+                  ) : (
+                    <BandSkeleton />
+                  )
+                }
+              </Dock>
+            )}
           </div>
 
-          <section
-            aria-labelledby="bulletin-title"
-            className="relative border-t border-rule md:col-start-2 xl:col-start-3 xl:overflow-y-auto xl:border-t-0 xl:border-l"
+          <Rail
+            id="rail-inspector"
+            side="right"
+            label={view === "navigator" ? "Bulletin" : "Details"}
+            open={rightOpen}
+            onOpenChange={setRightOpen}
+            widthClass="xl:w-[340px]"
+            className="border-t bg-paper xl:border-t-0"
           >
-            <SiteBulletin
-              name={meta.name}
-              lat={meta.lat}
-              lon={meta.lon}
-              custom={meta.custom}
-              customNote={meta.custom ? customNote : undefined}
-              methodNote={methodNote}
-              status={selectedStatus}
-              error={selectedError}
-              site={selectedData}
-              score={score}
-              rank={ranks.get(effectiveId) ?? null}
-              total={ranking.length}
-              before={before}
-              startMs={startMs}
-              endMs={endMs}
-              durationHours={durationHours}
-              limitHours={gap}
-              onUseStart={moveStart}
-              onShowAbout={showAbout}
-              onRetry={retrySelected}
-            />
-          </section>
-        </div>
-      )}
-
-      {view === "system" && (
-        <div role="tabpanel" id="workspace" aria-labelledby="mode-plan" className={`relative min-h-0 flex-1 xl:overflow-hidden ${fade}`}>
-          <SystemView
-            nowMs={systemNow}
-            onScrub={scrubSystem}
-            siteName={meta.name}
-            sunElevationDeg={systemSample?.sunEl}
-            earthElevationDeg={systemSample?.earthEl}
-            windowMs={systemWindow}
-            onOpenMoon={zoomToMoon}
-            entry={arrival}
-            levelNav={<LevelNav level="system" onLevel={stepLevel} />}
-            launchSites={LAUNCH_MARKS}
-            selectedLaunchSiteId={launchSiteId ?? undefined}
-            onSelectLaunchSite={setLaunchSiteId}
-            transferArc={transferArc}
-            className="h-full"
-          />
-        </div>
-      )}
-
-      {view === "moon" && (
-        <div role="tabpanel" id="workspace" aria-labelledby="mode-plan" className={`relative min-h-0 flex-1 xl:overflow-hidden ${fade}`}>
-          <MoonView
-            nowMs={systemNow}
-            onScrub={scrubSystem}
-            selectedId={effectiveId}
-            onSelect={select}
-            onOpenSite={zoomToSite}
-            onOpenSystem={zoomToSystem}
-            entry={arrival}
-            entryPoint={moonEntryPoint}
-            levelNav={<LevelNav level="moon" onLevel={stepFromMoon} />}
-            windowMs={systemWindow}
-            point={point}
-            pointSite={pointSite}
-            onPoint={pickPoint}
-            onPointTerrain={pointToTerrain}
-            onPointCompare={comparePoint}
-            className="h-full"
-          />
+            {view === "navigator" ? (
+              <section aria-labelledby="bulletin-title" className="relative">
+                <SiteBulletin
+                  name={meta.name}
+                  lat={meta.lat}
+                  lon={meta.lon}
+                  custom={meta.custom}
+                  customNote={meta.custom ? customNote : undefined}
+                  methodNote={methodNote}
+                  status={selectedStatus}
+                  error={selectedError}
+                  site={selectedData}
+                  score={score}
+                  rank={ranks.get(effectiveId) ?? null}
+                  total={ranking.length}
+                  before={before}
+                  startMs={startMs}
+                  endMs={endMs}
+                  durationHours={durationHours}
+                  limitHours={gap}
+                  onUseStart={moveStart}
+                  onShowAbout={showAbout}
+                  onRetry={retrySelected}
+                />
+              </section>
+            ) : (
+              <div ref={setInspectorEl} aria-label={view === "moon" ? "Moon circumstances" : "System circumstances"} role="region" />
+            )}
+          </Rail>
         </div>
       )}
 

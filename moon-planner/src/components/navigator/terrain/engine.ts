@@ -118,6 +118,7 @@ export class PlateRenderer {
         uSun: { value: new Vector3(0, 0, 1) },
         uExag: { value: EXAGGERATION },
         uDpr: { value: 1 },
+        uGrat: { value: 1 },
         uLitLo: { value: vec3(RELIEF.litLo) },
         uLitHi: { value: vec3(RELIEF.litHi) },
         uShLo: { value: vec3(RELIEF.shadowLo) },
@@ -179,6 +180,10 @@ export class PlateRenderer {
         edges[i * 4 + j].set(a.x, a.y, (b.y - a.y) / l, -(b.x - a.x) / l);
       }
     }
+  }
+
+  setGraticule(on: boolean) {
+    this.material.uniforms.uGrat.value = on ? 1 : 0;
   }
 
   setHighlight(selected: number, hovered: number) {

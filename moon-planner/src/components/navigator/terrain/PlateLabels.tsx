@@ -145,12 +145,6 @@ export function LabelLayer({ bridge, labels }: { bridge: PlateBridge; labels: Pl
   );
 }
 
-function fmt(v: number, signed = false) {
-  const s = Math.abs(v).toFixed(1);
-  if (!signed) return `${s}°`;
-  return `${v < 0 ? "−" : "+"}${s}°`;
-}
-
 /** Sun and Earth direction markers, pinned where the bearing leaves the plate or the view. */
 export function Indicators({
   bridge,
@@ -186,13 +180,8 @@ export function Indicators({
             ref={(node) => bridge.attachIndicator(key, "box", node)}
             className={`absolute left-0 top-0 flex items-baseline gap-1.5 whitespace-nowrap border border-rule bg-paper px-1.5 py-[3px] text-[0.702rem] leading-none tabular-nums ${tone}`}
           >
+            {/* Bearing and elevation are in the dock's readout; the plate names the body only. */}
             <span className="font-semibold uppercase tracking-[0.08em]">{label}</span>
-            {v && (
-              <>
-                <span>az {fmt(v.az)}</span>
-                <span>el {fmt(v.el, true)}</span>
-              </>
-            )}
           </span>
         </div>
       ))}

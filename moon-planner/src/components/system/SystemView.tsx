@@ -6,6 +6,7 @@
 // carries the same lines to the Sun and Earth, so the geometry can be followed
 // from here down to the site.
 
+import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Line, OrbitControls } from "@react-three/drei";
@@ -86,6 +87,11 @@ export type SystemViewProps = {
   /** Draws a line from the launch site at launch to the Moon at arrival. The view does not compute it. */
   transferArc?: TransferArc | null;
   className?: string;
+  /**
+   * The workspace's inspector rail. When given, the view's side panel (circumstances, point, marks) is drawn
+   * there instead of beside the view; null while the rail is still mounting.
+   */
+  inspector?: HTMLElement | null;
 };
 
 type Scale = "display" | "true";
@@ -1160,6 +1166,7 @@ export default function SystemView({
   onSelectLaunchSite,
   transferArc,
   className = "",
+  inspector,
 }: SystemViewProps) {
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
@@ -1468,6 +1475,28 @@ export default function SystemView({
       ? `Display scale, not to scale: Earth and the Moon are drawn ${BODY_STRETCH} times too large, the Sun ${SUN_STRETCH} times, and the Earth to Moon distance ${PAIR_STRETCH} times too long, so all three can be seen at once. Positions, the Moon's orientation, the terminator and the table are true; the line to the Sun keeps its true direction, which the stretch can leave up to 7° off the Sun as drawn.`
       : "True scale: sizes and distances keep their real ratios, so the bodies are specks inside the rings that mark them. Zoom in on the Earth–Moon framing to find them; the lines from the Moon and its terminator are true.");
 
+  // The side panel, beside the view or in the workspace inspector.
+  const panel = (
+    <>
+        {state ? (
+          <Readout state={state} siteName={siteName} sunEl={sunElevationDeg} earthEl={earthElevationDeg} earthFrame={earthFrame} launchSite={launchSite} />
+        ) : (
+          <p className="text-[0.844rem] text-ink-2">{load.status === "error" ? "No values to show." : "Loading values"}</p>
+        )}
+        <SectionLabel className="mt-6">Marks</SectionLabel>
+        <div className="mt-1.5">
+          <Legend launch={Boolean(launchSites?.length)} />
+        </div>
+        <p className="mt-6 border-t border-rule pt-3 text-[0.8rem] leading-snug text-ink-2">
+          Positions: NASA/JPL Horizons vector tables for Earth and the Moon, hourly through 2027, heliocentric ecliptic
+          J2000; values between the hours are interpolated. The Moon&apos;s orientation: IAU/WGCCRE rotation model; its
+          surface: NASA SVS CGI Moon Kit maps from Lunar Reconnaissance Orbiter data. Earth&apos;s orientation: the
+          Earth Rotation Angle about the pole of date; its surface: NASA Earth Observatory Blue Marble Next Generation
+          (July 2004, topography and bathymetry), printed here as sea, land relief and coastline.
+        </p>
+    </>
+  );
+
   return (
     <div className={`flex min-h-0 flex-col xl:flex-row ${className}`}>
       <section aria-label="Sun, Earth and Moon diagram" className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -1677,24 +1706,11 @@ export default function SystemView({
         )}
       </section>
 
-      <aside className="shrink-0 border-t border-ink px-4 py-4 xl:w-[21.5rem] xl:overflow-y-auto xl:border-t-0 xl:border-l">
-        {state ? (
-          <Readout state={state} siteName={siteName} sunEl={sunElevationDeg} earthEl={earthElevationDeg} earthFrame={earthFrame} launchSite={launchSite} />
-        ) : (
-          <p className="text-[0.844rem] text-ink-2">{load.status === "error" ? "No values to show." : "Loading values"}</p>
-        )}
-        <SectionLabel className="mt-6">Marks</SectionLabel>
-        <div className="mt-1.5">
-          <Legend launch={Boolean(launchSites?.length)} />
-        </div>
-        <p className="mt-6 border-t border-rule pt-3 text-[0.8rem] leading-snug text-ink-2">
-          Positions: NASA/JPL Horizons vector tables for Earth and the Moon, hourly through 2027, heliocentric ecliptic
-          J2000; values between the hours are interpolated. The Moon&apos;s orientation: IAU/WGCCRE rotation model; its
-          surface: NASA SVS CGI Moon Kit maps from Lunar Reconnaissance Orbiter data. Earth&apos;s orientation: the
-          Earth Rotation Angle about the pole of date; its surface: NASA Earth Observatory Blue Marble Next Generation
-          (July 2004, topography and bathymetry), printed here as sea, land relief and coastline.
-        </p>
-      </aside>
+      {inspector === undefined ? (
+        <aside className="shrink-0 border-t border-ink px-4 py-4 xl:w-[21.5rem] xl:overflow-y-auto xl:border-t-0 xl:border-l">{panel}</aside>
+      ) : inspector ? (
+        createPortal(<div className="px-4 py-4">{panel}</div>, inspector)
+      ) : null}
     </div>
   );
 }

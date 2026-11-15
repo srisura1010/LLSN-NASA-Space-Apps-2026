@@ -24,7 +24,8 @@ export type RankedRow = {
 export { GAP_LIMITS } from "@/lib/mission";
 import { GAP_LIMITS } from "@/lib/mission";
 
-const COLS = "grid grid-cols-[1.25rem_minmax(0,1fr)_2.5rem_2.75rem_3.75rem] gap-x-2";
+/** Rank, region (name, then Sun, Earth and longest dark on a second line), score with its bar, gap warning. */
+const COLS = "grid grid-cols-[1.25rem_minmax(0,1fr)_3rem_1rem] gap-x-2";
 
 type Props = {
   rows: RankedRow[];
@@ -58,26 +59,28 @@ function RankShift({ rank, prevRank }: { rank: number; prevRank: number | null }
   );
 }
 
-function ShareBar({ sun, earth }: { sun: number; earth: number }) {
+/** The score out of 1, with a bar of the same length under it. */
+function ScoreCell({ score }: { score: number }) {
+  const w = Math.max(0, Math.min(1, score));
   return (
-    <span aria-hidden="true" className="mt-1.5 flex w-full max-w-[9.5rem] flex-col gap-px">
-      <span className="block h-[3px] bg-umbra-soft">
-        <span className="block h-full bg-sun" style={{ width: `${Math.round(sun * 1000) / 10}%` }} />
+    <span className="flex flex-col items-end gap-1">
+      <span className="text-[0.95rem] font-semibold tabular-nums text-ink">
+        <span className="sr-only">, score </span>
+        {score.toFixed(2)}
       </span>
-      <span className="block h-[3px] bg-umbra-soft">
-        <span className="block h-full bg-earth" style={{ width: `${Math.round(earth * 1000) / 10}%` }} />
+      <span aria-hidden="true" className="block h-[4px] w-full bg-umbra-soft">
+        <span className="block h-full bg-ink" style={{ width: `${Math.round(w * 1000) / 10}%` }} />
       </span>
     </span>
   );
 }
 
-function Flagged({ flagged, value, note }: { flagged: boolean; value: string; note: string }) {
-  if (!flagged) return <>{value}</>;
+/** A drawn warning triangle for a dark spell or comms gap over the limit, named for screen readers and on hover. */
+function GapWarning({ text }: { text: string | null }) {
+  if (!text) return <span aria-hidden="true" />;
   return (
-    <span className="inline-flex items-center justify-end gap-1 font-semibold text-limit">
-      <AlertMark className="size-3" />
-      {value}
-      <span className="sr-only">, {note}</span>
+    <span role="img" aria-label={text} title={text} className="mt-[0.2rem] flex justify-center">
+      <AlertMark className="size-3.5" />
     </span>
   );
 }
@@ -92,9 +95,8 @@ function SkeletonRows() {
             <span className="h-3.5 bg-paper-3 motion-safe:animate-pulse" style={{ width: `${55 + ((i * 37) % 35)}%` }} />
             <span className="h-[7px] w-24 bg-paper-3 motion-safe:animate-pulse" />
           </span>
-          <span className="ml-auto h-3.5 w-7 bg-paper-3 motion-safe:animate-pulse" />
-          <span className="ml-auto h-3.5 w-7 bg-paper-3 motion-safe:animate-pulse" />
-          <span className="ml-auto h-3.5 w-10 bg-paper-3 motion-safe:animate-pulse" />
+          <span className="ml-auto h-3.5 w-8 bg-paper-3 motion-safe:animate-pulse" />
+          <span />
         </div>
       ))}
     </div>
@@ -133,9 +135,8 @@ function RegionTable({
       >
         <span>#</span>
         <span>Region</span>
-        <span className="text-right">Sun</span>
-        <span className="text-right">Earth</span>
-        <span className="text-right leading-tight">Longest dark</span>
+        <span className="text-right">Score</span>
+        <span />
       </div>
 
       {loading ? (
@@ -151,6 +152,16 @@ function RegionTable({
             const selected = r.id === selectedId;
             const darkOver = r.score.longestDarkHours > limitHours;
             const commsOver = r.score.longestNoCommsHours > limitHours;
+            const warning =
+              darkOver || commsOver
+                ? [
+                    darkOver ? `Dark spell of ${fmtSpell(r.score.longestDarkHours)}` : null,
+                    commsOver ? `comms gap of ${fmtSpell(r.score.longestNoCommsHours)}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" and ")
+                    .replace(/^c/, "C") + `, ${limitText}`
+                : null;
             return (
               <li key={r.id} className="border-b border-rule">
                 <button
@@ -182,24 +193,21 @@ function RegionTable({
                       )}
                       {r.tag && <span className="block text-[0.75rem] font-normal text-ink-2">Terrain: {r.tag}</span>}
                     </span>
-                    <ShareBar sun={r.score.sunlit} earth={r.score.earthVisible} />
+                    <span className="mt-0.5 block text-[0.75rem] leading-snug text-ink-2 tabular-nums">
+                      <span className="sr-only">, </span>
+                      <span>Sun {pct(r.score.sunlit)}</span>
+                      <span aria-hidden="true"> · </span>
+                      <span className={commsOver ? "font-semibold text-ink" : ""}>
+                        <span className="sr-only">, </span>Earth {pct(r.score.earthVisible)}
+                      </span>
+                      <span aria-hidden="true"> · </span>
+                      <span className={`whitespace-nowrap ${darkOver ? "font-semibold text-ink" : ""}`}>
+                        <span className="sr-only">, </span>dark {fmtSpell(r.score.longestDarkHours)}
+                      </span>
+                    </span>
                   </span>
-                  <span className="text-right text-[0.844rem] font-medium tabular-nums text-ink">
-                    <span className="sr-only">, Sun up </span>
-                    {pct(r.score.sunlit)}
-                  </span>
-                  <span className="text-right text-[0.844rem] font-medium tabular-nums text-ink">
-                    <span className="sr-only">, Earth in view </span>
-                    <Flagged
-                      flagged={commsOver}
-                      value={pct(r.score.earthVisible)}
-                      note={`comms gap of ${fmtSpell(r.score.longestNoCommsHours)}, ${limitText}`}
-                    />
-                  </span>
-                  <span className="text-right text-[0.844rem] font-medium tabular-nums whitespace-nowrap text-ink">
-                    <span className="sr-only">, longest dark </span>
-                    <Flagged flagged={darkOver} value={fmtSpell(r.score.longestDarkHours)} note={limitText} />
-                  </span>
+                  <ScoreCell score={r.score.score} />
+                  <GapWarning text={warning} />
                 </button>
               </li>
             );
@@ -214,9 +222,8 @@ function RegionTable({
                     Computing horizon and tracks for this window
                   </span>
                 </span>
-                <span className="ml-auto h-3.5 w-7 bg-paper-3 motion-safe:animate-pulse" aria-hidden="true" />
-                <span className="ml-auto h-3.5 w-7 bg-paper-3 motion-safe:animate-pulse" aria-hidden="true" />
-                <span className="ml-auto h-3.5 w-10 bg-paper-3 motion-safe:animate-pulse" aria-hidden="true" />
+                <span className="ml-auto h-3.5 w-8 bg-paper-3 motion-safe:animate-pulse" aria-hidden="true" />
+                <span aria-hidden="true" />
               </div>
             </li>
           ))}
@@ -239,13 +246,7 @@ function RegionTable({
       )}
 
       <div className="space-y-2.5 px-4 py-3 text-[0.844rem] text-ink-2">
-        <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-          <span aria-hidden="true" className="flex w-5 flex-col gap-px">
-            <span className="block h-[3px] bg-sun" />
-            <span className="block h-[3px] bg-earth" />
-          </span>
-          Bars: share of the window with the Sun up, then with Earth in view.
-        </p>
+        <p>Score, 0 to 1: mean Sun power 45%, Earth in view 30%, a short longest dark spell 25%.</p>
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <label htmlFor={`${id}-limit`} className="flex items-center gap-2">
             Flag gaps longer than

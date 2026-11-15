@@ -25,7 +25,7 @@ import {
   fmtTime,
   pct,
 } from "@/lib/format";
-import { PlayMark, StateSwatch } from "../ui";
+import { PlayMark, Popover, StateSwatch, toggleClass } from "../ui";
 import { useElementWidth, useTypeMetrics } from "./plot/hooks";
 import {
   measureText,
@@ -70,6 +70,11 @@ type Props = {
   onScrub?: (ms: number) => void;
   playing?: boolean;
   onTogglePlay?: () => void;
+  /**
+   * The Navigator's dock: the panorama shows only while open, the scrub rail and a one-line readout always,
+   * and `controls` (the dock's Horizon toggle) leads the readout line.
+   */
+  dock?: { open: boolean; controls: ReactNode };
 };
 
 const MIN_SVG_W = 640;
@@ -362,10 +367,13 @@ export default function HorizonPlot({
   onScrub,
   playing = false,
   onTogglePlay,
+  dock,
 }: Props) {
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const scrollRef = useRef<HTMLDivElement>(null);
-  const containerW = useElementWidth(scrollRef);
+  // The figure is always laid out, even while the dock's panorama is closed, so its width is measured there.
+  const figRef = useRef<HTMLElement>(null);
+  const containerW = useElementWidth(figRef);
   const { remPx, fontEpoch } = useTypeMetrics();
   const rail = !!onScrub;
 
@@ -404,18 +412,35 @@ export default function HorizonPlot({
   // In the Navigator's band the window is in the masthead, so the caption carries the plot's notes.
   const note = rail && layout && t1 > t0 ? plotNote(layout) : windowText;
 
+  const plotShown = !dock || dock.open;
   return (
-    <figure className={`m-0 min-w-0 ${className ?? ""}`}>
-      <figcaption className={`flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 ${rail ? "pb-1" : "pb-1.5"}`}>
+    <figure ref={figRef} className={`m-0 min-w-0 ${className ?? ""}`}>
+      <figcaption
+        className={`flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 ${rail ? "pb-1" : "pb-1.5"} ${plotShown ? "" : "sr-only"}`}
+      >
         <span className="text-[0.95rem] font-semibold text-ink">
           {figure ? <span className="mr-2 text-[0.75rem] font-bold uppercase tracking-[0.1em]">{figure}</span> : null}
           Horizon from {siteName}
         </span>
-        <span className={`text-ink-2 tabular-nums ${rail ? "text-[0.75rem]" : "text-[0.844rem]"}`}>{note}</span>
+        <span className="flex items-baseline gap-3">
+          <span className={`text-ink-2 tabular-nums ${rail ? "text-[0.75rem]" : "text-[0.844rem]"}`}>{note}</span>
+          {dock && layout ? (
+            <Popover
+              label="Key to the horizon plot"
+              button={<>Key</>}
+              title="What the marks on the horizon plot mean"
+              buttonClassName={toggleClass(false, "sm")}
+              side="above"
+              panelClassName="w-[min(34rem,calc(100vw-2rem))] p-3"
+            >
+              <Legend layout={layout} />
+            </Popover>
+          ) : null}
+        </span>
         {overflow ? <span className="basis-full text-[0.75rem] text-ink-2">Scroll sideways for all 360°</span> : null}
       </figcaption>
 
-      <div className="relative">
+      <div className={`relative ${plotShown ? "" : "hidden"}`}>
         <div
           ref={scrollRef}
           className="overflow-x-auto overscroll-x-contain"
@@ -456,15 +481,29 @@ export default function HorizonPlot({
               className="w-full"
             />
           </div>
-          <NowReadout
-            id={readoutId}
-            site={site}
-            now={now}
-            startMs={startMs}
-            playing={playing}
-            onTogglePlay={onTogglePlay}
-          />
-          {layout ? <Legend layout={layout} compact /> : null}
+          {dock ? (
+            <DockReadout
+              id={readoutId}
+              site={site}
+              now={now}
+              startMs={startMs}
+              playing={playing}
+              onTogglePlay={onTogglePlay}
+              controls={dock.controls}
+            />
+          ) : (
+            <>
+              <NowReadout
+                id={readoutId}
+                site={site}
+                now={now}
+                startMs={startMs}
+                playing={playing}
+                onTogglePlay={onTogglePlay}
+              />
+              {layout ? <Legend layout={layout} compact /> : null}
+            </>
+          )}
         </>
       ) : (
         <div className="flex flex-wrap items-start justify-between gap-x-10 gap-y-3 pt-2">
@@ -574,6 +613,89 @@ function NowReadout({
           </Fragment>
         ))}
       </dl>
+    </div>
+  );
+}
+
+/**
+ * The dock's readout on one line: the time, then each body's bearing, elevation, state and next contact.
+ * Narrow screens let it wrap; the dock keeps it to one line where there is room.
+ */
+function DockReadout({
+  id,
+  site,
+  now,
+  startMs,
+  playing,
+  onTogglePlay,
+  controls,
+}: {
+  id: string;
+  site: SiteData;
+  now: ReturnType<typeof sampleAt>;
+  startMs: number;
+  playing: boolean;
+  onTogglePlay?: () => void;
+  controls: ReactNode;
+}) {
+  const bodies = (["sun", "earth"] as const).map((body) => {
+    const up = isUp(site, body, now.ms);
+    const next = nextContact(site, body, now.ms);
+    const sun = body === "sun";
+    const word = up ? "Sets" : "Rises";
+    const status = sun ? (up ? (now.sunFraction >= 1 ? "Up" : `${Math.max(1, Math.round(now.sunFraction * 100))}% up`) : "Behind terrain") : up ? "In view" : "Behind terrain";
+    return {
+      body,
+      name: sun ? "Sun" : "Earth",
+      az: sun ? now.sunAz : now.earthAz,
+      el: sun ? now.sunEl : now.earthEl,
+      up,
+      status,
+      next: next ? `${word} in ${fmtDuration((next.ms - now.ms) / HOUR_MS)}` : null,
+      nextTitle: next ? fmtDayTime(next.ms) : undefined,
+    };
+  });
+  return (
+    <div id={id} className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[0.844rem] text-ink tabular-nums lg:flex-nowrap lg:overflow-hidden">
+      <span className="flex shrink-0 items-center gap-2">
+        {controls}
+        {onTogglePlay ? (
+          <button
+            type="button"
+            onClick={onTogglePlay}
+            aria-pressed={playing}
+            title={playing ? "Pause" : "Play the window"}
+            className="inline-flex size-7 items-center justify-center border border-ink bg-paper text-ink transition-colors duration-150 hover:bg-paper-3 active:bg-umbra-soft"
+          >
+            <PlayMark playing={playing} />
+            <span className="sr-only">{playing ? "Pause" : "Play the window"}</span>
+          </button>
+        ) : null}
+        <span className="font-semibold whitespace-nowrap" title={fmtFull(now.ms)}>
+          {fmtDayTime(now.ms)} UTC
+        </span>
+        <span className="whitespace-nowrap text-ink-2">{fmtElapsed(now.ms - startMs)}</span>
+      </span>
+      {bodies.map((b) => (
+        <span key={b.body} className="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap">
+          <StateSwatch body={b.body} up={b.up} />
+          <span className="font-semibold">{b.name}</span>
+          <span>
+            <span className="text-ink-2">az </span>
+            {fmtAz(b.az)}
+          </span>
+          <span>
+            <span className="text-ink-2">el </span>
+            {fmtSigned(b.el, 1)}
+          </span>
+          <span className={b.up ? "font-medium" : "font-semibold text-limit"}>{b.status}</span>
+          {b.next ? (
+            <span className="truncate text-ink-2" title={b.nextTitle}>
+              · {b.next}
+            </span>
+          ) : null}
+        </span>
+      ))}
     </div>
   );
 }

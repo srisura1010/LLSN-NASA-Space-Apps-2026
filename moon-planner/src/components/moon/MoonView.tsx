@@ -4,6 +4,7 @@
 // IAU/WGCCRE rotation model and lit from the Sun's real direction. It sits
 // between the System level and the site-level terrain plate.
 
+import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Line, OrbitControls } from "@react-three/drei";
@@ -53,6 +54,11 @@ export type MoonViewProps = {
   onPointTerrain?: (lat: number, lon: number) => void;
   onPointCompare?: () => void;
   className?: string;
+  /**
+   * The workspace's inspector rail. When given, the view's side panel (circumstances, point, marks) is drawn
+   * there instead of beside the view; null while the rail is still mounting.
+   */
+  inspector?: HTMLElement | null;
 };
 
 const INK = TOKENS.ink;
@@ -508,6 +514,7 @@ export default function MoonView({
   onPointTerrain,
   onPointCompare,
   className = "",
+  inspector,
 }: MoonViewProps) {
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
@@ -692,6 +699,85 @@ export default function MoonView({
 
   const fallback = frame ? <PolarFallback frame={frame} selectedId={selectedId} onSelect={onSelect} /> : null;
 
+  // The side panel, beside the view or in the workspace inspector.
+  const panel = (
+    <>
+        {frame && state ? (
+          <Readout frame={frame} state={state} site={site} />
+        ) : (
+          <p className="text-[0.844rem] text-ink-2">{load.status === "error" ? "No values to show." : "Loading values"}</p>
+        )}
+
+        {onPoint && (
+          <PointPanel
+            className="mt-6"
+            point={point}
+            site={pointSite}
+            nowMs={ms}
+            windowMs={windowMs}
+            onScrub={onScrub}
+            onSet={setPointAndFrame}
+            onClear={() => onPoint(null)}
+            onTerrain={onPointTerrain}
+            onCompare={onPointCompare}
+            quickPicks={QUICK_PICKS}
+          />
+        )}
+
+        {/* In the workspace the regions are in the ranking beside the view. */}
+        {inspector === undefined && (
+          <>
+        <SectionLabel className="mt-6">Regions</SectionLabel>
+        <ul className="mt-2 flex flex-wrap gap-1.5">
+          {sites.map((s) => {
+            const on = s.id === selectedId;
+            return (
+              <li key={s.id}>
+                <ToggleButton on={on} size="sm" onClick={() => onSelect(s.id)}>
+                  {s.name}
+                </ToggleButton>
+              </li>
+            );
+          })}
+        </ul>
+          </>
+        )}
+
+        <SectionLabel className="mt-6">Marks</SectionLabel>
+        <div className="mt-1.5">
+          <Legend showLandings={showLandings} showPoint={!!point} />
+        </div>
+        {showLandings && (
+          <table className="mt-2 w-full border-collapse text-[0.8rem]">
+            <caption className="sr-only">Earlier landings shown on the globe</caption>
+            <tbody>
+              {LANDINGS.map((l) => (
+                <tr key={l.id} className="border-b border-rule">
+                  <th scope="row" className="w-11 py-1 text-left text-[0.69rem] font-semibold tracking-[0.1em] text-ink uppercase">
+                    {l.short}
+                  </th>
+                  <td className="py-1 text-ink-2">
+                    {l.name}, {l.year}
+                  </td>
+                  <td className="py-1 text-right whitespace-nowrap text-ink-2">
+                    {fmtLat(l.lat, 1)}, {fmtLon(l.lon, 1)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        <p className="mt-6 border-t border-rule pt-3 text-[0.8rem] leading-snug text-ink-2">
+          Orientation: IAU/WGCCRE rotation model for the Moon, with Earth and Moon positions from NASA/JPL Horizons.
+          Surface: NASA SVS CGI Moon Kit colour and elevation maps from Lunar Reconnaissance Orbiter data, printed in
+          grey, with Lunar Reconnaissance Orbiter Camera mosaic tiles from NASA Moon Trek when zoomed in; region
+          outlines from the USGS. Landing coordinates: NASA NSSDCA and Lunar Reconnaissance Orbiter Camera site
+          reports.
+        </p>
+    </>
+  );
+
   return (
     <div className={`flex min-h-0 flex-col xl:flex-row ${className}`}>
       <section aria-label="Globe of the Moon" className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -838,76 +924,11 @@ export default function MoonView({
         )}
       </section>
 
-      <aside className="shrink-0 border-t border-ink px-4 py-4 xl:w-[21.5rem] xl:overflow-y-auto xl:border-t-0 xl:border-l">
-        {frame && state ? (
-          <Readout frame={frame} state={state} site={site} />
-        ) : (
-          <p className="text-[0.844rem] text-ink-2">{load.status === "error" ? "No values to show." : "Loading values"}</p>
-        )}
-
-        {onPoint && (
-          <PointPanel
-            className="mt-6"
-            point={point}
-            site={pointSite}
-            nowMs={ms}
-            windowMs={windowMs}
-            onScrub={onScrub}
-            onSet={setPointAndFrame}
-            onClear={() => onPoint(null)}
-            onTerrain={onPointTerrain}
-            onCompare={onPointCompare}
-            quickPicks={QUICK_PICKS}
-          />
-        )}
-
-        <SectionLabel className="mt-6">Regions</SectionLabel>
-        <ul className="mt-2 flex flex-wrap gap-1.5">
-          {sites.map((s) => {
-            const on = s.id === selectedId;
-            return (
-              <li key={s.id}>
-                <ToggleButton on={on} size="sm" onClick={() => onSelect(s.id)}>
-                  {s.name}
-                </ToggleButton>
-              </li>
-            );
-          })}
-        </ul>
-
-        <SectionLabel className="mt-6">Marks</SectionLabel>
-        <div className="mt-1.5">
-          <Legend showLandings={showLandings} showPoint={!!point} />
-        </div>
-        {showLandings && (
-          <table className="mt-2 w-full border-collapse text-[0.8rem]">
-            <caption className="sr-only">Earlier landings shown on the globe</caption>
-            <tbody>
-              {LANDINGS.map((l) => (
-                <tr key={l.id} className="border-b border-rule">
-                  <th scope="row" className="w-11 py-1 text-left text-[0.69rem] font-semibold tracking-[0.1em] text-ink uppercase">
-                    {l.short}
-                  </th>
-                  <td className="py-1 text-ink-2">
-                    {l.name}, {l.year}
-                  </td>
-                  <td className="py-1 text-right whitespace-nowrap text-ink-2">
-                    {fmtLat(l.lat, 1)}, {fmtLon(l.lon, 1)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-
-        <p className="mt-6 border-t border-rule pt-3 text-[0.8rem] leading-snug text-ink-2">
-          Orientation: IAU/WGCCRE rotation model for the Moon, with Earth and Moon positions from NASA/JPL Horizons.
-          Surface: NASA SVS CGI Moon Kit colour and elevation maps from Lunar Reconnaissance Orbiter data, printed in
-          grey, with Lunar Reconnaissance Orbiter Camera mosaic tiles from NASA Moon Trek when zoomed in; region
-          outlines from the USGS. Landing coordinates: NASA NSSDCA and Lunar Reconnaissance Orbiter Camera site
-          reports.
-        </p>
-      </aside>
+      {inspector === undefined ? (
+        <aside className="shrink-0 border-t border-ink px-4 py-4 xl:w-[21.5rem] xl:overflow-y-auto xl:border-t-0 xl:border-l">{panel}</aside>
+      ) : inspector ? (
+        createPortal(<div className="px-4 py-4">{panel}</div>, inspector)
+      ) : null}
     </div>
   );
 }

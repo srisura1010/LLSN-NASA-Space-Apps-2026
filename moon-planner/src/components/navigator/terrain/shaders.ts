@@ -189,7 +189,7 @@ const polarGraticule = /* glsl */ `
   vec2 md = vec2(sin(radians(mer)), cos(radians(mer)));
   vec2 mn = vec2(md.y, -md.x);
   float merA = lineMask(abs(dot(p, mn)) * pxPerM(mn, dx, dy), 0.5) * step(0.0, dot(p, md)) * smoothstep(15000.0, 35000.0, r);
-  col = mix(col, line, mix(0.22, 0.13, lit) * max(ring, merA));
+  col = mix(col, line, mix(0.22, 0.13, lit) * max(ring, merA) * uGrat);
 `;
 
 // Whole degrees of latitude and every lonStep degrees of longitude, from the
@@ -202,7 +202,7 @@ const localGraticule = (l: { lat0: number; lon0: number; lonStep: number }) => {
   float gLon = vGeo.y / ${l.lonStep.toFixed(1)} + (${frac(l.lon0, l.lonStep)});
   float gw = fwidth(vGeo.y) / ${l.lonStep.toFixed(1)};
   float merA = lineMask(abs(gLon - floor(gLon + 0.5)) / (max(gw, 1e-9) * uDpr), 0.5) * (1.0 - step(0.25, gw));
-  col = mix(col, line, mix(0.22, 0.13, lit) * max(ring, merA));
+  col = mix(col, line, mix(0.22, 0.13, lit) * max(ring, merA) * uGrat);
 
 `;
 };
@@ -218,6 +218,8 @@ uniform float uHasSun;
 uniform vec3 uSun;
 uniform float uExag;
 uniform float uDpr;
+/** 1 draws the graticule, 0 hides it (the Layers popover). */
+uniform float uGrat;
 
 uniform vec3 uLitLo;
 uniform vec3 uLitHi;
