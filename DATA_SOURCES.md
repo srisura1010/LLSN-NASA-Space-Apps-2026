@@ -163,3 +163,78 @@ the United States; Space Apps asks that each source is credited.
   doi:10.1016/j.icarus.2016.06.006.
 - **Credit line:** Elevation: NASA/GSFC LRO LOLA, served by NASA Solar System
   Treks (NASA/JPL-Caltech).
+
+## Earth launch sites and the launch-window estimate
+
+- **Files:**
+  - `moon-planner/src/lib/launchSites.ts`: sixteen launch sites (United
+    States, NASA partner agencies, other US partner countries) with
+    coordinates, allowed launch azimuths and a source for each.
+  - `moon-planner/src/lib/launchWindow.ts`: the estimate itself; its
+    `LAUNCH_METHOD` text lists every simplification.
+  - `moon-planner/scripts/check-launch-window.ts`: the checks below
+    (`npx tsx scripts/check-launch-window.ts`).
+- **Site coordinates:** Wikipedia articles for each site (linked per site in
+  `launchSites.ts`), read 2026-11-15 for Kourou, Sriharikota, Alcântara,
+  Kodiak, Wallops/MARS, Vandenberg and Mahia; the other nine are well-known
+  pad coordinates not re-read that day. A 0.1 degree error moves a launch
+  time by under half a minute in this model.
+- **Allowed launch azimuths, published (2026-11-15; the Andøya page was read
+  directly, the FAA and AIAA figures were read from search excerpts of the
+  pages because the pages refused automated requests):**
+  - Kodiak, 110-220 degrees: FAA, Spaceports by State,
+    https://www.faa.gov/space/spaceports_by_state
+  - Kourou, -10.5 to +91.5 degrees: AIAA launch vehicle guide (Ariane),
+    https://aiaa.org/vehicle-guide/vehicles/ariane (the Ariane 5 user's manual
+    figure often quoted is -10.5 to +93.5).
+  - Andøya, -60 to +5 degrees: Andøya Space,
+    https://andoyaspace.no/spaceport/efficient-way-to-space/
+- **Allowed launch azimuths, approximate:** every other site. Either a
+  commonly quoted figure whose primary source could not be read that day
+  (Cape Canaveral/KSC 35-120, Vandenberg 158-201, Wallops 90-160,
+  Sriharikota 102-140), a range derived from a quoted inclination range
+  (Mahia, Alcântara), or a range reasoned from open-ocean sectors (Starbase,
+  Tanegashima, Uchinoura, Naro, Arnhem, Esrange, SaxaVord). Cross-checks
+  used: Eastern Range article (37-114 degrees),
+  https://en.wikipedia.org/wiki/Eastern_Range ; Minotaur I user's guide
+  (Vandenberg inclinations below 72 degrees need a dogleg; Wallops
+  inclinations 37.8-55 degrees),
+  https://www.manualsdir.com/manuals/569825/orbital-minotaur-i.html?page=26 ;
+  NASA Wallops Range User's Handbook,
+  https://www.nasa.gov/wp-content/uploads/2023/09/wallopsrangeusershandbook-2024.pdf ;
+  NASA Launch Services Program launch sites,
+  https://www.nasa.gov/launch-services-program-launch-sites/
+  Each site's `azimuthNote` says which applies. These are not range safety
+  limits and must not be used as such.
+- **Method references:**
+  - Earth Rotation Angle: IAU 2000 Resolution B1.8; Capitaine, N., Guinot,
+    B., McCarthy, D. D. (2000), Astronomy and Astrophysics 355, 398-405.
+    GMST (IAU 1982) for the check: Meeus, J. (1998), Astronomical Algorithms,
+    2nd ed., eq. 12.4.
+  - Launch azimuth and inclination (cos i = cos latitude x sin azimuth),
+    two-body transfer time: Bate, R. R., Mueller, D. D., White, J. E. (1971),
+    Fundamentals of Astrodynamics, Dover (launch azimuth; lunar
+    trajectories); Vallado, D. A., Fundamentals of Astrodynamics and
+    Applications (launch windows).
+  - Apollo 11 figures used in the check (launch 1969-07-16 13:32:00 UTC,
+    flight azimuth 72.058 degrees, window 72-108 degrees to 17:54 UTC,
+    translunar injection 2 h 44 min after lift-off, lunar orbit insertion
+    1969-07-19 17:22 UTC): NASA, Apollo 11 Mission Report (MSC-00171) and
+    Orloff, R. W. (2000), Apollo by the Numbers, NASA SP-2000-4029,
+    https://www.nasa.gov/history/SP-4029/
+  - Moon positions: the 2027 JPL Horizons table already listed above
+    (`public/data/system/2027.json`); the check fetches two geocentric Moon
+    positions from https://ssd.jpl.nasa.gov/api/horizons.api (2027-11-14 and
+    1969-07-19).
+- **Check (2026-11-15):** GMST at J2000 280.46062 degrees; two GMST formulas
+  agree to 0.00002 degrees in 2027. Moon right ascension and declination from
+  `system.ts` against Horizons at 2027-11-14 00:00 UTC: 0.006 and 0.002
+  degrees, 1 km. Apollo 11 with the 72-108 degree limits: the model window
+  opens 13:25 and closes 17:46 UTC (real 13:32 and 17:54), and needs azimuth
+  73.0 degrees at the real lift-off time (flown 72.058), inclination 32.49
+  (flown 32.52). The model's coast to injection is 73 minutes; Apollo waited
+  one more orbit (164 minutes). Moon declination over 2027: -27.69 to +27.70
+  degrees.
+- **Credit line:** Moon and Earth positions: NASA/JPL Horizons. Launch site
+  data: operators and agencies as listed; azimuth ranges marked approximate
+  are this project's estimates.
