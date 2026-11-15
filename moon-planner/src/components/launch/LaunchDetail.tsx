@@ -5,7 +5,8 @@
 
 import type { LaunchSite } from "@/lib/launchSites";
 import { formatAzimuthRanges, type LaunchOpportunity } from "@/lib/launchWindow";
-import { ExternalMark } from "../ui";
+import { setterFor, usePlanStore } from "@/state/plan";
+import { Button, ExternalMark } from "../ui";
 import {
   DAY_MS,
   HOUR_MS,
@@ -162,9 +163,9 @@ function MissionSteps({ o, transitDays }: { o: LaunchOpportunity; transitDays: n
   const lon = `${Math.abs(o.tliLon).toFixed(0)}° ${o.tliLon >= 0 ? "E" : "W"}`;
   const steps = [
     { label: "Lift-off", value: fmtDateTime(o.launchMs, false), note: `Heading ${fmtDeg(o.azimuthDeg)}` },
-    { label: "Parking orbit", value: fmtMinutes(o.coastMin), note: "Climb, then coast at 185 km" },
-    { label: "Injection", value: fmtDateTime(o.tliMs, false), note: `Burn over ${lat}, ${lon}` },
-    { label: "Transfer", value: `${transitDays} days`, note: "Unpowered, two-body path" },
+    { label: "Parking orbit", value: fmtMinutes(o.coastMin), note: "Climb, then coast in low orbit at 185 km" },
+    { label: "Burn for the Moon", value: fmtDateTime(o.tliMs, false), note: `Engine burn over ${lat}, ${lon}` },
+    { label: "Transfer", value: `${transitDays} days`, note: "Coasting, engines off" },
     { label: "Arrival", value: fmtDateTime(o.arrivalMs, false), note: `${fmtOffset(o.arrivalOffsetHours)} against the landing start` },
   ];
   return (
@@ -200,6 +201,8 @@ type Props = {
 };
 
 export default function LaunchDetail({ site, list, chosen, transitDays, onChoose, headingId }: Props) {
+  const store = usePlanStore();
+  const showOnEarth = () => setterFor(store, "view")("system");
   const url = site.azimuthUrl ?? site.sourceUrl;
   let host = "";
   try {
@@ -215,7 +218,7 @@ export default function LaunchDetail({ site, list, chosen, transitDays, onChoose
             Every opportunity within a day of the nominal departure
           </h4>
           {list.length === 0 ? (
-            <p className="mt-2 text-[0.844rem] text-ink-2">No sweep falls inside the search span for this transfer time.</p>
+            <p className="mt-2 text-[0.844rem] text-ink-2">No launch opportunity falls inside the search span for this transfer time.</p>
           ) : (
             <>
               <div className="mt-3">
@@ -254,7 +257,7 @@ export default function LaunchDetail({ site, list, chosen, transitDays, onChoose
         </div>
 
         <div className="min-w-0">
-          <h4 className="text-[0.95rem] font-semibold text-ink">Allowed launch headings</h4>
+          <h4 className="text-[0.95rem] font-semibold text-ink">Allowed launch directions</h4>
           <div className="mt-3 flex items-start gap-4">
             <AzimuthDial site={site} azimuthDeg={chosen?.azimuthDeg ?? null} blocked={chosen?.rating === "blocked"} />
             <div className="min-w-0 text-[0.844rem] text-ink-2">
@@ -272,7 +275,7 @@ export default function LaunchDetail({ site, list, chosen, transitDays, onChoose
                   rel="noreferrer"
                   className="inline-flex items-center gap-1 font-medium text-earth underline decoration-1 underline-offset-[3px] hover:text-ink"
                 >
-                  Source: {host}
+                  {site.azimuthUrl ? "Source" : "Site operator"}: {host}
                   <ExternalMark className="size-3" />
                   <span className="sr-only"> (opens in a new tab)</span>
                 </a>
@@ -294,6 +297,14 @@ export default function LaunchDetail({ site, list, chosen, transitDays, onChoose
           {chosen.rating !== "good" && <p className="mt-1 max-w-[70ch] text-[0.844rem] text-pretty text-ink-2">{plainReason(chosen, site)}</p>}
           <div className="mt-4 pl-1 @3xl:pl-0">
             <MissionSteps o={chosen} transitDays={transitDays} />
+          </div>
+          <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <Button variant="primary" onClick={showOnEarth}>
+              Show this launch on Earth
+            </Button>
+            <p className="min-w-0 flex-1 basis-64 text-[0.844rem] text-pretty text-ink-2">
+              Opens the System level with {site.name} marked on Earth and the path to the Moon drawn for this lift-off.
+            </p>
           </div>
         </div>
       )}

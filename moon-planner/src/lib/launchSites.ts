@@ -6,8 +6,8 @@
 //   "published"   a figure stated by the operator, a regulator or a standard
 //                 reference, checked 2026-11-15 (source in `azimuthUrl`);
 //   "approximate" a range reasoned from the site's geography, from a published
-//                 inclination range, or a commonly quoted figure that could
-//                 not be re-read at its primary source this session.
+//                 inclination range, or a commonly quoted figure with no
+//                 primary source checked.
 // See DATA_SOURCES.md at the repo root for the full source list.
 
 export type SiteGroup = "us" | "nasa-partner" | "us-partner";
@@ -29,7 +29,7 @@ export type LaunchSite = {
   azimuthSource: "published" | "approximate";
   /** Where the azimuth range, or the figure it was reasoned from, comes from. */
   azimuthNote: string;
-  /** Source for the site and its coordinates. */
+  /** The site operator's own page where one is known, otherwise a reference page for the site. */
   sourceUrl: string;
   /** Source for the azimuth range when it differs from `sourceUrl`. */
   azimuthUrl?: string;
@@ -53,9 +53,8 @@ export const launchSites: LaunchSite[] = [
     azimuths: [{ min: 35, max: 120 }],
     azimuthSource: "approximate",
     azimuthNote:
-      "35-120 degrees is the long-quoted NASA figure for the Cape (not re-read at a primary source this session); the Eastern Range article gives 37-114. Apollo used 72-108.",
-    sourceUrl: "https://en.wikipedia.org/wiki/Kennedy_Space_Center_Launch_Complex_39A",
-    azimuthUrl: "https://en.wikipedia.org/wiki/Eastern_Range",
+      "Approximate: 35-120 degrees is a commonly quoted range for launches from the Cape; not range-safety data. Apollo flew headings of 72-108 degrees.",
+    sourceUrl: "https://www.nasa.gov/kennedy/",
   },
   {
     id: "vandenberg",
@@ -68,8 +67,8 @@ export const launchSites: LaunchSite[] = [
     azimuths: [{ min: 158, max: 201 }],
     azimuthSource: "approximate",
     azimuthNote:
-      "158-201 degrees is the commonly quoted range; consistent with the Minotaur I user's guide, which says inclinations below 72 degrees need a dogleg (azimuth 158 gives 72).",
-    sourceUrl: "https://en.wikipedia.org/wiki/Vandenberg_Space_Force_Base",
+      "Approximate: 158-201 degrees is a commonly quoted range for this site; not range-safety data. It agrees with the Minotaur I user's guide, which says orbits tilted less than 72 degrees need a mid-flight turn.",
+    sourceUrl: "https://www.vandenberg.spaceforce.mil/",
     azimuthUrl: "https://www.manualsdir.com/manuals/569825/orbital-minotaur-i.html?page=26",
   },
   {
@@ -83,8 +82,8 @@ export const launchSites: LaunchSite[] = [
     azimuths: [{ min: 85, max: 105 }],
     azimuthSource: "approximate",
     azimuthNote:
-      "Reasoned from geography: flights leave over the Gulf of Mexico and thread the Straits of Florida or the Yucatan Channel, a narrow corridor close to due east.",
-    sourceUrl: "https://en.wikipedia.org/wiki/SpaceX_Starbase",
+      "Approximate: estimated from geography. Flights leave over the Gulf of Mexico and pass through the Straits of Florida or the Yucatan Channel, a narrow corridor close to due east.",
+    sourceUrl: "https://www.spacex.com/",
   },
   {
     id: "wallops",
@@ -97,8 +96,8 @@ export const launchSites: LaunchSite[] = [
     azimuths: [{ min: 90, max: 160 }],
     azimuthSource: "approximate",
     azimuthNote:
-      "90-160 degrees is the range quoted from the NASA Wallops Range User's Handbook (the PDF could not be read as text this session). The Minotaur I user's guide gives inclinations 37.8-55 degrees (azimuth 90 to about 133).",
-    sourceUrl: "https://en.wikipedia.org/wiki/Mid-Atlantic_Regional_Spaceport",
+      "Approximate: 90-160 degrees is the range commonly quoted from the NASA Wallops Range User's Handbook; not range-safety data. The Minotaur I user's guide gives orbit tilts of 37.8-55 degrees (headings of 90 to about 133 degrees).",
+    sourceUrl: "https://www.nasa.gov/wallops/",
     azimuthUrl: "https://www.nasa.gov/wp-content/uploads/2023/09/wallopsrangeusershandbook-2024.pdf",
   },
   {
@@ -111,8 +110,8 @@ export const launchSites: LaunchSite[] = [
     lon: -152.34,
     azimuths: [{ min: 110, max: 220 }],
     azimuthSource: "published",
-    azimuthNote: "FAA spaceport listing: launch azimuths 110-220 degrees (inclinations 59-110 degrees).",
-    sourceUrl: "https://en.wikipedia.org/wiki/Pacific_Spaceport_Complex_%E2%80%93_Alaska",
+    azimuthNote: "Published in the FAA spaceport listing: launch headings of 110-220 degrees (orbit tilts of 59-110 degrees).",
+    sourceUrl: "https://akaerospace.com/",
     azimuthUrl: "https://www.faa.gov/space/spaceports_by_state",
   },
   {
@@ -129,8 +128,8 @@ export const launchSites: LaunchSite[] = [
     ],
     azimuthSource: "published",
     azimuthNote:
-      "AIAA launch vehicle guide (Ariane): launch azimuth -10.5 to +91.5 degrees, inclinations 5.2-100.5 degrees. The Ariane 5 user's manual figure often quoted is -10.5 to +93.5.",
-    sourceUrl: "https://en.wikipedia.org/wiki/Guiana_Space_Centre",
+      "Published in the AIAA launch vehicle guide (Ariane): launch headings from -10.5 to +91.5 degrees, orbit tilts of 5.2-100.5 degrees. The Ariane 5 user's manual figure often quoted is -10.5 to +93.5.",
+    sourceUrl: "https://centrespatialguyanais.cnes.fr/en",
     azimuthUrl: "https://aiaa.org/vehicle-guide/vehicles/ariane",
   },
   {
@@ -144,8 +143,8 @@ export const launchSites: LaunchSite[] = [
     azimuths: [{ min: 85, max: 125 }],
     azimuthSource: "approximate",
     azimuthNote:
-      "Reasoned from geography and practice: east to south-east over the Pacific; higher inclinations are flown south-east with a dogleg (AIAA guide, H-IIA).",
-    sourceUrl: "https://en.wikipedia.org/wiki/Tanegashima_Space_Center",
+      "Approximate: estimated from geography and past flights. Launches head east to south-east over the Pacific; more tilted orbits are flown south-east with a mid-flight turn (AIAA guide, H-IIA).",
+    sourceUrl: "https://global.jaxa.jp/about/centers/tnsc/index.html",
     azimuthUrl: "https://aiaa.org/vehicle-guide/vehicles/h-iia-h-iib/performance",
   },
   {
@@ -158,8 +157,8 @@ export const launchSites: LaunchSite[] = [
     lon: 131.0811,
     azimuths: [{ min: 80, max: 150 }],
     azimuthSource: "approximate",
-    azimuthNote: "Reasoned from geography: the pad faces open Pacific from east to south-south-east.",
-    sourceUrl: "https://en.wikipedia.org/wiki/Uchinoura_Space_Center",
+    azimuthNote: "Approximate: estimated from the open-ocean sector east to south-south-east of the site.",
+    sourceUrl: "https://global.jaxa.jp/about/centers/usc/index.html",
   },
   {
     id: "sriharikota",
@@ -172,8 +171,8 @@ export const launchSites: LaunchSite[] = [
     azimuths: [{ min: 102, max: 140 }],
     azimuthSource: "approximate",
     azimuthNote:
-      "102-140 degrees is the commonly quoted corridor (140 keeps the flight path clear of Sri Lanka); not re-read at an ISRO source this session.",
-    sourceUrl: "https://en.wikipedia.org/wiki/Satish_Dhawan_Space_Centre",
+      "Approximate: 102-140 degrees is a commonly quoted range for this site (140 keeps the flight path clear of Sri Lanka); not range-safety data.",
+    sourceUrl: "https://www.isro.gov.in/SDSC.html",
   },
   {
     id: "naro",
@@ -186,8 +185,8 @@ export const launchSites: LaunchSite[] = [
     azimuths: [{ min: 165, max: 175 }],
     azimuthSource: "approximate",
     azimuthNote:
-      "Reasoned from geography: a narrow corridor just east of south between Japan and China, about 170 degrees.",
-    sourceUrl: "https://en.wikipedia.org/wiki/Naro_Space_Center",
+      "Approximate: estimated from geography. A narrow corridor just east of south, between Japan and China, at about 170 degrees.",
+    sourceUrl: "https://www.kari.re.kr/eng/",
   },
   {
     id: "mahia",
@@ -200,8 +199,8 @@ export const launchSites: LaunchSite[] = [
     azimuths: [{ min: 90, max: 220 }],
     azimuthSource: "approximate",
     azimuthNote:
-      "Derived from Rocket Lab's quoted inclination range of about 39-120 degrees: due east round through south to south-west over open ocean.",
-    sourceUrl: "https://en.wikipedia.org/wiki/Rocket_Lab_Launch_Complex_1",
+      "Approximate: worked out from Rocket Lab's quoted orbit tilts of about 39-120 degrees. Launches head from due east round through south to south-west over open ocean.",
+    sourceUrl: "https://rocketlabcorp.com/",
   },
   {
     id: "arnhem",
@@ -213,7 +212,7 @@ export const launchSites: LaunchSite[] = [
     lon: 136.822,
     azimuths: [{ min: 45, max: 110 }],
     azimuthSource: "approximate",
-    azimuthNote: "Reasoned from geography: north-east to east-south-east over the Gulf of Carpentaria.",
+    azimuthNote: "Approximate: estimated from the open-water sector over the Gulf of Carpentaria, north-east to east-south-east of the site.",
     sourceUrl: "https://en.wikipedia.org/wiki/Arnhem_Space_Centre",
   },
   {
@@ -229,7 +228,7 @@ export const launchSites: LaunchSite[] = [
       { min: 0, max: 5 },
     ],
     azimuthSource: "published",
-    azimuthNote: "Operator: launch azimuths between -60 and +5 degrees, orbital inclinations 90-110.6 degrees.",
+    azimuthNote: "Published by the operator: launch headings between -60 and +5 degrees, orbit tilts of 90-110.6 degrees.",
     sourceUrl: "https://andoyaspace.no/spaceport/efficient-way-to-space/",
   },
   {
@@ -246,8 +245,8 @@ export const launchSites: LaunchSite[] = [
     ],
     azimuthSource: "approximate",
     azimuthNote:
-      "Reasoned from geography: an inland site launching north over sparsely populated land towards the Norwegian and Barents seas, for polar and sun-synchronous orbits.",
-    sourceUrl: "https://en.wikipedia.org/wiki/Esrange",
+      "Approximate: estimated from geography. An inland site that launches north over sparsely populated land towards the Norwegian and Barents seas, for orbits that pass over the poles.",
+    sourceUrl: "https://sscspace.com/esrange/",
     azimuthUrl:
       "https://www.luftfartstilsynet.no/globalassets/dokumenter/romfart/report_orbital-launches-from-esrange-space-center.pdf",
   },
@@ -265,8 +264,8 @@ export const launchSites: LaunchSite[] = [
     ],
     azimuthSource: "approximate",
     azimuthNote:
-      "Reasoned from geography: north over the Norwegian Sea between the Faroe Islands and Norway, for polar and sun-synchronous orbits.",
-    sourceUrl: "https://en.wikipedia.org/wiki/SaxaVord_Spaceport",
+      "Approximate: estimated from the open-ocean sector north of the site, over the Norwegian Sea between the Faroe Islands and Norway, for orbits that pass over the poles.",
+    sourceUrl: "https://saxavord.com/",
   },
   {
     id: "alcantara",
@@ -282,8 +281,8 @@ export const launchSites: LaunchSite[] = [
     ],
     azimuthSource: "approximate",
     azimuthNote:
-      "Derived from the quoted inclination range of about 2-100 degrees: north-north-west round to east over the open Atlantic.",
-    sourceUrl: "https://en.wikipedia.org/wiki/Alc%C3%A2ntara_Space_Center",
+      "Approximate: worked out from the commonly quoted orbit tilts of about 2-100 degrees. Launches head from north-north-west round to east over the open Atlantic.",
+    sourceUrl: "https://www.gov.br/aeb/pt-br",
     azimuthUrl: "https://daviddarling.info/encyclopedia/A/Alcantara.html",
   },
 ];

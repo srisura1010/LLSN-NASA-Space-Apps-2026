@@ -218,7 +218,19 @@ export default function LaunchPanel({
     onPickRef.current?.(chosen ? { launchSiteId: chosen.siteId, launchMs: chosen.launchMs, arrivalMs: chosen.arrivalMs } : null);
   }, [chosen]);
 
+  // Bring a row's detail into view when the user opens it (not on first load).
+  const revealRef = useRef<string | null>(null);
+  const openId = selectedId !== null && !collapsed ? selectedId : null;
+  useEffect(() => {
+    const want = revealRef.current;
+    if (!want || want !== openId) return;
+    revealRef.current = null;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    document.getElementById(`${id}-item-${want}`)?.scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
+  }, [openId, id]);
+
   const select = (siteId: string) => {
+    revealRef.current = siteId === selectedId && !collapsed ? null : siteId;
     if (siteId === selectedId) {
       setCollapsed((c) => !c);
       return;
@@ -257,6 +269,12 @@ export default function LaunchPanel({
         <p className="mt-1.5 max-w-[75ch] text-[0.95rem] text-pretty text-ink-2 tabular-nums">
           When to lift off, and from where, to reach <span className="font-semibold text-ink">{siteName}</span> at the start of the
           mission window set in the window chip above, with the whole window on the surface to follow.
+        </p>
+        <p className="mt-1.5 max-w-[75ch] text-[0.844rem] text-pretty text-ink-2">
+          In the table, <span className="font-semibold text-ink">azimuth</span> is the compass direction of launch (90° is due east),{" "}
+          <span className="font-semibold text-ink">inclination</span> is the tilt of the orbit against the equator, and{" "}
+          <span className="font-semibold text-ink">rotation gain</span> is the speed the rocket gets for free from Earth&rsquo;s spin. Select a site for its
+          details.
         </p>
       </header>
 
@@ -362,7 +380,7 @@ export default function LaunchPanel({
                 <span className="inline-flex items-start gap-2">
                   <AlertMark className="mt-1 size-3.5" />
                   <span>
-                    No listed site can launch straight into the plane that reaches the Moon for this arrival. Try another transfer time, or widen the list of
+                    No listed site can launch directly onto a path that reaches the Moon for this arrival. Try another transfer time, or widen the list of
                     sites.
                   </span>
                 </span>
@@ -384,7 +402,7 @@ export default function LaunchPanel({
                 const span = o ? fmtWindowSpan(o) : null;
                 const reason = o ? shortReason(o, r.site) : null;
                 return (
-                  <li key={r.site.id} className="border-b border-rule">
+                  <li key={r.site.id} id={`${id}-item-${r.site.id}`} className="scroll-my-2 border-b border-rule">
                     <button
                       type="button"
                       id={`${id}-row-${r.site.id}`}
@@ -530,7 +548,7 @@ export default function LaunchPanel({
             ))}
           </ul>
           <p className="mt-2 text-[0.844rem] text-ink-2 tabular-nums">
-            Allowed azimuths at {focus.site.name}: {formatAzimuthRanges(focus.site)} ({focus.site.azimuthSource}).
+            Allowed launch directions (azimuths) at {focus.site.name}: {formatAzimuthRanges(focus.site)} ({focus.site.azimuthSource}).
           </p>
         </section>
       )}
@@ -541,10 +559,11 @@ export default function LaunchPanel({
           Estimate, not a trajectory design
         </h3>
         <p className="mt-1 max-w-[80ch] text-[0.844rem] text-pretty text-ink-2">
-          Simplified geometry: the spacecraft leaves in the plane that holds Earth&rsquo;s centre, the launch site at lift-off and the Moon at arrival, and a
-          window is the time the heading it needs stays inside the site&rsquo;s allowed azimuths. Checked against Apollo 11, it lands within about 20 minutes
-          and 2°. The Moon&rsquo;s gravity, departure energy, lunar orbit insertion, doglegs, weather and range scheduling are left out. Azimuth limits marked
-          approximate are reasoned from geography or commonly quoted figures; they are not range-safety data.
+          Simplified geometry: the spacecraft leaves in the flat plane that holds Earth&rsquo;s centre, the launch site at lift-off and the Moon at arrival.
+          A launch window is the time the compass direction it needs (the azimuth) stays inside the directions the site allows. Checked against Apollo 11,
+          the estimate comes within about 20 minutes and 2°. The Moon&rsquo;s gravity, the energy of the departure burn, braking into lunar orbit, mid-flight
+          turns (doglegs), weather and range scheduling are left out. Direction limits marked approximate are estimated from geography or commonly quoted
+          figures; they are not range-safety data.
         </p>
         <details className="group mt-2">
           <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-[0.844rem] font-medium text-earth underline decoration-1 underline-offset-[3px] hover:text-ink [&::-webkit-details-marker]:hidden">
