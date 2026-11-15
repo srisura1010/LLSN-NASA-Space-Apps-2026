@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 
 const LINKS = [
   { href: "/", label: "Home" },
-  { href: "/tool", label: "Tool" },
+  { href: "/tool", label: "Navigator" },
 ];
 
 // Height is h-11 (2.75rem); the Navigator's full-height shell subtracts it.

@@ -24,7 +24,7 @@ export default function Home() {
       <div className="relative isolate">
         <MoonSky />
         <header
-          className={`${wrap} relative z-10 grid min-h-[calc(100svh-2.75rem)] content-center gap-8 py-12 xl:grid-cols-12 xl:gap-x-10`}
+          className={`${wrap} relative z-10 grid min-h-[max(28rem,calc(70svh-2.75rem))] content-center gap-8 py-10 lg:py-12 xl:grid-cols-12 xl:gap-x-10`}
         >
           <div className="xl:col-span-8">
             <h1 className="text-[2.281rem] leading-[1.04] font-extrabold tracking-[-0.025em] text-[#f3f0e8] sm:text-[2.887rem] lg:text-[3.247rem] xl:text-[3.653rem]">
@@ -35,8 +35,24 @@ export default function Home() {
               For the nine south-pole regions NASA named for Artemis III in October 2024: when the Sun clears the real
               terrain horizon for power, and when Earth is in view for direct-to-Earth radio, hour by hour through 2027.
             </p>
+            <div className="mt-7 flex flex-wrap items-center gap-x-6 gap-y-3">
+              <Link
+                href="/tool"
+                data-cta="primary"
+                className="inline-flex h-11 items-center justify-center bg-[#f3f0e8] px-5 text-[1rem] font-semibold text-ink transition-colors duration-150 select-none hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-[#f3f0e8]"
+              >
+                Open the Navigator
+              </Link>
+              <a
+                href="#example"
+                data-cta="secondary"
+                className="inline-flex h-11 items-center text-[1rem] font-semibold text-[#f3f0e8] underline decoration-white/40 decoration-1 underline-offset-[5px] transition-colors duration-150 hover:decoration-[#f3f0e8] focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-[#f3f0e8]"
+              >
+                See an example
+              </a>
+            </div>
           </div>
-          <dl className="hidden self-end border-t border-white/30 xl:col-span-4 xl:block">
+          <dl className="hidden self-end border-t border-white/30 bg-[#08090c]/90 px-4 xl:col-span-4 xl:block">
             {[
               ["Ephemeris", "JPL Horizons, hourly"],
               ["Terrain", "LOLA, 80 m near each site"],
@@ -52,8 +68,12 @@ export default function Home() {
         </header>
       </div>
 
-      <div className="relative bg-paper">
-      <section aria-labelledby="plate-title" className={`${wrap} pb-16 lg:pb-24`}>
+      <div className="relative border-t border-ink bg-paper">
+      <section
+        id="example"
+        aria-labelledby="plate-title"
+        className={`${wrap} scroll-mt-4 pt-8 pb-16 lg:pt-10 lg:pb-24`}
+      >
         <h2 id="plate-title" className="sr-only">
           Landing window for the chosen region and start date
         </h2>
