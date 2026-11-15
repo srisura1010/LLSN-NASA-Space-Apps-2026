@@ -1,0 +1,195 @@
+{
+  "generatedBy": "scripts/build-validation.ts",
+  "source": {
+    "authors": "Mazarico et al. (2011)",
+    "title": "Illumination conditions of the lunar polar regions using LOLA topography",
+    "journal": "Icarus 211",
+    "product": "PGDA product 69, release 201608, 120 m maps, centre pixel",
+    "url": "https://pgda.gsfc.nasa.gov/products/69"
+  },
+  "model": {
+    "startMs": 1798761600000,
+    "endMs": 1830297600000,
+    "stepMs": 3600000,
+    "samples": 8761,
+    "rule": "Share of hourly samples with any part of the disc above the terrain horizon seen from 2 m above the region centre"
+  },
+  "regions": [
+    {
+      "id": "cabeus-b",
+      "name": "Peak near Cabeus B",
+      "sun": {
+        "model": 37.4,
+        "nasa": 38.4,
+        "diff": -1
+      },
+      "earth": {
+        "model": 37.7,
+        "nasa": 44.1,
+        "diff": -6.4
+      }
+    },
+    {
+      "id": "haworth",
+      "name": "Haworth",
+      "sun": {
+        "model": 15.4,
+        "nasa": 10.3,
+        "diff": 5.1
+      },
+      "earth": {
+        "model": 42.1,
+        "nasa": 43.9,
+        "diff": -1.8
+      }
+    },
+    {
+      "id": "malapert",
+      "name": "Malapert Massif",
+      "sun": {
+        "model": 37.2,
+        "nasa": 38.1,
+        "diff": -0.9
+      },
+      "earth": {
+        "model": 52.3,
+        "nasa": 52.9,
+        "diff": -0.6
+      }
+    },
+    {
+      "id": "mouton-plateau",
+      "name": "Mons Mouton Plateau",
+      "sun": {
+        "model": 26,
+        "nasa": 26.2,
+        "diff": -0.2
+      },
+      "earth": {
+        "model": 68.4,
+        "nasa": 66.4,
+        "diff": 2
+      }
+    },
+    {
+      "id": "mouton",
+      "name": "Mons Mouton",
+      "sun": {
+        "model": 27,
+        "nasa": 18.8,
+        "diff": 8.2
+      },
+      "earth": {
+        "model": 40.4,
+        "nasa": 36.6,
+        "diff": 3.8
+      }
+    },
+    {
+      "id": "nobile-1",
+      "name": "Nobile Rim 1",
+      "sun": {
+        "model": 30.6,
+        "nasa": 30,
+        "diff": 0.6
+      },
+      "earth": {
+        "model": 36.8,
+        "nasa": 37,
+        "diff": -0.2
+      }
+    },
+    {
+      "id": "nobile-2",
+      "name": "Nobile Rim 2",
+      "sun": {
+        "model": 40.6,
+        "nasa": 41.6,
+        "diff": -1
+      },
+      "earth": {
+        "model": 68.9,
+        "nasa": 68.8,
+        "diff": 0.1
+      }
+    },
+    {
+      "id": "de-gerlache-2",
+      "name": "de Gerlache Rim 2",
+      "sun": {
+        "model": 36.8,
+        "nasa": 37.1,
+        "diff": -0.3
+      },
+      "earth": {
+        "model": 53.8,
+        "nasa": 54.8,
+        "diff": -1
+      }
+    },
+    {
+      "id": "slater",
+      "name": "Slater Plain",
+      "sun": {
+        "model": 3.4,
+        "nasa": 3,
+        "diff": 0.4
+      },
+      "earth": {
+        "model": 40,
+        "nasa": 41.4,
+        "diff": -1.4
+      }
+    }
+  ],
+  "summary": {
+    "sun": {
+      "meanAbsDiff": 1.98,
+      "within": {
+        "pts": 1,
+        "regions": 7
+      },
+      "outside": [
+        {
+          "id": "mouton",
+          "name": "Mons Mouton",
+          "diff": 8.2
+        },
+        {
+          "id": "haworth",
+          "name": "Haworth",
+          "diff": 5.1
+        }
+      ],
+      "largest": {
+        "id": "mouton",
+        "name": "Mons Mouton",
+        "diff": 8.2
+      }
+    },
+    "earth": {
+      "meanAbsDiff": 1.93,
+      "within": {
+        "pts": 2,
+        "regions": 7
+      },
+      "outside": [
+        {
+          "id": "cabeus-b",
+          "name": "Peak near Cabeus B",
+          "diff": -6.4
+        },
+        {
+          "id": "mouton",
+          "name": "Mons Mouton",
+          "diff": 3.8
+        }
+      ],
+      "largest": {
+        "id": "cabeus-b",
+        "name": "Peak near Cabeus B",
+        "diff": -6.4
+      }
+    }
+  }
+}

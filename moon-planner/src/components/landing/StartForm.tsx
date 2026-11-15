@@ -1,42 +1,99 @@
 "use client";
 
-// The working start control: region, start date, and the action that opens
-// the Navigator on that window. Used in the plate and again at the close.
+// The working start control: region, start date as day, month and year (the
+// order the bulletin prints dates in), and the action that opens the
+// Navigator on that window. Used in the plate and again at the close.
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 import { sites } from "@/lib/sites";
 import { ArrowRight, ChevronDown } from "./icons";
 import { useLanding } from "./LandingState";
-import { FIRST_DATE, LAST_DATE, navigatorHref } from "./model";
+import {
+  DATA_YEAR,
+  DEFAULT_DATE,
+  LAST_DATE,
+  MONTHS,
+  STAY_HOURS,
+  dateValue,
+  dayMonthOf,
+  daysInMonth,
+  fmtDay,
+  navigatorHref,
+  parseDate,
+} from "./model";
 
 const label = "text-[0.79rem] font-semibold uppercase tracking-[0.08em] text-ink-2";
 const control =
-  "h-11 w-full rounded-none border border-ink bg-paper text-[1rem] font-medium text-ink [color-scheme:light] " +
+  "h-11 w-full cursor-pointer appearance-none rounded-none border border-ink bg-paper pl-3 text-[1rem] font-medium text-ink [color-scheme:light] " +
   "transition-colors duration-150 hover:bg-paper-3/50 aria-[invalid=true]:shadow-[inset_0_0_0_1px_#121a22]";
+const chevron = "pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-ink";
+
+const STAY_DAYS = STAY_HOURS / 24;
+const LAST_START = fmtDay(parseDate(LAST_DATE) as number);
+
+/** What is wrong with an out-of-range start, and what to pick instead. */
+function dateError(date: string): string {
+  const dm = dayMonthOf(date);
+  if (dm && dm.month === 11) {
+    return (
+      `${dm.day} Dec is too late to start: the tracks end at 00:00 UTC on 1 Jan ${DATA_YEAR + 1}, ` +
+      `and a stay runs ${STAY_DAYS} days. Pick ${LAST_START} or earlier.`
+    );
+  }
+  return `Pick a start date from 1 Jan to ${LAST_START} ${DATA_YEAR}: the tracks cover ${DATA_YEAR}, and a stay runs ${STAY_DAYS} days.`;
+}
 
 export function StartForm({ idPrefix, framed = false }: { idPrefix: string; framed?: boolean }) {
   const { siteId, date, startMs, dateValid, setSiteId, setDate } = useLanding();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  // Only the form being used announces a new error; the other copy shows it quietly.
   const [touched, setTouched] = useState(false);
-  const dateRef = useRef<HTMLInputElement>(null);
-  const showError = !dateValid && touched;
-  const errorId = `${idPrefix}-date-error`;
+  const dayRef = useRef<HTMLSelectElement>(null);
+
+  const { day, month } = dayMonthOf(date) ?? dayMonthOf(DEFAULT_DATE) ?? { day: 1, month: 0 };
+  const days = daysInMonth(month);
+  const ids = {
+    label: `${idPrefix}-start-label`,
+    day: `${idPrefix}-day`,
+    dayName: `${idPrefix}-day-name`,
+    month: `${idPrefix}-month`,
+    monthName: `${idPrefix}-month-name`,
+    error: `${idPrefix}-date-error`,
+  };
+  const invalid = !dateValid;
 
   useEffect(() => {
     router.prefetch("/tool");
   }, [router]);
 
+  function pickDay(d: number) {
+    setTouched(true);
+    setDate(dateValue(d, month));
+  }
+
+  function pickMonth(m: number) {
+    setTouched(true);
+    // 31 Mar to April lands on 30 Apr rather than a day that does not exist.
+    setDate(dateValue(Math.min(day, daysInMonth(m)), m));
+  }
+
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!dateValid) {
+    if (invalid) {
       setTouched(true);
-      dateRef.current?.focus();
+      dayRef.current?.focus();
       return;
     }
     startTransition(() => router.push(navigatorHref(siteId, startMs)));
   }
+
+  const dateProps = {
+    "aria-invalid": invalid,
+    "aria-describedby": invalid ? ids.error : undefined,
+    className: `${control} pr-9 tabular-nums`,
+  };
 
   return (
     <form
@@ -46,6 +103,9 @@ export function StartForm({ idPrefix, framed = false }: { idPrefix: string; fram
       noValidate
       className={`bg-paper-2 px-4 py-4 sm:px-5 ${framed ? "border border-ink" : "border-b border-ink"}`}
     >
+      <input type="hidden" name="start" value={date} />
+      <input type="hidden" name="hours" value={STAY_HOURS} />
+
       <div className="grid gap-3 sm:grid-cols-2 lg:flex lg:items-end lg:gap-4">
         <div className="flex flex-col gap-1.5 lg:w-[17.5rem]">
           <label htmlFor={`${idPrefix}-site`} className={label}>
@@ -57,7 +117,7 @@ export function StartForm({ idPrefix, framed = false }: { idPrefix: string; fram
               name="site"
               value={siteId}
               onChange={(e) => setSiteId(e.target.value)}
-              className={`${control} cursor-pointer appearance-none pr-10 pl-3`}
+              className={`${control} pr-10`}
             >
               {sites.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -65,29 +125,58 @@ export function StartForm({ idPrefix, framed = false }: { idPrefix: string; fram
                 </option>
               ))}
             </select>
-            <ChevronDown className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-ink" />
+            <ChevronDown className={chevron} />
           </div>
         </div>
 
-        <div className="flex flex-col gap-1.5 lg:w-[12.5rem]">
-          <label htmlFor={`${idPrefix}-start`} className={label}>
+        <div className="flex flex-col gap-1.5">
+          <label id={ids.label} htmlFor={ids.day} className={label}>
             Start date, UTC
           </label>
-          <input
-            ref={dateRef}
-            id={`${idPrefix}-start`}
-            name="start"
-            type="date"
-            required
-            min={FIRST_DATE}
-            max={LAST_DATE}
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            onBlur={() => setTouched(true)}
-            aria-invalid={showError}
-            aria-describedby={showError ? errorId : undefined}
-            className={`${control} px-3 tabular-nums [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-70 hover:[&::-webkit-calendar-picker-indicator]:opacity-100`}
-          />
+          <div className="grid grid-cols-[minmax(0,4fr)_minmax(0,5fr)_auto] items-center gap-2 lg:grid-cols-[4.5rem_5.5rem_auto]">
+            <span id={ids.dayName} className="sr-only">
+              day
+            </span>
+            <span id={ids.monthName} className="sr-only">
+              month, {DATA_YEAR}
+            </span>
+            <div className="relative">
+              <select
+                ref={dayRef}
+                id={ids.day}
+                aria-labelledby={`${ids.label} ${ids.dayName}`}
+                value={day}
+                onChange={(e) => pickDay(Number(e.target.value))}
+                {...dateProps}
+              >
+                {Array.from({ length: days }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className={chevron} />
+            </div>
+            <div className="relative">
+              <select
+                id={ids.month}
+                aria-labelledby={`${ids.label} ${ids.monthName}`}
+                value={month}
+                onChange={(e) => pickMonth(Number(e.target.value))}
+                {...dateProps}
+              >
+                {MONTHS.map((m, i) => (
+                  <option key={m} value={i}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className={chevron} />
+            </div>
+            <span aria-hidden="true" className="pr-1 pl-0.5 text-[1rem] font-medium text-ink tabular-nums">
+              {DATA_YEAR}
+            </span>
+          </div>
         </div>
 
         <p className="text-[0.889rem] leading-snug text-ink-2 sm:col-span-2 lg:hidden xl:block xl:flex-1 xl:self-center xl:pt-6">
@@ -104,9 +193,13 @@ export function StartForm({ idPrefix, framed = false }: { idPrefix: string; fram
         </button>
       </div>
 
-      {showError && (
-        <p id={errorId} role="alert" className="mt-3 text-[0.889rem] font-semibold text-ink">
-          Pick a start date from 1 Jan to 25 Dec 2027: the tracks cover 2027, and a stay runs 6.5 days.
+      {invalid && (
+        <p
+          id={ids.error}
+          role={touched ? "alert" : undefined}
+          className="mt-3 max-w-[72ch] text-[0.889rem] leading-snug font-semibold text-ink"
+        >
+          {dateError(date)}
         </p>
       )}
     </form>

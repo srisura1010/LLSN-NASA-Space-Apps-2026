@@ -47,9 +47,28 @@ export function slipStart(startMs: number): { ms: number; later: boolean } {
   return later <= last ? { ms: later, later: true } : { ms: startMs - SLIP_DAYS * 24 * HOUR_MS, later: false };
 }
 
+/** The one year the tracks cover. */
+export const DATA_YEAR = Number(FIRST_DATE.slice(0, 4));
+
+/** Days in a month (0 = Jan) of the data year. */
+export function daysInMonth(month: number): number {
+  return new Date(Date.UTC(DATA_YEAR, month + 1, 0)).getUTCDate();
+}
+
+/** Day and month (0 = Jan) of a YYYY-MM-DD value, or null if it is not in that form. */
+export function dayMonthOf(value: string): { day: number; month: number } | null {
+  const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(value);
+  return m ? { day: Number(m[2]), month: Number(m[1]) - 1 } : null;
+}
+
+/** YYYY-MM-DD in the data year for a day and month (0 = Jan). */
+export function dateValue(day: number, month: number): string {
+  return `${DATA_YEAR}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 // ---------- Formatting (UTC) ----------
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 export function fmtDay(ms: number): string {
   const d = new Date(ms);
