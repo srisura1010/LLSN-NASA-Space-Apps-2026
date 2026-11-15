@@ -41,6 +41,8 @@ const TerrainPlate = dynamic(() => import("./TerrainPlate"), { ssr: false, loadi
 
 const SystemView = dynamic(() => import("../system/SystemView"), { ssr: false, loading: () => <SystemLoading /> });
 
+const MoonView = dynamic(() => import("../moon/MoonView"), { ssr: false, loading: () => <MoonLoading /> });
+
 const Controls = memo(MissionControls);
 
 // ---------- Constants and URL state ----------
@@ -55,9 +57,10 @@ const CUSTOM_MARGIN_MS = 14 * DAY;
 /** Playback runs through the whole window in this many milliseconds. */
 const PLAY_SPAN_MS = 12_000;
 
-type View = "navigator" | "system" | "compare" | "about";
+type View = "navigator" | "moon" | "system" | "compare" | "about";
 const TABS: { id: View; label: string }[] = [
   { id: "navigator", label: "Navigator" },
+  { id: "moon", label: "Moon" },
   { id: "system", label: "System" },
   { id: "compare", label: "Compare" },
   { id: "about", label: "About & data" },
@@ -185,6 +188,14 @@ function SystemLoading() {
   return (
     <div role="status" className="grid h-full min-h-[22rem] place-items-center bg-paper">
       <p className="text-[0.844rem] text-ink-2">Loading the Sun, Earth and Moon diagram</p>
+    </div>
+  );
+}
+
+function MoonLoading() {
+  return (
+    <div role="status" className="grid h-full min-h-[22rem] place-items-center bg-paper">
+      <p className="text-[0.844rem] text-ink-2">Loading the Moon globe</p>
     </div>
   );
 }
@@ -637,6 +648,8 @@ export default function NavigatorApp() {
     [view, selectedData, systemNow],
   );
   const systemWindow = useMemo(() => ({ startMs, endMs }), [startMs, endMs]);
+  const openSiteLevel = useCallback(() => changeView("navigator"), [changeView]);
+  const openMoonLevel = useCallback(() => changeView("moon"), [changeView]);
 
   useEffect(() => {
     if (!playing) return;
@@ -925,6 +938,21 @@ export default function NavigatorApp() {
             siteName={meta.name}
             sunElevationDeg={systemSample?.sunEl}
             earthElevationDeg={systemSample?.earthEl}
+            windowMs={systemWindow}
+            onOpenMoon={openMoonLevel}
+            className="h-full"
+          />
+        </div>
+      )}
+
+      {view === "moon" && (
+        <div role="tabpanel" id="view-moon" aria-labelledby="tab-moon" className="relative min-h-0 flex-1 xl:overflow-hidden">
+          <MoonView
+            nowMs={systemNow}
+            onScrub={scrubSystem}
+            selectedId={effectiveId}
+            onSelect={select}
+            onOpenSite={openSiteLevel}
             windowMs={systemWindow}
             className="h-full"
           />

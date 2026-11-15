@@ -330,20 +330,18 @@ export class PlateBridge {
       const bx0 = left ? x - 14 - bw : x + 14;
       return [Math.min(bx0, x - 10), y - Math.max(bh / 2, 10), Math.max(bx0 + bw, x + 10), y + Math.max(bh / 2, 10)];
     };
-    // When another indicator or the flag is in the way, slide along the border.
+    // When another indicator or the flag is in the way, take the nearest free
+    // spot a whole box away, across or up and down, so a marker never drifts
+    // far from where its bearing leaves the view. Sun and Earth often share a
+    // bearing; they then stack, which also fits a narrow plate.
     if (overlaps(rectAt(px, py), placed, 4)) {
-      const alongX = Math.abs(py - rect[1]) < 1 || Math.abs(py - rect[3]) < 1;
-      const step = alongX ? bw / 2 + 24 : bh + 8;
-      for (const k of [1, -1, 2, -2, 3, -3, 4, -4]) {
-        const nx = alongX ? px + k * step : px;
-        const ny = alongX ? py : py + k * step;
-        if (nx < rect[0] || nx > rect[2] || ny < rect[1] || ny > rect[3]) continue;
-        if (!overlaps(rectAt(nx, ny), placed, 4)) {
-          px = nx;
-          py = ny;
-          break;
-        }
-      }
+      const tries: [number, number][] = [];
+      for (const k of [1, -1, 2, -2, 3, -3, 4, -4]) tries.push([px + k * (bw / 2 + 24), py], [px, py + k * (bh + 8)]);
+      tries.sort((a, b) => Math.hypot(a[0] - px, a[1] - py) - Math.hypot(b[0] - px, b[1] - py));
+      const free = tries.find(
+        ([x, y]) => x >= rect[0] && x <= rect[2] && y >= rect[1] && y <= rect[3] && !overlaps(rectAt(x, y), placed, 4),
+      );
+      if (free) [px, py] = free;
     }
     el.style.transform = `translate3d(${px.toFixed(1)}px, ${py.toFixed(1)}px, 0)`;
     if (ind.arrow) ind.arrow.style.transform = `translate(-50%, -50%) rotate(${Math.atan2(dy, dx).toFixed(3)}rad) translateX(15px)`;

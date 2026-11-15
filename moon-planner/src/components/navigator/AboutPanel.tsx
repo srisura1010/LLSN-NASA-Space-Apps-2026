@@ -17,6 +17,7 @@ const SECTIONS = [
   ["about-method", "How the numbers are made"],
   ["about-ranking", "How regions are ranked"],
   ["about-limits", "Limits"],
+  ["about-moon", "Moon level"],
   ["about-system", "System level"],
   ["about-check", "Checked against NASA"],
   ["about-credits", "NASA data and credits"],
@@ -284,6 +285,22 @@ function AboutPanel({ entries, loading }: Props) {
                 horizon from the 640 m heightmap and, when NASA Moon Trek is reachable, 80 m terrain within 5 km.
               </li>
             </ul>
+          </Section>
+
+          <Section id="about-moon" title="Moon level">
+            <p>
+              The Moon tab shows the whole Moon as a globe, between the System level and the site-level terrain plate.
+              The globe is turned with the IAU/WGCCRE rotation model for the Moon (pole direction and prime meridian
+              with its thirteen periodic terms; Archinal and colleagues, 2018) and lit from the Sun&apos;s direction in
+              the same JPL Horizons vectors the System tab uses, so the terminator, the sub-solar point and the
+              sub-Earth point (the libration) are computed for the time shown. Sun and Earth elevations from this
+              model, over a smooth sphere, agree with the Horizons observer tracks at the nine region centres to
+              within 0.01° at every hour of 2027. The surface is the colour and elevation maps of the NASA Scientific
+              Visualization Studio CGI Moon Kit, made from Lunar Reconnaissance Orbiter camera and LOLA data, printed
+              in grey with exaggerated relief shading and no cast shadows. Earlier landing sites are marked for
+              context at the coordinates published by NASA&apos;s Space Science Data Coordinated Archive (NSSDCA) and
+              the mission teams.
+            </p>
           </Section>
 
           <Section id="about-system" title="System level">

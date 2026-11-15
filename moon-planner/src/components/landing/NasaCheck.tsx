@@ -49,6 +49,8 @@ const head =
   "text-[0.75rem] font-semibold tracking-[0.02em] text-ink-2 uppercase sm:text-[0.79rem] sm:tracking-[0.08em]";
 const num = "py-2 pl-1.5 text-right tabular-nums sm:pl-4";
 const groupStart = "border-l border-rule pl-2 sm:pl-4";
+/** The Sun group's last column keeps its figures off the rule that opens the Earth group. */
+const groupEnd = "pr-2 sm:pr-4";
 
 export function NasaCheck() {
   const { sun, earth } = DATA.summary;
@@ -97,7 +99,11 @@ export function NasaCheck() {
             <tr className="border-b border-ink">
               {(["sun", "earth"] as const).flatMap((body) =>
                 ["2027", "NASA", "Diff."].map((h, i) => (
-                  <th key={`${body}${h}`} scope="col" className={`${head} pb-2 text-right ${i === 0 ? groupStart : "pl-2 sm:pl-4"}`}>
+                  <th
+                    key={`${body}${h}`}
+                    scope="col"
+                    className={`${head} pb-2 text-right ${i === 0 ? groupStart : "pl-2 sm:pl-4"} ${body === "sun" && i === 2 ? groupEnd : ""}`}
+                  >
                     {h}
                   </th>
                 )),
@@ -111,7 +117,7 @@ export function NasaCheck() {
                   {r.name}
                 </th>
                 {[r.sun, r.earth].map((c, i) => (
-                  <Cells key={i} cell={c} />
+                  <Cells key={i} cell={c} ruleAfter={i === 0} />
                 ))}
               </tr>
             ))}
@@ -121,7 +127,7 @@ export function NasaCheck() {
               <th scope="row" colSpan={3} className="py-2.5 pr-2 font-semibold sm:pr-4">
                 Mean absolute difference
               </th>
-              <td className={`${num} py-2.5 font-semibold`}>{sun.meanAbsDiff.toFixed(1)}</td>
+              <td className={`${num} ${groupEnd} py-2.5 font-semibold`}>{sun.meanAbsDiff.toFixed(1)}</td>
               <td colSpan={2} className={groupStart} />
               <td className={`${num} py-2.5 font-semibold`}>{earth.meanAbsDiff.toFixed(1)}</td>
             </tr>
@@ -132,12 +138,12 @@ export function NasaCheck() {
   );
 }
 
-function Cells({ cell }: { cell: Cell }) {
+function Cells({ cell, ruleAfter }: { cell: Cell; ruleAfter: boolean }) {
   return (
     <>
       <td className={`${num} ${groupStart}`}>{cell.model.toFixed(1)}</td>
       <td className={`${num} text-ink-2`}>{cell.nasa.toFixed(1)}</td>
-      <td className={`${num} font-semibold`}>{signed(cell.diff)}</td>
+      <td className={`${num} font-semibold ${ruleAfter ? groupEnd : ""}`}>{signed(cell.diff)}</td>
     </>
   );
 }

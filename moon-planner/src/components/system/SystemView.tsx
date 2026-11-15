@@ -20,6 +20,7 @@ import {
   type SystemState,
   type Vec3,
 } from "@/lib/system";
+import YearSlider, { MONTHS, fmtUtc, useYearPlayback } from "./YearSlider";
 
 export type SystemViewProps = {
   nowMs: number;
@@ -30,6 +31,8 @@ export type SystemViewProps = {
   earthElevationDeg?: number | null;
   /** The mission window, marked on the year rail. */
   windowMs?: { startMs: number; endMs: number };
+  /** Shows an "Open Moon level" button that steps down to the Moon globe. */
+  onOpenMoon?: () => void;
   className?: string;
 };
 
@@ -44,9 +47,6 @@ const U = 100 / AU_KM;
 const PAIR_STRETCH = 50;
 const BODY_STRETCH = 800;
 const SUN_STRETCH = 15;
-/** Playback covers this much of 2027 per second. */
-const PLAY_RATE = (6 * DAY) / 1000;
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 const INK = "#121a22";
 const INK_2 = "#3a4752";
@@ -65,11 +65,6 @@ const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const mul = (a: Vec3, k: number): Vec3 => [a[0] * k, a[1] * k, a[2] * k];
 const unit = (a: Vec3): Vec3 => mul(a, 1 / Math.hypot(a[0], a[1], a[2]));
 
-function fmtUtc(ms: number) {
-  const d = new Date(ms);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}, ${p(d.getUTCHours())}:${p(d.getUTCMinutes())} UTC`;
-}
 const fmtInt = (n: number) => Math.round(n).toLocaleString("en-US");
 const fmtSigned = (n: number, digits = 1) => `${n < 0 ? "−" : "+"}${Math.abs(n).toFixed(digits)}°`;
 
@@ -497,85 +492,11 @@ function Readout({ state, siteName, sunEl, earthEl }: { state: SystemState; site
   );
 }
 
-function PlayIcon({ playing }: { playing: boolean }) {
-  return (
-    <svg viewBox="0 0 16 16" className="size-3.5" aria-hidden="true" fill="currentColor">
-      {playing ? <path d="M3.5 2.5h3v11h-3zM9.5 2.5h3v11h-3z" /> : <path d="M4 2.5 13 8l-9 5.5z" />}
-    </svg>
-  );
-}
-
-function YearRail({
-  data,
-  ms,
-  windowMs,
-  playing,
-  onPlay,
-  onScrub,
-}: {
-  data: SystemData;
-  ms: number;
-  windowMs?: { startMs: number; endMs: number };
-  playing: boolean;
-  onPlay: () => void;
-  onScrub: (ms: number) => void;
-}) {
-  const start = data.startMs;
-  const end = systemEndMs(data);
-  const pct = (t: number) => `${(Math.min(Math.max((t - start) / (end - start), 0), 1) * 100).toFixed(3)}%`;
-  const year = new Date(start + DAY).getUTCFullYear();
-  return (
-    <div className="flex items-start gap-3 border-t border-ink bg-paper-2 px-4 pt-3 pb-2">
-      <button
-        type="button"
-        onClick={onPlay}
-        aria-label={playing ? "Pause" : `Play through ${year}`}
-        className="grid size-9 shrink-0 place-items-center border border-ink text-ink transition-colors duration-150 hover:bg-paper-3"
-      >
-        <PlayIcon playing={playing} />
-      </button>
-      <div className="min-w-0 flex-1">
-        <div className="relative">
-          {windowMs && (
-            <span
-              className="pointer-events-none absolute top-[calc(50%-5px)] h-[10px] border-x border-ink bg-umbra-soft"
-              style={{ left: pct(windowMs.startMs), width: `calc(${pct(windowMs.endMs)} - ${pct(windowMs.startMs)})` }}
-            />
-          )}
-          <input
-            type="range"
-            className="system-range relative block w-full"
-            min={start}
-            max={end}
-            step={HOUR}
-            value={Math.round(ms)}
-            onChange={(e) => onScrub(Number(e.target.value))}
-            aria-label={`Time in ${year}`}
-            aria-valuetext={fmtUtc(ms)}
-          />
-        </div>
-        <div className="relative mt-0.5 h-4" aria-hidden="true">
-          {MONTHS.map((m, i) => (
-            <span
-              key={m}
-              className="absolute top-0 border-l border-rule pl-1 text-[0.66rem] leading-4 font-medium tracking-[0.1em] text-ink-2 uppercase"
-              style={{ left: pct(Date.UTC(year, i, 1)) }}
-            >
-              <span className={i % 2 ? "hidden sm:inline" : ""}>{m}</span>
-            </span>
-          ))}
-        </div>
-        {windowMs && <p className="mt-1 text-[0.75rem] text-ink-2">The shaded span is the mission window set in the Navigator.</p>}
-      </div>
-    </div>
-  );
-}
-
 // ---------- View ----------
 
 type Load = { status: "loading" } | { status: "ready"; data: SystemData } | { status: "error"; message: string };
 
-export default function SystemView({ nowMs, onScrub, siteName, sunElevationDeg, earthElevationDeg, windowMs, className = "" }: SystemViewProps) {
+export default function SystemView({ nowMs, onScrub, siteName, sunElevationDeg, earthElevationDeg, windowMs, onOpenMoon, className = "" }: SystemViewProps) {
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [scale, setScale] = useState<Scale>("display");
@@ -621,27 +542,8 @@ export default function SystemView({ nowMs, onScrub, siteName, sunElevationDeg, 
   }, [geo, state, framing, months]);
   const labelPoints = useMemo(() => (geo ? labels.map((l) => add(l.at, mul(geo.focus, -1))) : []), [labels, geo]);
 
-  // Playback advances the shared clock; it starts from wherever the clock is now.
-  const clock = useRef(ms);
-  useEffect(() => {
-    clock.current = ms;
-  }, [ms]);
-  useEffect(() => {
-    if (!playing || !data || !onScrub) return;
-    const end = systemEndMs(data);
-    let raf = 0;
-    let last = performance.now();
-    let t = clock.current;
-    const tick = (now: number) => {
-      t += Math.min(now - last, 100) * PLAY_RATE;
-      last = now;
-      if (t > end) t = data.startMs;
-      onScrub(t);
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [playing, data, onScrub]);
+  const span = useMemo(() => (data ? { startMs: data.startMs, endMs: systemEndMs(data) } : null), [data]);
+  useYearPlayback(playing, span, ms, onScrub);
 
   const caption =
     scale === "display"
@@ -674,6 +576,15 @@ export default function SystemView({ nowMs, onScrub, siteName, sunElevationDeg, 
                 { id: "true", label: "True scale" },
               ]}
             />
+            {onOpenMoon && (
+              <button
+                type="button"
+                onClick={onOpenMoon}
+                className="h-8 border border-ink px-3 text-[0.8rem] font-medium whitespace-nowrap text-ink transition-colors duration-150 hover:bg-paper-3"
+              >
+                Open Moon level
+              </button>
+            )}
           </div>
         </header>
 
@@ -729,8 +640,9 @@ export default function SystemView({ nowMs, onScrub, siteName, sunElevationDeg, 
         <p className="border-t border-rule px-4 py-2 text-[0.8rem] leading-snug text-ink-2">{caption}</p>
 
         {data && onScrub && (
-          <YearRail
-            data={data}
+          <YearSlider
+            startMs={data.startMs}
+            endMs={systemEndMs(data)}
             ms={ms}
             windowMs={windowMs}
             playing={playing}

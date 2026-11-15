@@ -52,3 +52,29 @@ the United States; Space Apps asks that each source is credited.
   rounded to 1 km.
 - **Credit line:** Ephemeris data from NASA/JPL Horizons, Solar System
   Dynamics Group, Jet Propulsion Laboratory.
+
+## Moon level (globe, rotation model, earlier landings)
+
+- **Files:** `moon-planner/src/lib/moonFrame.ts`,
+  `moon-planner/src/components/moon/MoonView.tsx`, checked by
+  `moon-planner/scripts/check-moon-frame.ts` (`npx tsx scripts/check-moon-frame.ts`)
+- **Rotation model:** IAU Working Group on Cartographic Coordinates and
+  Rotational Elements, Moon pole (right ascension, declination) and prime
+  meridian W with periodic terms E1 to E13: Archinal et al. (2018), "Report of
+  the IAU Working Group on Cartographic Coordinates and Rotational Elements:
+  2015", Celestial Mechanics and Dynamical Astronomy 130:22,
+  doi:10.1007/s10569-017-9805-5. Applied to the Horizons vectors above
+  (ecliptic J2000 to equatorial J2000 with the J2000 mean obliquity).
+- **Check:** Sun and Earth elevation over a smooth sphere at the nine region
+  centres agree with the JPL Horizons observer tracks
+  (`public/data/sky/*.json`) to 0.003 degrees at every hour of 2027.
+- **Textures:** the CGI Moon Kit colour and elevation maps listed above,
+  printed in grey with relief shading from the elevation map.
+- **Earlier landing coordinates:** Apollo 11, 12, 14, 15, 16 and 17 from the
+  NASA Space Science Data Coordinated Archive (NSSDCA),
+  https://nssdc.gsfc.nasa.gov/planetary/lunar/lunar_sites.html;
+  Chandrayaan-3 (ISRO), SLIM (JAXA), IM-1 Odysseus (Intuitive Machines / NASA
+  CLPS) and Chang'e 6 (CNSA) from the mission pages, to about 0.01 degrees.
+- **Credit lines:** Moon maps: NASA's Scientific Visualization Studio, CGI
+  Moon Kit (LRO/LROC and LOLA). Rotation model: IAU WGCCRE (Archinal et al.
+  2018). Landing coordinates: NASA NSSDCA and mission teams.
