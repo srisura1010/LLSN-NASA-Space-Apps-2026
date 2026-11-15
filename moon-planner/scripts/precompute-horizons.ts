@@ -2,12 +2,15 @@
 // data/horizons-cache/ so the app works without live JPL calls.
 //
 // Usage:
-//   npm run precompute                                  # 2027-01-01 .. 2027-12-31, 1 h
+//   npm run precompute                                  # all of 2027 (to 2028-01-01 00:00), 1 h
+//
+// Stop is an instant, not a whole day: "2027-01-31" means Jan 31 00:00 UT.
 //   npm run precompute -- 2027-01-01 2027-01-07         # custom range
 //   npm run precompute -- 2027-01-01 2027-01-07 "30 m"  # custom range + step
+//   npm run precompute -- --site=test-pole              # one site only
 //
-// The API route caches by exact (target, lat, lon, altKm, start, stop, step),
-// so request the same range/step from the app to get cache hits.
+// The API route serves any request whose range falls inside a cached file
+// (and whose step is a multiple of the cached step) from that file.
 
 import { sites } from "../src/lib/sites";
 import {
@@ -19,8 +22,12 @@ import {
   type SkyTrackParams,
 } from "../src/lib/horizons";
 
-const [start = "2027-01-01", stop = "2027-12-31", step = "1 h"] =
-  process.argv.slice(2);
+const args = process.argv.slice(2);
+const siteFilter = args.find((a) => a.startsWith("--site="))?.slice("--site=".length);
+const [start = "2027-01-01", stop = "2028-01-01", step = "1 h"] = args.filter(
+  (a) => !a.startsWith("--"),
+);
+const selectedSites = siteFilter ? sites.filter((s) => s.id === siteFilter) : sites;
 
 const TARGETS: SkyTarget[] = ["sun", "earth"];
 const DELAY_MS = 1000;
@@ -57,11 +64,15 @@ async function fetchChunked(params: SkyTrackParams): Promise<SkyPoint[]> {
 }
 
 async function main() {
-  console.log(`Precomputing ${sites.length} sites, ${start} .. ${stop}, step ${step}`);
+  if (!selectedSites.length) {
+    console.error(`No site with id "${siteFilter}". Known: ${sites.map((s) => s.id).join(", ")}`);
+    process.exit(1);
+  }
+  console.log(`Precomputing ${selectedSites.length} site(s), ${start} .. ${stop}, step ${step}`);
   let first = true;
   let failures = 0;
 
-  for (const site of sites) {
+  for (const site of selectedSites) {
     for (const target of TARGETS) {
       const params: SkyTrackParams = {
         target,
