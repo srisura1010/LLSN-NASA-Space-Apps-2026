@@ -486,6 +486,9 @@ function PlayMark({ playing }: { playing: boolean }) {
   );
 }
 
+/** Joins a short phrase with no-break spaces so it never splits across lines. */
+const keep = (s: string) => s.replace(/ /g, "\u00a0");
+
 /**
  * Local circumstances at the chosen time, in the bulletin's table manner:
  * where each body stands, the terrain under it, whether it is in view and
@@ -529,8 +532,9 @@ function NowReadout({
       terrain: sun ? now.sunHorizon : now.earthHorizon,
       up,
       status,
+      // The time and the "in …" span each hold together, so a narrow column breaks between them, never inside one.
       next: next
-        ? `${word.charAt(0).toUpperCase()}${word.slice(1)} ${fmtDayTime(next.ms)}, in ${fmtDuration((next.ms - now.ms) / HOUR_MS)}`
+        ? `${word.charAt(0).toUpperCase()}${word.slice(1)} ${keep(fmtDayTime(next.ms))}, ${keep(`in ${fmtDuration((next.ms - now.ms) / HOUR_MS)}`)}`
         : `No ${word} before ${fmtDay(dataEnd)} ${new Date(dataEnd).getUTCFullYear()}`,
     };
   });

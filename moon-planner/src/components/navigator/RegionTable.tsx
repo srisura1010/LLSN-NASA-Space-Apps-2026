@@ -134,7 +134,7 @@ function RegionTable({
         <h2 id={`${id}-title`} className="text-[1.068rem] font-semibold leading-tight text-ink">
           Regions ranked for this window
         </h2>
-        <p className="mt-1 text-[0.844rem] text-ink-2 tabular-nums">{windowLabel}</p>
+        <p className="mt-1 text-[0.844rem] text-pretty text-ink-2 tabular-nums">{windowLabel}</p>
       </header>
 
       {note && <div className="px-4 pb-3">{note}</div>}
@@ -183,7 +183,7 @@ function RegionTable({
                     <RankShift rank={r.rank} prevRank={r.prevRank} />
                   </span>
                   <span className="min-w-0">
-                    <span className={`block text-[0.95rem] leading-snug text-ink ${selected ? "font-semibold" : "font-medium"}`}>
+                    <span className={`block text-[0.95rem] leading-snug text-balance text-ink ${selected ? "font-semibold" : "font-medium"}`}>
                       <span className="sr-only">, </span>
                       {r.name}
                       {r.custom && (
