@@ -20,12 +20,12 @@ export function SectionLabel({
   return (
     <Tag
       id={id}
-      className={`flex items-baseline justify-between gap-3 text-[0.75rem] font-semibold tracking-[0.08em] text-ink uppercase ${
+      className={`flex items-baseline justify-between gap-3 text-label font-semibold tracking-[0.08em] text-ink uppercase ${
         rule ? "border-b border-ink pb-1.5" : ""
       } ${className}`}
     >
       <span>{children}</span>
-      {note && <span className="text-[0.75rem] font-normal tracking-normal text-ink-2 normal-case">{note}</span>}
+      {note && <span className="text-label font-normal tracking-normal text-ink-2 normal-case">{note}</span>}
     </Tag>
   );
 }

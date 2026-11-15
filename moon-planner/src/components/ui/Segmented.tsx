@@ -5,6 +5,8 @@ export function Segmented<T extends string>({
   options,
   onChange,
   disabled = false,
+  size = "md",
+  fill = false,
   className = "",
 }: {
   /** Accessible name of the group. */
@@ -13,6 +15,10 @@ export function Segmented<T extends string>({
   options: readonly { id: T; label: string }[];
   onChange: (v: T) => void;
   disabled?: boolean;
+  /** "lg" is 44 px tall, a touch target for the phone layout. */
+  size?: "md" | "lg";
+  /** Share the width equally between the options. */
+  fill?: boolean;
   className?: string;
 }) {
   return (
@@ -26,7 +32,7 @@ export function Segmented<T extends string>({
             aria-pressed={on}
             disabled={disabled}
             onClick={() => onChange(o.id)}
-            className={`h-8 px-3 text-[0.8rem] whitespace-nowrap transition-colors duration-150 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:text-ink-3 ${
+            className={`${size === "lg" ? "h-11 px-3 text-body" : "h-8 px-3 text-small"} ${fill ? "flex-1" : ""} whitespace-nowrap transition-colors duration-150 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:text-ink-3 ${
               i ? "border-l border-ink" : ""
             } ${on ? "bg-ink font-semibold text-paper" : "font-medium text-ink hover:bg-paper-3"}`}
           >

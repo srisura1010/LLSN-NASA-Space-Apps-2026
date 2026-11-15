@@ -47,7 +47,7 @@ function RankShift({ rank, prevRank }: { rank: number; prevRank: number | null }
   const up = rank < prevRank;
   const by = Math.abs(prevRank - rank);
   return (
-    <span className="mt-0.5 flex items-center gap-0.5 text-[0.75rem] font-medium text-ink-2">
+    <span className="mt-0.5 flex items-center gap-0.5 text-label font-medium text-ink-2">
       <svg viewBox="0 0 8 8" aria-hidden="true" className="size-2">
         <path d={up ? "M4 1.25 7.25 6.5H.75Z" : "M4 6.75.75 1.5h6.5Z"} className="fill-ink-2" />
       </svg>
@@ -64,7 +64,7 @@ function ScoreCell({ score }: { score: number }) {
   const w = Math.max(0, Math.min(1, score));
   return (
     <span className="flex flex-col items-end gap-1">
-      <span className="text-[0.95rem] font-semibold tabular-nums text-ink">
+      <span className="text-lead font-semibold tabular-nums text-ink">
         <span className="sr-only">, score </span>
         {score.toFixed(2)}
       </span>
@@ -124,14 +124,14 @@ function RegionTable({
   return (
     <section aria-labelledby={`${id}-title`} className={className}>
       <header className="px-4 pt-4 pb-3">
-        <h2 id={`${id}-title`} className="text-[1.068rem] font-semibold leading-tight text-ink">
+        <h2 id={`${id}-title`} className="text-heading font-semibold leading-tight text-ink">
           Regions ranked for this window
         </h2>
       </header>
 
       <div
         aria-hidden="true"
-        className={`${COLS} items-end border-b border-ink px-4 pb-1.5 text-[0.75rem] font-semibold uppercase tracking-[0.06em] text-ink-2`}
+        className={`${COLS} items-end border-b border-ink px-4 pb-1.5 text-label font-semibold uppercase tracking-[0.06em] text-ink-2`}
       >
         <span>#</span>
         <span>Region</span>
@@ -174,7 +174,7 @@ function RegionTable({
                       : "hover:bg-paper active:bg-paper-3"
                   }`}
                 >
-                  <span className="flex flex-col text-[0.95rem] font-semibold tabular-nums text-ink">
+                  <span className="flex flex-col text-lead font-semibold tabular-nums text-ink">
                     <span>
                       <span className="sr-only">Rank </span>
                       {r.rank}
@@ -182,18 +182,18 @@ function RegionTable({
                     <RankShift rank={r.rank} prevRank={r.prevRank} />
                   </span>
                   <span className="min-w-0">
-                    <span className={`block text-[0.95rem] leading-snug text-balance text-ink ${selected ? "font-semibold" : "font-medium"}`}>
+                    <span className={`block text-lead leading-snug text-balance text-ink ${selected ? "font-semibold" : "font-medium"}`}>
                       <span className="sr-only">, </span>
                       {r.name}
                       {r.custom && (
-                        <span className="ml-1.5 border border-ink-2 px-1 align-[0.1em] text-[0.75rem] font-semibold uppercase tracking-[0.06em] text-ink-2">
+                        <span className="ml-1.5 border border-ink-2 px-1 align-[0.1em] text-label font-semibold uppercase tracking-[0.06em] text-ink-2">
                           <span className="sr-only">, </span>
                           Custom
                         </span>
                       )}
-                      {r.tag && <span className="block text-[0.75rem] font-normal text-ink-2">Terrain: {r.tag}</span>}
+                      {r.tag && <span className="block text-label font-normal text-ink-2">Terrain: {r.tag}</span>}
                     </span>
-                    <span className="mt-0.5 block text-[0.75rem] leading-snug text-ink-2 tabular-nums">
+                    <span className="mt-0.5 block text-label leading-snug text-ink-2 tabular-nums">
                       <span className="sr-only">, </span>
                       <span>Sun {pct(r.score.sunlit)}</span>
                       <span aria-hidden="true"> · </span>
@@ -216,9 +216,9 @@ function RegionTable({
             <li key={p.id} className="border-b border-rule" aria-busy="true">
               <div className={`${COLS} items-center px-4 py-2.5`}>
                 <span className="h-3.5 w-3 bg-paper-3 motion-safe:animate-pulse" aria-hidden="true" />
-                <span className="min-w-0 text-[0.95rem] font-medium text-ink">
+                <span className="min-w-0 text-lead font-medium text-ink">
                   {p.name}
-                  <span className="mt-0.5 block text-[0.75rem] font-normal text-ink-2">
+                  <span className="mt-0.5 block text-label font-normal text-ink-2">
                     Computing horizon and tracks for this window
                   </span>
                 </span>
@@ -233,7 +233,7 @@ function RegionTable({
       {failed.length > 0 && (
         <div role="alert" className="border-b border-rule px-4 py-3">
           {failed.map((f) => (
-            <p key={f.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-1 text-[0.844rem] text-ink">
+            <p key={f.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-1 text-body text-ink">
               <span>
                 {f.name} did not load ({f.message}). It is left out of the ranking.
               </span>
@@ -245,7 +245,7 @@ function RegionTable({
         </div>
       )}
 
-      <div className="space-y-2.5 px-4 py-3 text-[0.844rem] text-ink-2">
+      <div className="space-y-2.5 px-4 py-3 text-body text-ink-2">
         <p>Score, 0 to 1: mean Sun power 45%, Earth in view 30%, a short longest dark spell 25%.</p>
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <label htmlFor={`${id}-limit`} className="flex items-center gap-2">
@@ -255,7 +255,7 @@ function RegionTable({
               value={limitHours}
               onChange={(e) => onLimitChange(Number(e.target.value))}
               wrapClassName="w-[5.5rem]"
-              className="text-[0.844rem] tabular-nums"
+              className="text-body tabular-nums"
             >
               {GAP_LIMITS.map((h) => (
                 <option key={h} value={h}>
@@ -324,10 +324,10 @@ export function CustomSiteForm({ state, onSubmit, onRemove, className = "" }: Cu
   const errorId = `${id}-error`;
   return (
     <section aria-labelledby={`${id}-title`} className={`px-4 py-4 ${className}`}>
-      <h3 id={`${id}-title`} className="text-[0.95rem] font-semibold text-ink">
+      <h3 id={`${id}-title`} className="text-lead font-semibold text-ink">
         Add a custom site
       </h3>
-      <p className="mt-1 max-w-[42ch] text-[0.844rem] leading-snug text-ink-2">
+      <p className="mt-1 max-w-[42ch] text-body leading-snug text-ink-2">
         Any point on the Moon up to 0.1&deg; from either pole; it takes a few seconds. From 80&deg; S to the south
         pole the horizon comes from the LOLA 80 m and 640 m grids and the tracks from JPL Horizons. Elsewhere the
         terrain is fetched from NASA Moon Trek on a coarser 240 m or 300 m grid, so times near a grazing Sun are
@@ -388,18 +388,18 @@ export function CustomSiteForm({ state, onSubmit, onRemove, className = "" }: Cu
       </form>
       <div aria-live="polite">
         {problem && (
-          <p id={errorId} className="mt-2 max-w-[44ch] text-[0.844rem] font-medium leading-snug text-ink">
+          <p id={errorId} className="mt-2 max-w-[44ch] text-body font-medium leading-snug text-ink">
             {problem.message}
           </p>
         )}
         {!problem && busy && (
-          <p className="mt-2 text-[0.844rem] text-ink-2">
+          <p className="mt-2 text-body text-ink-2">
             {state.lat > -80 ? "Fetching the terrain from NASA Moon Trek and tracing the horizon for" : "Computing the terrain horizon and fetching Sun and Earth tracks for"}{" "}
             {state.lat.toFixed(2)}, {state.lon.toFixed(2)}.
           </p>
         )}
         {!problem && state?.status === "error" && (
-          <p className="mt-2 max-w-[44ch] text-[0.844rem] font-medium leading-snug text-ink">
+          <p className="mt-2 max-w-[44ch] text-body font-medium leading-snug text-ink">
             {state.message ?? "The custom site could not be computed. Check the connection and try again."}
           </p>
         )}

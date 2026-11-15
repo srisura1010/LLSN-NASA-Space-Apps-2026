@@ -343,7 +343,7 @@ export function LabelProjector<L extends Label>({
 
 // ---------- Marks drawn over the canvas ----------
 
-export const LABEL_TEXT = "text-[0.69rem] leading-4 font-semibold tracking-[0.1em] whitespace-nowrap uppercase select-none";
+export const LABEL_TEXT = "text-label leading-4 font-semibold tracking-[0.1em] whitespace-nowrap uppercase select-none";
 
 export const HIT = "pointer-events-auto absolute -top-3 -left-3 grid size-6 cursor-pointer place-items-center focus-visible:outline-offset-0";
 

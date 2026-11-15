@@ -2,7 +2,7 @@
 
 This file and `docs/tool-ui-audit.md` are the starting point for the next session. Section numbers like §3.3 refer
 to the audit. The audit still describes the layout and metrics, but not the Phase 1–2 shell and file moves listed
-below. Status: **Phases 1 to 4 done. Phase 5 not started.** Nothing is committed.
+below. Status: **Phases 1 to 5 done.** Nothing is committed.
 
 ## Phase 1: foundation (done)
 
@@ -214,3 +214,46 @@ below. Status: **Phases 1 to 4 done. Phase 5 not started.** Nothing is committed
 3. Fit the bulletin at 1440x900: collapse "Checked against NASA" into a disclosure, and maybe cap "Rises and sets" with
    a "show all".
 4. Delete the test Horizons cache files (`data/horizons-cache/*_-80.0010_45.0000_*.json`) before committing.
+
+## Phase 5 (done)
+
+- **Below xl (< 1280 px) the Plan workspace stacks, viewer first:** app bar, then the viewer
+  (`h-[max(22rem,60svh)]`: 390x506 on a phone, 768x614, 1024x461), then the dock or LevelClock, then a
+  `Segmented` panel switch (44 px tall) [Ranking | Details | Horizon] that shows one panel at a time. Horizon is
+  only offered at the Site level and shows a full `HorizonPlot` (with its legend) under the switch; the dock's own
+  panorama and Horizon toggle are hidden below xl. The rails are the same `Rail`s, reordered with `max-xl:order-*`
+  and hidden with `max-xl:hidden` when not chosen, so the Moon/System inspector portal still works. The switch's
+  state is local (`panelTab`, default Ranking). From xl nothing changed.
+  - New hook `useWideViewport(px)` in `src/state/stored.ts` (server snapshot: wide). `Segmented` gained
+    `size="lg"` and `fill`.
+- **App bar:** one 56 px row at every width. Below sm the modes are a "Plan ▾" menu (`ModeMenu`, items carry
+  `data-mode-item`); from sm the tabs are inline, and centred from lg. The window chip drops the year below sm and
+  its panel is pinned to the viewport (`max-sm:fixed inset-x-2`). Chip, info and menu are 44 px below md. The
+  window-change toast sits at the bottom of the screen below sm.
+- **Viewer toolbars on phones:** below md the Moon and System toolbars and the plate's level control, Fig. 1 title
+  and Legend/Layers sit in a static row above the canvas (paper-2, hairline under it); from md they float as before.
+  Moon and System canvases have an 18rem floor. Play is 44 px below md.
+- **Type scale** (`globals.css` `@theme`): `text-label` 0.75, `text-small` 0.8125, `text-body` 0.875, `text-lead` 1,
+  `text-heading` 1.125, `text-title` 1.25, `text-display` 1.5 rem. All `text-[…rem]` sizes in the /tool UI were
+  converted (14 distinct sizes before, 7 after; each within about ±1 px except 0.66rem → 0.75 and 1.352 → 1.25).
+  SVG user-unit sizes (`text-[4px]`, `text-[7px]`, `fontSize` in SVG) and the landing page are untouched.
+- **Leftovers:** LevelClock's range switch reads "Window | All 2027" and "At <site>" shows only from 2xl, so it no
+  longer wraps at 1366. "Checked against NASA" is a closed `<details>` (`data-nasa-check`), and rise/set rows put
+  the bearing on the name line. The dock readout uses `text-small`.
+- **Verified** (`scratchpad/tools/phase5.cjs`, screenshots in `shots/phase5/`): tsc, eslint, next build clean. At
+  390, 768, 1024, 1366 and 1440: Site, Moon, System (and Earth framing), Launch and Compare have no sideways overflow;
+  0 console errors. At 390 the viewer starts at y=56; the panel switch, row select, Play, window chip (+1 day) and
+  About work. Wheel zoom chain Site → Moon → System → Moon → Site and Launch → "Show this launch on Earth" work at
+  1440.
+  - Measured `data-viewer`: 1440x900 site 800x514 (phase 3 noted 800x535; the dock is ~20 px taller with the
+    scale, readout still on two lines at 800 px), Moon/System 800x749; 1366x768 site 726x598.
+
+### Left after Phase 5
+
+- 1440x900 site viewer is ~20 px shorter than in phase 3; trimming the dock caption/rail would win it back.
+- The bulletin still scrolls at 1440x900 for the end of "Rises and sets" (bottom at ~1050 px).
+- Compare's slip table still scrolls sideways inside its own region below md (the page does not).
+- System toolbar over the orbit line near the top edge (md+) was not addressed. On phones the System toolbar is
+  2–3 rows (~125 px) in the Earth–Moon and Earth framings.
+- Viewer toolbar buttons are 32 px (not 44) on phones; Play, modes, chip, info and the panel switch are 44 px.
+- Delete the test Horizons cache files (`data/horizons-cache/*_-80.0010_45.0000_*.json`) before committing.

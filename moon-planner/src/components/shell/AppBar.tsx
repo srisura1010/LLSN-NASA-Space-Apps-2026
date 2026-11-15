@@ -40,7 +40,7 @@ function ModeTabs({ mode, onMode }: { mode: Mode; onMode: (m: Mode) => void }) {
     refs.current[next]?.focus();
   };
   return (
-    <div role="tablist" aria-label="Mode" className="flex h-full w-full md:w-auto">
+    <div role="tablist" aria-label="Mode" className="flex h-full">
       {MODES.map((m, i) => {
         const on = m.id === mode;
         return (
@@ -57,7 +57,7 @@ function ModeTabs({ mode, onMode }: { mode: Mode; onMode: (m: Mode) => void }) {
             tabIndex={on ? 0 : -1}
             onClick={() => onMode(m.id)}
             onKeyDown={(e) => onKey(e, i)}
-            className={`h-full flex-1 px-3.5 text-[0.875rem] md:flex-none whitespace-nowrap transition-colors duration-150 focus-visible:outline-offset-[-2px] ${
+            className={`h-full px-3.5 text-body whitespace-nowrap transition-colors duration-150 focus-visible:outline-offset-[-2px] ${
               on ? "font-semibold text-ink shadow-[inset_0_-2px_0_var(--color-ink)]" : "font-medium text-ink-2 hover:text-ink hover:shadow-[inset_0_-1px_0_var(--color-ink-2)]"
             }`}
           >
@@ -66,6 +66,50 @@ function ModeTabs({ mode, onMode }: { mode: Mode; onMode: (m: Mode) => void }) {
         );
       })}
     </div>
+  );
+}
+
+/** Below sm the modes are a menu: one button with the current mode, the three modes in a panel under it. */
+function ModeMenu({ mode, onMode }: { mode: Mode; onMode: (m: Mode) => void }) {
+  const current = MODES.find((m) => m.id === mode) ?? MODES[0];
+  return (
+    <Popover
+      label="Mode"
+      align="start"
+      title="Change mode: Plan, Launch or Compare"
+      buttonClassName="inline-flex h-11 items-center gap-1.5 border border-ink bg-paper px-3 text-body font-semibold text-ink transition-colors duration-150 hover:bg-paper-3 aria-expanded:bg-paper-3"
+      button={
+        <>
+          <span className="sr-only">Mode: </span>
+          {current.label}
+          <ChevronMark className="size-3.5 text-ink-2" />
+        </>
+      }
+      panelClassName="w-44 py-1"
+    >
+      {(close) => (
+        <ul className="m-0 list-none p-0">
+          {MODES.map((m) => (
+            <li key={m.id}>
+              <button
+                type="button"
+                data-mode-item={m.id}
+                aria-current={m.id === mode ? "page" : undefined}
+                onClick={() => {
+                  onMode(m.id);
+                  close();
+                }}
+                className={`flex h-11 w-full items-center px-3 text-left text-body transition-colors duration-150 hover:bg-paper-3 ${
+                  m.id === mode ? "font-semibold text-ink shadow-[inset_3px_0_0_var(--color-ink)]" : "font-medium text-ink-2"
+                }`}
+              >
+                {m.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Popover>
   );
 }
 
@@ -95,10 +139,10 @@ export default function AppBar({
   leading?: ReactNode;
 }) {
   return (
-    <header className="relative z-40 flex shrink-0 flex-wrap items-stretch gap-x-2 border-b border-ink bg-paper pl-4 pr-2 sm:gap-x-4 md:h-14 md:flex-nowrap">
+    <header className="relative z-40 flex h-14 shrink-0 items-stretch gap-x-2 border-b border-ink bg-paper pr-1 pl-3 sm:gap-x-4 sm:pr-2 sm:pl-4">
       <Link
         href="/"
-        className="flex h-14 min-w-0 shrink items-center gap-2 text-[0.95rem] font-bold tracking-[-0.01em] text-ink focus-visible:outline-offset-[-2px]"
+        className="flex h-14 min-w-0 shrink-0 items-center gap-2 text-lead font-bold tracking-[-0.01em] text-ink focus-visible:outline-offset-[-2px]"
         title="Lunar Landing Site Navigator: home"
       >
         <svg viewBox="0 0 20 20" aria-hidden="true" className="size-5 shrink-0">
@@ -107,23 +151,28 @@ export default function AppBar({
           <circle cx="10" cy="10" r="8.25" className="fill-none stroke-ink" strokeWidth="1.5" />
         </svg>
         <span className="hidden truncate lg:inline">Lunar Landing Site Navigator</span>
-        <span className="hidden truncate sm:inline lg:hidden">Site Navigator</span>
+        <span className="sr-only lg:hidden">Lunar Landing Site Navigator</span>
       </Link>
       {leading}
-      <nav aria-label="Modes" className="order-last -ml-4 flex h-11 w-[calc(100%+1.5rem)] items-stretch border-t border-rule md:order-none md:absolute md:inset-y-0 md:left-1/2 md:ml-0 md:h-auto md:w-auto md:-translate-x-1/2 md:border-t-0">
+      <div className="flex items-center sm:hidden">
+        <ModeMenu mode={mode} onMode={onMode} />
+      </div>
+      <nav aria-label="Modes" className="hidden items-stretch sm:flex lg:absolute lg:inset-y-0 lg:left-1/2 lg:-translate-x-1/2">
         <ModeTabs mode={mode} onMode={onMode} />
       </nav>
-      <div className="ml-auto flex h-14 items-center gap-1.5">
+      <div className="ml-auto flex h-14 shrink-0 items-center gap-1 sm:gap-1.5">
         <Popover
           label="Mission window"
           open={windowOpen}
           onOpenChange={onWindowOpen}
           title={`Mission window: ${fmtSpan(startMs, endMs)}`}
-          buttonClassName="inline-flex h-9 items-center gap-2 border border-ink bg-paper px-2.5 text-[0.875rem] font-semibold whitespace-nowrap text-ink tabular-nums transition-colors duration-150 hover:bg-paper-3 aria-expanded:bg-paper-3"
+          buttonClassName="inline-flex h-11 items-center gap-1.5 border border-ink bg-paper px-2 sm:gap-2 sm:px-2.5 md:h-9 text-body font-semibold whitespace-nowrap text-ink tabular-nums transition-colors duration-150 hover:bg-paper-3 aria-expanded:bg-paper-3"
           button={
             <>
               <span className="sr-only">Mission window: </span>
-              <span>{fmtDateRange(startMs, endMs)}</span>
+              {/* Phones drop the year, which the panel shows, so the bar fits 360 px on one row. */}
+              <span className="hidden sm:inline">{fmtDateRange(startMs, endMs)}</span>
+              <span className="sm:hidden">{fmtDateRange(startMs, endMs).replace(/ \d{4}$/, "")}</span>
               <span aria-hidden="true" className="font-normal text-ink-2">
                 ·
               </span>
@@ -131,7 +180,7 @@ export default function AppBar({
               <ChevronMark className="size-3.5 text-ink-2" />
             </>
           }
-          panelClassName="w-[min(25rem,calc(100vw-1rem))]"
+          panelClassName="w-[min(25rem,calc(100vw-1rem))] max-h-[calc(100svh-4.5rem)] overflow-y-auto max-sm:fixed max-sm:inset-x-2 max-sm:top-[3.75rem] max-sm:w-auto"
         >
           {(close) => windowControls(close)}
         </Popover>
@@ -140,7 +189,7 @@ export default function AppBar({
           onClick={onAbout}
           aria-label="About & data"
           title="About & data: how the numbers are made, checked and credited"
-          className="inline-flex size-9 items-center justify-center text-ink-2 transition-colors duration-150 hover:bg-paper-3 hover:text-ink"
+          className="inline-flex size-11 items-center justify-center text-ink-2 md:size-9 transition-colors duration-150 hover:bg-paper-3 hover:text-ink"
         >
           <InfoMark />
         </button>

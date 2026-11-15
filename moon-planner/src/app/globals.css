@@ -23,6 +23,19 @@
   --color-earth: var(--earth);
   --color-earth-soft: var(--earth-soft);
   --color-limit: var(--limit);
+
+  /*
+    Type scale for the /tool UI: fixed rem steps, ratio about 1.08 at the small
+    end (dense data) and 1.125-1.2 above body. Use text-label ... text-display,
+    never an arbitrary text-[…rem]. The landing page keeps its own sizes.
+  */
+  --text-label: 0.75rem; /* 12 px: tracked caps labels, captions, axis notes */
+  --text-small: 0.8125rem; /* 13 px: buttons, toggles, secondary lines */
+  --text-body: 0.875rem; /* 14 px: body copy, table cells */
+  --text-lead: 1rem; /* 16 px: values, field text, panel headings */
+  --text-heading: 1.125rem; /* 18 px: section titles, stat values */
+  --text-title: 1.25rem; /* 20 px: page and bulletin titles */
+  --text-display: 1.5rem; /* 24 px: drawer title */
 }
 
 html,

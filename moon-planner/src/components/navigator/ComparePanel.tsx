@@ -67,10 +67,10 @@ type Measure = {
 };
 
 function NoTerrainTag({ className = "" }: { className?: string }) {
-  return <span className={`text-[0.75rem] font-semibold tracking-[0.06em] whitespace-nowrap text-ink-2 uppercase ${className}`}>No terrain</span>;
+  return <span className={`text-label font-semibold tracking-[0.06em] whitespace-nowrap text-ink-2 uppercase ${className}`}>No terrain</span>;
 }
 
-const th = "py-2 pr-4 text-left align-bottom text-[0.75rem] font-semibold uppercase tracking-[0.06em] text-ink-2";
+const th = "py-2 pr-4 text-left align-bottom text-label font-semibold uppercase tracking-[0.06em] text-ink-2";
 const tdNum = "py-2 pl-4 text-right align-baseline tabular-nums whitespace-nowrap";
 
 export default function ComparePanel({
@@ -166,12 +166,12 @@ export default function ComparePanel({
   return (
     <div className="mx-auto w-full max-w-[80rem] px-4 py-5 xl:px-8 xl:py-6">
       <header>
-        <h2 className="text-[1.2rem] font-semibold leading-tight text-ink">Compare regions</h2>
-        <p className="mt-1 text-[0.95rem] text-ink-2">Every region over the same mission window, set in the window chip above.</p>
+        <h2 className="text-title font-semibold leading-tight text-ink">Compare regions</h2>
+        <p className="mt-1 text-lead text-ink-2">Every region over the same mission window, set in the window chip above.</p>
       </header>
 
       <fieldset className="mt-5">
-        <legend className="text-[0.75rem] font-semibold uppercase tracking-[0.08em] text-ink">
+        <legend className="text-label font-semibold uppercase tracking-[0.08em] text-ink">
           Pick two or three <span className="font-normal normal-case tracking-normal text-ink-2">({picked.length} of {MAX_PICKS})</span>
         </legend>
         <div className="mt-2 flex flex-wrap gap-2">
@@ -182,7 +182,7 @@ export default function ComparePanel({
             return (
               <label
                 key={o.id}
-                className={`inline-flex h-8 cursor-pointer items-center gap-2 border px-2.5 text-[0.844rem] transition-colors duration-150 has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-earth ${
+                className={`inline-flex h-8 cursor-pointer items-center gap-2 border px-2.5 text-body transition-colors duration-150 has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-earth ${
                   on ? "border-ink bg-paper-3 font-semibold text-ink" : "border-rule bg-paper text-ink hover:border-ink-2"
                 } ${full || unavailable ? "cursor-not-allowed text-ink-3 hover:border-rule" : ""}`}
               >
@@ -194,7 +194,7 @@ export default function ComparePanel({
                   className="size-3.5 accent-ink focus-visible:outline-none"
                 />
                 {o.name}
-                {o.custom && <span className="text-[0.75rem] font-semibold uppercase tracking-[0.06em] text-ink-2">Custom</span>}
+                {o.custom && <span className="text-label font-semibold uppercase tracking-[0.06em] text-ink-2">Custom</span>}
                 {o.noTerrain && <NoTerrainTag />}
               </label>
             );
@@ -210,12 +210,12 @@ export default function ComparePanel({
         </div>
       ) : chosen.length < 2 ? (
         <div className="mt-6 max-w-[56ch] border-t border-ink pt-4">
-          <p className="text-[0.95rem] text-ink">
+          <p className="text-lead text-ink">
             {chosen.length === 0
               ? "Pick at least two regions above to put them side by side."
               : `${chosen[0].name} is picked. Add one or two more regions to compare them.`}
           </p>
-          <p className="mt-1 text-[0.844rem] text-ink-2">
+          <p className="mt-1 text-body text-ink-2">
             Each region is measured over the same mission window from the bar at the top, so changing the start or length
             updates every column.
           </p>
@@ -235,7 +235,7 @@ export default function ComparePanel({
                       <span className="sr-only">Measure</span>
                     </th>
                     {chosen.map((o) => (
-                      <th key={o.id} scope="col" className="py-2 pl-4 text-right align-bottom text-[0.95rem] font-semibold text-ink">
+                      <th key={o.id} scope="col" className="py-2 pl-4 text-right align-bottom text-lead font-semibold text-ink">
                         {o.name}
                         {o.noTerrain && <NoTerrainTag className="block" />}
                       </th>
@@ -251,7 +251,7 @@ export default function ComparePanel({
                     const allSame = rankedVals.every((v) => Math.abs(v - rankedVals[0]) < 1e-9);
                     return (
                       <tr key={m.label} className="border-b border-rule">
-                        <th scope="row" className="py-2 pr-4 text-left text-[0.844rem] font-normal text-ink-2">
+                        <th scope="row" className="py-2 pr-4 text-left text-body font-normal text-ink-2">
                           <span className="inline-flex items-center gap-1.5">
                             {m.mark}
                             {m.label}
@@ -261,7 +261,7 @@ export default function ComparePanel({
                           const s = statsOf(o)!;
                           if (o.noTerrain && m.rankedOnly)
                             return (
-                              <td key={o.id} className={`${tdNum} text-[0.844rem] text-ink-2`}>
+                              <td key={o.id} className={`${tdNum} text-body text-ink-2`}>
                                 {m.rankedOnly}
                               </td>
                             );
@@ -270,7 +270,7 @@ export default function ComparePanel({
                           return (
                             <td
                               key={o.id}
-                              className={`${tdNum} text-[0.95rem] ${flagged ? "font-semibold text-limit" : best ? "font-semibold text-ink" : "text-ink"}`}
+                              className={`${tdNum} text-lead ${flagged ? "font-semibold text-limit" : best ? "font-semibold text-ink" : "text-ink"}`}
                             >
                               <span className="inline-flex items-center justify-end gap-1">
                                 {flagged && <AlertMark className="size-3" />}
@@ -287,7 +287,7 @@ export default function ComparePanel({
                 </tbody>
               </table>
             </div>
-            <p className="mt-2 max-w-[80ch] text-[0.75rem] text-ink-2">
+            <p className="mt-2 max-w-[80ch] text-label text-ink-2">
               Bold marks the best value in each row. Red marks a gap {limitText}.
               {anyNoTerrain &&
                 " A column marked No terrain is a point picked at the Moon level, measured against a smooth horizon: hills and crater rims are not included, so it is not ranked or scored and never takes the bold. Read its numbers beside the regions, not against them."}
@@ -295,10 +295,10 @@ export default function ComparePanel({
           </section>
 
           <section aria-labelledby={`${id}-time`} className="mt-7">
-            <h3 id={`${id}-time`} className="text-[0.75rem] font-semibold uppercase tracking-[0.08em] text-ink">
+            <h3 id={`${id}-time`} className="text-label font-semibold uppercase tracking-[0.08em] text-ink">
               Over the window
             </h3>
-            <p className="mt-1 text-[0.844rem] text-ink-2">
+            <p className="mt-1 text-body text-ink-2">
               One time axis for every region. Drag along the strip, or use the arrow keys on it, to move the time marker.
               {pointName && ` The bands for ${pointName} are for a smooth horizon with no terrain.`}
             </p>
@@ -315,14 +315,14 @@ export default function ComparePanel({
           </section>
 
           <section aria-labelledby={`${id}-slip`} className="mt-8">
-            <h3 id={`${id}-slip`} className="text-[0.75rem] font-semibold uppercase tracking-[0.08em] text-ink">
+            <h3 id={`${id}-slip`} className="text-label font-semibold uppercase tracking-[0.08em] text-ink">
               If the start slips
             </h3>
-            <p className="mt-1 max-w-[70ch] text-[0.844rem] text-ink-2">
+            <p className="mt-1 max-w-[70ch] text-body text-ink-2">
               The same {fmtLength(durationHours)} mission starting as planned, one week later and two weeks later. Rank is
               among every site at that start.
             </p>
-            <p className="mt-2 text-[0.75rem] text-ink-2 md:hidden">Swipe the table sideways for the later starts.</p>
+            <p className="mt-2 text-label text-ink-2 md:hidden">Swipe the table sideways for the later starts.</p>
             <div className="relative mt-3 overflow-x-auto" tabIndex={0} role="region" aria-label="Slip table, scrolls sideways">
               <table className="w-full min-w-[46rem] tabular-nums">
                 <caption className="sr-only">Rank, Sun, Earth and longest dark for each start</caption>
@@ -336,10 +336,10 @@ export default function ComparePanel({
                         key={s.days}
                         scope="colgroup"
                         colSpan={4}
-                        className="border-l border-rule px-3 pb-1 text-left text-[0.844rem] font-semibold text-ink"
+                        className="border-l border-rule px-3 pb-1 text-left text-body font-semibold text-ink"
                       >
                         {s.days === 0 ? "As planned" : `+${s.days / 7} ${s.days === 7 ? "week" : "weeks"}`}
-                        <span className="block text-[0.75rem] font-normal text-ink-2">{fmtWhen(s.startMs)} UTC</span>
+                        <span className="block text-label font-normal text-ink-2">{fmtWhen(s.startMs)} UTC</span>
                       </th>
                     ))}
                   </tr>
@@ -360,7 +360,7 @@ export default function ComparePanel({
                 <tbody>
                   {chosen.map((o) => (
                     <tr key={o.id} className="border-b border-rule">
-                      <th scope="row" className="py-2 pr-4 text-left text-[0.95rem] font-medium text-ink">
+                      <th scope="row" className="py-2 pr-4 text-left text-lead font-medium text-ink">
                         {o.name}
                         {o.noTerrain && <NoTerrainTag className="ml-2" />}
                       </th>
@@ -368,31 +368,31 @@ export default function ComparePanel({
                         const sc = s.scores ? statsOf(o, s.startMs, s.scores) : undefined;
                         if (!sc)
                           return (
-                            <td key={s.days} colSpan={4} className="border-l border-rule py-2 pl-3 text-[0.844rem] text-ink-2">
+                            <td key={s.days} colSpan={4} className="border-l border-rule py-2 pl-3 text-body text-ink-2">
                               {s.scores ? "No tracks for this start" : "Past the end of the 2027 tracks"}
                             </td>
                           );
                         const over = sc.longestDarkHours > limitHours;
                         return [
-                          <td key={`${s.days}-r`} className={`${tdNum} border-l border-rule pl-3 text-[0.95rem] font-semibold text-ink`}>
+                          <td key={`${s.days}-r`} className={`${tdNum} border-l border-rule pl-3 text-lead font-semibold text-ink`}>
                             {o.noTerrain ? (
-                              <span className="text-[0.844rem] font-normal text-ink-2">Not ranked</span>
+                              <span className="text-body font-normal text-ink-2">Not ranked</span>
                             ) : (
                               <>
                                 {s.ranks?.get(o.id)}
-                                <span className="text-[0.75rem] font-normal text-ink-2"> of {s.count}</span>
+                                <span className="text-label font-normal text-ink-2"> of {s.count}</span>
                               </>
                             )}
                           </td>,
-                          <td key={`${s.days}-s`} className={`${tdNum} text-[0.95rem] text-ink`}>
+                          <td key={`${s.days}-s`} className={`${tdNum} text-lead text-ink`}>
                             {pct(sc.sunlit)}
                           </td>,
-                          <td key={`${s.days}-e`} className={`${tdNum} text-[0.95rem] text-ink`}>
+                          <td key={`${s.days}-e`} className={`${tdNum} text-lead text-ink`}>
                             {pct(sc.earthVisible)}
                           </td>,
                           <td
                             key={`${s.days}-d`}
-                            className={`${tdNum} text-[0.95rem] ${over ? "font-semibold text-limit" : "text-ink"}`}
+                            className={`${tdNum} text-lead ${over ? "font-semibold text-limit" : "text-ink"}`}
                           >
                             <span className="inline-flex items-center justify-end gap-1">
                               {over && <AlertMark className="size-3" />}

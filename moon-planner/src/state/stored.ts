@@ -69,3 +69,15 @@ export function useTallViewport(px: number): boolean {
     () => false,
   );
 }
+
+/**
+ * True when the window is at least `px` wide. The server (and the first
+ * client render) assumes a wide screen, which is the desktop layout.
+ */
+export function useWideViewport(px: number): boolean {
+  return useSyncExternalStore(
+    subscribeResize,
+    () => window.innerWidth >= px,
+    () => true,
+  );
+}

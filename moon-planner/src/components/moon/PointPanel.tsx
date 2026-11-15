@@ -17,7 +17,7 @@ import { fmtDayTime, fmtSigned } from "@/lib/format";
 export type PickedPoint = { lat: number; lon: number };
 export type QuickPick = { id: string; name: string; lat: number; lon: number };
 
-const GROUP = "pt-3 pb-1 text-left text-[0.75rem] font-semibold tracking-[0.06em] text-ink-2 uppercase";
+const GROUP = "pt-3 pb-1 text-left text-label font-semibold tracking-[0.06em] text-ink-2 uppercase";
 
 /** The text put back in the entry boxes for a point: a number and a letter, as the form reads them. */
 const boxLat = (v: number) => `${Number(Math.abs(v).toFixed(4))} ${v < 0 ? "S" : "N"}`;
@@ -79,12 +79,12 @@ function EntryForm({ point, onSet }: { point: PickedPoint | null; onSet: (lat: n
         </button>
       </div>
       {(errors.lat || errors.lon) && (
-        <div role="alert" className="mt-2 space-y-1 text-[0.844rem] leading-snug font-medium text-limit">
+        <div role="alert" className="mt-2 space-y-1 text-body leading-snug font-medium text-limit">
           {errors.lat && <p id={`${id}-lat-err`}>{errors.lat}</p>}
           {errors.lon && <p id={`${id}-lon-err`}>{errors.lon}</p>}
         </div>
       )}
-      <p className="mt-1.5 text-[0.8rem] leading-snug text-ink-2">Degrees with N, S, E or W, or signed: south and west are negative.</p>
+      <p className="mt-1.5 text-small leading-snug text-ink-2">Degrees with N, S, E or W, or signed: south and west are negative.</p>
     </form>
   );
 }
@@ -134,7 +134,7 @@ export default function PointPanel({
     <div className={className}>
       <SectionLabel>At this point</SectionLabel>
       {!point && (
-        <p className="mt-2 text-[0.844rem] leading-snug text-ink-2">
+        <p className="mt-2 text-body leading-snug text-ink-2">
           Read the Sun and Earth anywhere on the Moon for the mission window. Turn on Pick a point and click the globe,
           shift-click it at any time, or type the coordinates.
         </p>
@@ -183,7 +183,7 @@ export default function PointPanel({
             </tbody>
           </table>
           {!site && (
-            <p role="status" className="mt-2 text-[0.844rem] text-ink-2">
+            <p role="status" className="mt-2 text-body text-ink-2">
               Computing the Sun and Earth for this point
             </p>
           )}
@@ -203,8 +203,8 @@ export default function PointPanel({
           )}
 
           <div data-pt="caveat" className="mt-3 border border-ink px-2.5 py-2">
-            <p className="text-[0.844rem] leading-snug font-semibold text-ink">{SMOOTH_LABEL}</p>
-            <p className="mt-1 text-[0.8rem] leading-snug text-ink-2">
+            <p className="text-body leading-snug font-semibold text-ink">{SMOOTH_LABEL}</p>
+            <p className="mt-1 text-small leading-snug text-ink-2">
               The horizon is a smooth sphere seen from a 2 m mast, the same mast as the nine regions. Near the poles,
               where the Sun and Earth graze the horizon, terrain changes these numbers a great deal.
             </p>
@@ -225,7 +225,7 @@ export default function PointPanel({
               Clear point
             </button>
           </div>
-          <p data-pt="site-level" className="mt-2 text-[0.8rem] leading-snug text-ink-2">
+          <p data-pt="site-level" className="mt-2 text-small leading-snug text-ink-2">
             {!terrain?.ok
               ? `The site level is not available for this point. ${terrain?.reason ?? ""}`
               : polar
@@ -237,7 +237,7 @@ export default function PointPanel({
 
       <EntryForm key={point ? `${point.lat},${point.lon}` : "none"} point={point} onSet={onSet} />
 
-      <p className="mt-3 text-[0.75rem] font-semibold tracking-[0.06em] text-ink-2 uppercase">Try an earlier landing</p>
+      <p className="mt-3 text-label font-semibold tracking-[0.06em] text-ink-2 uppercase">Try an earlier landing</p>
       <ul className="mt-1.5 flex flex-wrap gap-1.5">
         {quickPicks.map((q) => {
           const on = !!point && Math.abs(point.lat - q.lat) < 1e-4 && Math.abs(point.lon - q.lon) < 1e-4;
@@ -250,7 +250,7 @@ export default function PointPanel({
           );
         })}
       </ul>
-      <p className="mt-1.5 text-[0.8rem] leading-snug text-ink-2">
+      <p className="mt-1.5 text-small leading-snug text-ink-2">
         At low latitudes day and night each last about two weeks; from the far side Earth is never in view.
       </p>
     </div>

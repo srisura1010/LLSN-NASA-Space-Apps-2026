@@ -88,7 +88,7 @@ export default function Rail({
           className="hidden h-full w-9 flex-col items-center gap-2 pt-2.5 text-ink-2 transition-colors duration-150 hover:bg-paper-3 hover:text-ink xl:flex"
         >
           <RailChevron pointing={openDir} />
-          <span className="text-[0.75rem] font-semibold tracking-[0.08em] uppercase [writing-mode:vertical-rl]">
+          <span className="text-label font-semibold tracking-[0.08em] uppercase [writing-mode:vertical-rl]">
             <span className="sr-only">Show </span>
             {label}
           </span>

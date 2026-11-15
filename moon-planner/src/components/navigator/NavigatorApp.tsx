@@ -33,12 +33,19 @@ import ComparePanel, { tiedRanks, type CompareOption } from "./ComparePanel";
 import AboutPanel from "./AboutPanel";
 import LaunchPanel from "../launch/LaunchPanel";
 import LevelNav, { type Level } from "../levels/LevelNav";
-import { ChevronMark, Drawer, ErrorBoundary, Toast } from "../ui";
+import { ChevronMark, Drawer, ErrorBoundary, Segmented, Toast } from "../ui";
 import Rail from "../shell/Rail";
 import Dock from "./Dock";
 import LevelClock, { type ClockRange } from "./LevelClock";
-import { useStored } from "@/state/stored";
+import { useStored, useWideViewport } from "@/state/stored";
 import AppBar, { type Mode } from "../shell/AppBar";
+
+type PanelTab = "ranking" | "details" | "horizon";
+const PANEL_TABS: { id: PanelTab; label: string }[] = [
+  { id: "ranking", label: "Ranking" },
+  { id: "details", label: "Details" },
+  { id: "horizon", label: "Horizon" },
+];
 
 const TerrainPlate = dynamic(() => import("./TerrainPlate"), { ssr: false, loading: () => <PlateLoading /> });
 
@@ -72,7 +79,7 @@ function errorText(err: unknown): string {
 function PanelProblem({ children }: { children: ReactNode }) {
   return (
     <div role="alert" className="flex h-full min-h-24 items-center justify-center bg-paper-2 px-6 py-6 text-center">
-      <p className="max-w-[46ch] text-[0.95rem] text-ink">{children}</p>
+      <p className="max-w-[46ch] text-lead text-ink">{children}</p>
     </div>
   );
 }
@@ -80,7 +87,7 @@ function PanelProblem({ children }: { children: ReactNode }) {
 function PlateLoading() {
   return (
     <div className="flex h-full w-full items-end bg-paper-2 p-4" aria-busy="true">
-      <p className="text-[0.844rem] text-ink-2">Loading the LOLA terrain plate</p>
+      <p className="text-body text-ink-2">Loading the LOLA terrain plate</p>
     </div>
   );
 }
@@ -88,7 +95,7 @@ function PlateLoading() {
 function SystemLoading() {
   return (
     <div role="status" className="grid h-full min-h-[22rem] place-items-center bg-paper">
-      <p className="text-[0.844rem] text-ink-2">Loading the Sun, Earth and Moon diagram</p>
+      <p className="text-body text-ink-2">Loading the Sun, Earth and Moon diagram</p>
     </div>
   );
 }
@@ -96,7 +103,7 @@ function SystemLoading() {
 function MoonLoading() {
   return (
     <div role="status" className="grid h-full min-h-[22rem] place-items-center bg-paper">
-      <p className="text-[0.844rem] text-ink-2">Loading the Moon globe</p>
+      <p className="text-body text-ink-2">Loading the Moon globe</p>
     </div>
   );
 }
@@ -115,10 +122,10 @@ type SiteMeta = { id: string; name: string; lat: number; lon: number; custom: bo
 /** Fig. 1's title: the plate's number and the site it is centred on. */
 function PlateTitle({ meta }: { meta: SiteMeta }) {
   return (
-    <span className="text-[0.95rem] font-semibold text-ink">
-      <span className="mr-2 text-[0.75rem] font-bold tracking-[0.1em] uppercase">Fig. 1</span>
+    <span className="text-lead font-semibold text-ink">
+      <span className="mr-2 text-label font-bold tracking-[0.1em] uppercase">Fig. 1</span>
       Terrain at {meta.name}
-      {meta.custom ? <span className="ml-2 text-[0.844rem] font-normal text-ink-2">custom site</span> : null}
+      {meta.custom ? <span className="ml-2 text-body font-normal text-ink-2">custom site</span> : null}
     </span>
   );
 }
@@ -151,7 +158,7 @@ function CustomSiteExpander({
         aria-expanded={shown}
         aria-controls="custom-site-form"
         onClick={() => setOpen(!shown)}
-        className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-[0.95rem] font-semibold text-ink transition-colors duration-150 hover:bg-paper-3"
+        className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-lead font-semibold text-ink transition-colors duration-150 hover:bg-paper-3"
       >
         <span>
           <span aria-hidden="true">+ </span>Custom site
@@ -694,6 +701,10 @@ function Navigator() {
   const planView = view === "navigator" || view === "moon" || view === "system";
   const [leftOpen, setLeftOpen] = useStored("llsn.rail.left", true);
   const [rightOpen, setRightOpen] = useStored("llsn.rail.right", true);
+  // Below xl the rails are not beside the viewer: they stack under it and the dock, one at a time,
+  // chosen by a switch (with the horizon plot as a third panel at the site level).
+  const wide = useWideViewport(1280);
+  const [panelTab, setPanelTab] = useState<PanelTab>("ranking");
   // The inspector rail's body at the Moon and System levels; those views draw their side panel into it.
   const [inspectorEl, setInspectorEl] = useState<HTMLDivElement | null>(null);
 
@@ -912,6 +923,7 @@ function Navigator() {
   }, [customLat, customTerrainData, customStatus, customMessage, customTerrainError, retryCustom]);
   // The Sun's and Earth's bearing paths on the plate cover the same window as Fig. 2.
   const plateTrack = useMemo(() => (selectedData ? { site: selectedData, startMs, endMs } : null), [selectedData, startMs, endMs]);
+  const shownTab: PanelTab = panelTab === "horizon" && view !== "navigator" ? "details" : panelTab;
   const fade = `transition-opacity duration-200 motion-reduce:transition-none ${fading ? "opacity-0" : "opacity-100"}`;
 
   return (
@@ -941,7 +953,7 @@ function Navigator() {
       />
 
       {note && (
-        <div className="pointer-events-none fixed top-16 right-3 z-50">
+        <div className="pointer-events-none fixed top-16 right-3 z-50 max-sm:top-auto max-sm:right-2 max-sm:bottom-2 max-sm:left-2">
           <Toast>{note}</Toast>
         </div>
       )}
@@ -955,7 +967,7 @@ function Navigator() {
             open={leftOpen}
             onOpenChange={setLeftOpen}
             widthClass="xl:w-[300px]"
-            className="border-b bg-paper-2 xl:border-b-0"
+            className={`bg-paper-2 max-xl:order-3 ${shownTab === "ranking" ? "" : "max-xl:hidden"}`}
           >
             <RegionTable
               rows={rows}
@@ -971,10 +983,10 @@ function Navigator() {
             <CustomSiteExpander state={customState} onSubmit={addCustom} onRemove={removeCustom} />
           </Rail>
 
-          <div className={`flex min-h-0 min-w-0 flex-1 flex-col ${fade}`}>
+          <div className={`flex min-h-0 min-w-0 flex-1 flex-col max-xl:order-1 ${fade}`}>
             <div
               data-viewer
-              className={`relative min-h-0 overflow-hidden bg-paper-2 xl:h-auto xl:flex-1 ${view === "navigator" ? "h-[26rem] sm:h-[30rem]" : ""}`}
+              className="relative h-[max(22rem,60svh)] min-h-0 overflow-hidden bg-paper-2 xl:h-auto xl:flex-1"
             >
               {view === "navigator" && (
                 <section aria-label={`Fig. 1, terrain at ${meta.name}`} className="h-full">
@@ -1096,6 +1108,32 @@ function Navigator() {
             )}
           </div>
 
+          {!wide && (
+            <div className="order-2 border-t border-ink bg-paper px-4 py-2.5 sm:px-4">
+              <Segmented
+                label="Panel"
+                size="lg"
+                fill
+                value={shownTab}
+                onChange={setPanelTab}
+                options={view === "navigator" ? PANEL_TABS : PANEL_TABS.slice(0, 2)}
+                className="w-full"
+              />
+            </div>
+          )}
+
+          {!wide && view === "navigator" && shownTab === "horizon" && (
+            <section aria-label={`Horizon from ${meta.name}`} data-panel-horizon className="order-3 border-t border-rule bg-paper px-4 pt-3 pb-4">
+              {selectedData ? (
+                <ErrorBoundary key={`hplot-${effectiveId}`} fallback={<PanelProblem>The horizon plot could not be drawn for {meta.name}.</PanelProblem>}>
+                  <HorizonPlot site={selectedData} siteName={meta.name} nowMs={nowMs} startMs={startMs} endMs={endMs} figure="Fig. 2" className="w-full" />
+                </ErrorBoundary>
+              ) : (
+                <BandSkeleton />
+              )}
+            </section>
+          )}
+
           <Rail
             id="rail-inspector"
             side="right"
@@ -1103,7 +1141,7 @@ function Navigator() {
             open={rightOpen}
             onOpenChange={setRightOpen}
             widthClass="xl:w-[340px]"
-            className="border-t bg-paper xl:border-t-0"
+            className={`bg-paper max-xl:order-3 max-xl:border-t max-xl:border-rule ${shownTab === "details" ? "" : "max-xl:hidden"}`}
           >
             {view === "navigator" ? (
               <section aria-labelledby="bulletin-title" className="relative">
@@ -1176,9 +1214,9 @@ function Navigator() {
 
       <Drawer open={aboutOpen} onClose={closeAbout} label="About & data">
         <div className="sticky top-0 z-10 flex items-center gap-4 border-b border-ink bg-paper px-4 py-2.5 xl:px-8">
-          <p className="text-[0.75rem] font-semibold tracking-[0.08em] text-ink uppercase">About &amp; data</p>
-          <p className="hidden min-w-0 truncate text-[0.75rem] text-ink-2 sm:block">Data: JPL Horizons, hourly for 2027 · LOLA LDEM_80S, 80 m</p>
-          <button type="button" onClick={closeAbout} className="ml-auto inline-flex h-8 items-center gap-1.5 border border-ink px-2.5 text-[0.8rem] font-medium text-ink hover:bg-paper-3">
+          <p className="text-label font-semibold tracking-[0.08em] text-ink uppercase">About &amp; data</p>
+          <p className="hidden min-w-0 truncate text-label text-ink-2 sm:block">Data: JPL Horizons, hourly for 2027 · LOLA LDEM_80S, 80 m</p>
+          <button type="button" onClick={closeAbout} className="ml-auto inline-flex h-8 items-center gap-1.5 border border-ink px-2.5 text-small font-medium text-ink hover:bg-paper-3">
             Close<span className="sr-only"> About &amp; data</span>
             <svg viewBox="0 0 16 16" aria-hidden="true" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" />

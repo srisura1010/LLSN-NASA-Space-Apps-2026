@@ -6,7 +6,7 @@ import { DAY_MS, HOUR_MS, fmtDayTime, fmtDeg, fmtDuration, fmtLatLon, fmtSigned,
 import { moonTrekUrl } from "@/lib/moontrek";
 import { SCORE_WEIGHTS, bestStart, covers, sampleAt, type MissionScore, type SiteData } from "@/lib/sky";
 import { compareWithNasa } from "@/lib/validation";
-import { EarthMark, ExternalMark, Panel, Row, SunMark, AlertMark, buttonClass } from "../ui";
+import { ChevronMark, EarthMark, ExternalMark, Panel, Row, SunMark, AlertMark, buttonClass } from "../ui";
 
 export type ContactKind = "sunrise" | "sunset" | "earthrise" | "earthset";
 
@@ -84,7 +84,7 @@ function WhyBars({ score }: { score: MissionScore }) {
       <tbody>
         {rows.map((r) => (
           <tr key={r.key} data-part={r.key}>
-            <th scope="row" className="w-[8.5rem] py-1 pr-2 text-left text-[0.8rem] font-normal whitespace-nowrap text-ink-2">
+            <th scope="row" className="w-[8.5rem] py-1 pr-2 text-left text-small font-normal whitespace-nowrap text-ink-2">
               {r.label} <span className="text-ink-3">{Math.round(r.weight * 100)}%</span>
             </th>
             <td className="py-1">
@@ -92,7 +92,7 @@ function WhyBars({ score }: { score: MissionScore }) {
                 <span className={`absolute inset-y-0 left-0 ${r.fill}`} style={{ width: `${Math.min(100, (r.value / r.weight) * 100).toFixed(1)}%` }} />
               </span>
             </td>
-            <td className="w-[5.5rem] py-1 pl-2 text-right text-[0.8rem] whitespace-nowrap text-ink">
+            <td className="w-[5.5rem] py-1 pl-2 text-right text-small whitespace-nowrap text-ink">
               {r.value.toFixed(2)} <span className="text-ink-2">of {r.weight.toFixed(2)}</span>
             </td>
           </tr>
@@ -107,7 +107,7 @@ function Glossed({ label, gloss }: { label: string; gloss: string }) {
   return (
     <span className="flex flex-col">
       <span>{label}</span>
-      <span className="text-[0.72rem] leading-tight text-ink-3">{gloss}</span>
+      <span className="text-label leading-tight text-ink-3">{gloss}</span>
     </span>
   );
 }
@@ -161,14 +161,16 @@ function ContactRow({
 }) {
   return (
     <tr className={last ? "" : "border-b border-rule"}>
-      <th scope="row" className="py-1 pr-3 text-left align-top font-normal">
-        <span className={`flex items-center gap-1.5 text-ink ${strong ? "font-semibold" : "font-medium"}`}>
-          {mark}
+      <th scope="row" className={`${strong ? "py-1" : "py-0.5"} pr-3 text-left align-top font-normal`}>
+        {/* The window's ends carry a sentence of state on a second line; a rise or set fits its bearing on one. */}
+        <span className={`flex items-baseline gap-1.5 text-ink ${strong ? "font-semibold" : "font-medium"}`}>
+          {mark ? <span className="self-center">{mark}</span> : null}
           {name}
+          {!strong && <span className="text-label font-normal text-ink-2">{detail.replace("azimuth", "az")}</span>}
         </span>
-        <span className="block text-[0.75rem] leading-tight text-ink-2">{detail}</span>
+        {strong && <span className="block text-label leading-tight text-ink-2">{detail}</span>}
       </th>
-      <td className="py-1 text-right align-top whitespace-nowrap text-ink">{fmtDayTime(at)}</td>
+      <td className={`${strong ? "py-1" : "py-0.5"} text-right align-top whitespace-nowrap text-ink`}>{fmtDayTime(at)}</td>
     </tr>
   );
 }
@@ -230,15 +232,15 @@ function SiteBulletin({
   return (
     <div className={`flex flex-col bg-paper ${className}`}>
       <header className="px-5 pt-4 pb-3">
-        <h2 id="bulletin-title" className="text-[1.2rem] font-semibold leading-tight text-ink text-balance">
+        <h2 id="bulletin-title" className="text-title font-semibold leading-tight text-ink text-balance">
           {name}
         </h2>
         {score && rank !== null && status === "ready" && (
-          <p data-verdict className="mt-1.5 text-[0.95rem] leading-snug font-semibold text-pretty text-ink">
+          <p data-verdict className="mt-1.5 text-lead leading-snug font-semibold text-pretty text-ink">
             {verdict(score, rank, total, limitHours)}
           </p>
         )}
-        <p className="mt-1.5 flex flex-wrap items-baseline gap-x-3 text-[0.8rem] text-ink-2">
+        <p className="mt-1.5 flex flex-wrap items-baseline gap-x-3 text-small text-ink-2">
           <span>{custom ? (customNote ?? "Custom site, tracks fetched live from JPL Horizons") : fmtLatLon(lat, lon)}</span>
           <a
             href={moonTrekUrl(lat, lon)}
@@ -263,7 +265,7 @@ function SiteBulletin({
       )}
 
       {status === "error" && (
-        <div role="alert" className="border-t border-rule px-5 py-4 text-[0.95rem] text-ink">
+        <div role="alert" className="border-t border-rule px-5 py-4 text-lead text-ink">
           <p>
             {custom && error
               ? error
@@ -279,12 +281,12 @@ function SiteBulletin({
         <>
           <Panel title="Why it ranks here" note={<span className="tabular-nums">score {score.score.toFixed(2)} of 1</span>}>
             <WhyBars score={score} />
-            <p className="mt-1 text-[0.75rem] leading-snug text-ink-2">
+            <p className="mt-1 text-label leading-snug text-ink-2">
               Equal scores go to the higher peak Sun clearance, then to more time with Earth in view.
             </p>
             {better ? (
               <div className="mt-2 border border-rule bg-paper-2 px-3 py-2">
-                <p className="text-[0.8rem] leading-snug text-ink">
+                <p className="text-small leading-snug text-ink">
                   Starting <strong className="font-semibold">{fmtDayTime(better.startMs)} UTC</strong> instead scores{" "}
                   {better.score.toFixed(2)}: Sun up {pct(better.sunlit)}, Earth {pct(better.earthVisible)}, longest dark{" "}
                   {fmtSpell(better.longestDarkHours)}. It is the best start in the next {LOOKAHEAD_DAYS} days.
@@ -294,7 +296,7 @@ function SiteBulletin({
                 </button>
               </div>
             ) : (
-              <p className="mt-1 text-[0.75rem] text-pretty text-ink-2">No later start in the next {LOOKAHEAD_DAYS} days scores higher here.</p>
+              <p className="mt-1 text-label text-pretty text-ink-2">No later start in the next {LOOKAHEAD_DAYS} days scores higher here.</p>
             )}
           </Panel>
 
@@ -331,7 +333,7 @@ function SiteBulletin({
               </tbody>
             </table>
             {(darkOver || commsOver) && (
-              <p className="mt-2 flex items-start gap-1.5 text-[0.75rem] text-ink-2">
+              <p className="mt-2 flex items-start gap-1.5 text-label text-ink-2">
                 <AlertMark className="mt-px size-3" />
                 <span>Red marks a gap {limitText}. Change the limit under the region table.</span>
               </p>
@@ -341,7 +343,7 @@ function SiteBulletin({
           <Panel title="Rises and sets" note="Times in UTC">
             <table className="w-full tabular-nums">
               <caption className="sr-only">Sunrise, sunset, Earthrise and Earthset inside the window</caption>
-              <tbody className="text-[0.844rem]">
+              <tbody className="text-body">
                 <ContactRow name="Window opens" at={startMs} detail={skyState(site, startMs)} strong />
                 {contacts.length === 0 && (
                   <tr className="border-b border-rule">
@@ -365,15 +367,21 @@ function SiteBulletin({
             </table>
           </Panel>
 
-          <Panel title="Checked against NASA">
+          {/* A disclosure, closed at first, so the bulletin's answers fit the inspector without a scroll. */}
+          <details data-nasa-check className="group/nasa border-t border-rule px-5 pt-3 pb-3 open:pb-4">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-label font-semibold tracking-[0.08em] text-ink uppercase marker:hidden [&::-webkit-details-marker]:hidden">
+              <span>Checked against NASA</span>
+              <ChevronMark className="size-3.5 text-ink-2 transition-transform duration-150 group-open/nasa:rotate-180 motion-reduce:transition-none" />
+            </summary>
+            <div className="mt-2">
             {nasa?.nasa && nasa.diffPts ? (
               <>
-                <table className="w-full tabular-nums text-[0.844rem]">
+                <table className="w-full tabular-nums text-body">
                   <caption className="sr-only">
                     Share of 2027 with the Sun and Earth visible, against NASA&apos;s LOLA average for this region
                   </caption>
                   <thead>
-                    <tr className="border-b border-ink text-[0.75rem] uppercase tracking-[0.06em] text-ink-2">
+                    <tr className="border-b border-ink text-label uppercase tracking-[0.06em] text-ink-2">
                       <th scope="col" className="pb-1 text-left font-semibold">
                         <span className="sr-only">Source</span>
                       </th>
@@ -399,14 +407,14 @@ function SiteBulletin({
                     </tr>
                   </tbody>
                 </table>
-                <p className="mt-2 text-[0.75rem] leading-snug text-pretty text-ink-2">
+                <p className="mt-2 text-label leading-snug text-pretty text-ink-2">
                   NASA values: Mazarico et al. 2011, PGDA product 69, long-term averages. Ours cover 2027 only.
                 </p>
               </>
             ) : (
               <>
-                {methodNote && <p className="mb-2 text-[0.844rem] leading-snug text-ink">{methodNote}</p>}
-                <p className="text-[0.844rem] leading-snug text-ink-2">
+                {methodNote && <p className="mb-2 text-body leading-snug text-ink">{methodNote}</p>}
+                <p className="text-body leading-snug text-ink-2">
                   NASA&apos;s maps give no reference value for a custom point. The nine regions are checked in About
                   &amp; data.
                 </p>
@@ -415,7 +423,8 @@ function SiteBulletin({
             <button type="button" onClick={onShowAbout} className={`${buttonClass.link} mt-2`}>
               How the numbers are made and checked
             </button>
-          </Panel>
+            </div>
+          </details>
         </>
       )}
     </div>

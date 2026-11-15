@@ -50,7 +50,7 @@ export default function YearRail({
         {MONTHS.map((m, i) => (
           <span
             key={m}
-            className="absolute top-0 border-l border-rule pl-1 text-[0.66rem] leading-4 font-medium tracking-[0.1em] text-ink-2 uppercase"
+            className="absolute top-0 border-l border-rule pl-1 text-label leading-4 font-medium tracking-[0.1em] text-ink-2 uppercase"
             style={{ left: pct(Date.UTC(year, i, 1)) }}
           >
             <span className={i % 2 ? "hidden sm:inline" : ""}>{m}</span>

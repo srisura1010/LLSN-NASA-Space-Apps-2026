@@ -282,7 +282,7 @@ export default function TimelineStrip({
 
       {/* Readout */}
       {readout ? (
-      <div id={`${uid}-readout`} className="mt-2 flex flex-wrap items-baseline gap-x-6 gap-y-1 text-[0.844rem]">
+      <div id={`${uid}-readout`} className="mt-2 flex flex-wrap items-baseline gap-x-6 gap-y-1 text-body">
         <span className="font-semibold tabular-nums">
           {fmtFull(nowMs)}
           <span className="ml-2 font-normal text-ink-2">{fmtElapsed(nowMs - startMs)}</span>
@@ -316,7 +316,7 @@ function Line({ label, compact, className, children }: { label?: string; compact
   return (
     <div className={`flex gap-2 ${className ?? ""}`}>
       <div
-        className={`w-[3.25rem] shrink-0 cursor-default text-right text-[0.75rem] font-semibold uppercase tracking-[0.06em] text-ink-2 ${
+        className={`w-[3.25rem] shrink-0 cursor-default text-right text-label font-semibold uppercase tracking-[0.06em] text-ink-2 ${
           compact ? "leading-3" : "leading-4"
         }`}
         aria-hidden="true"
@@ -353,7 +353,7 @@ function Ruler({
         d.label ? (
           <span
             key={`l${d.ms}`}
-            className="absolute top-0 whitespace-nowrap pl-1 text-[0.75rem] leading-4 text-ink-2 tabular-nums"
+            className="absolute top-0 whitespace-nowrap pl-1 text-label leading-4 text-ink-2 tabular-nums"
             style={{ left: pct(frac(d.ms)) }}
           >
             {d.label}
@@ -419,7 +419,7 @@ function RowCaption({ row, main, startMs, endMs }: { row: Row; main: boolean; st
   // Text sits on paper above the playhead line, so the line reads as passing behind it.
   const knock = "relative z-10 bg-paper";
   return (
-    <div className="flex flex-wrap items-baseline gap-x-3 pb-1 pt-0.5 text-[0.75rem] leading-4">
+    <div className="flex flex-wrap items-baseline gap-x-3 pb-1 pt-0.5 text-label leading-4">
       <span className={`${knock} ${main ? "font-semibold" : "font-medium"} text-ink`}>{row.name}</span>
       {row.offsetMs ? (
         <span className={`${knock} text-ink-2 tabular-nums`}>

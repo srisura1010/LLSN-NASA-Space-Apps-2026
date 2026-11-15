@@ -986,7 +986,7 @@ function PlanFallback({ data, state }: { data: SystemData; state: SystemState })
   const label = "fill-ink text-[4px] font-semibold tracking-[0.1em] uppercase";
   return (
     <div className="absolute inset-0 flex flex-col">
-      <p className="border-b border-rule px-4 py-2 text-[0.844rem] text-ink-2">
+      <p className="border-b border-rule px-4 py-2 text-body text-ink-2">
         This browser could not start WebGL, so the 3D diagram is replaced by a flat plan seen from ecliptic north. The
         table values are unaffected.
       </p>
@@ -1034,7 +1034,7 @@ function fmtLight(s: number) {
 }
 
 function Legend({ launch }: { launch: boolean }) {
-  const item = "flex items-center gap-2.5 py-1 text-[0.844rem] leading-snug text-ink-2";
+  const item = "flex items-center gap-2.5 py-1 text-body leading-snug text-ink-2";
   return (
     <ul>
       <LineLegend item={item} />
@@ -1086,8 +1086,8 @@ function Readout({
 
       <div className="mt-4 flex items-center gap-3.5">
         <PhaseDisc illuminated={state.illuminated} waxing={state.waxing} />
-        <p className="text-[0.844rem] leading-snug text-ink-2">
-          <span className="block text-[0.95rem] font-semibold text-ink">{state.phaseName}</span>
+        <p className="text-body leading-snug text-ink-2">
+          <span className="block text-lead font-semibold text-ink">{state.phaseName}</span>
           The Moon from Earth, ecliptic north up.
         </p>
       </div>
@@ -1101,7 +1101,7 @@ function Readout({
               <Row label="Earth elevation" value={el(earthEl)} />
             </tbody>
           </table>
-          <p className="mt-2 text-[0.8rem] leading-snug text-ink-2">
+          <p className="mt-2 text-small leading-snug text-ink-2">
             Elevation of each body&apos;s centre above the level horizon at the site. The site level measures it
             against the terrain.
           </p>
@@ -1485,13 +1485,13 @@ export default function SystemView({
         {state ? (
           <Readout state={state} siteName={siteName} sunEl={sunElevationDeg} earthEl={earthElevationDeg} earthFrame={earthFrame} launchSite={launchSite} />
         ) : (
-          <p className="text-[0.844rem] text-ink-2">{load.status === "error" ? "No values to show." : "Loading values"}</p>
+          <p className="text-body text-ink-2">{load.status === "error" ? "No values to show." : "Loading values"}</p>
         )}
         <SectionLabel className="mt-6">Marks</SectionLabel>
         <div className="mt-1.5">
           <Legend launch={Boolean(launchSites?.length)} />
         </div>
-        <p className="mt-6 border-t border-rule pt-3 text-[0.8rem] leading-snug text-ink-2">
+        <p className="mt-6 border-t border-rule pt-3 text-small leading-snug text-ink-2">
           Positions: NASA/JPL Horizons vector tables for Earth and the Moon, hourly through 2027, heliocentric ecliptic
           J2000; values between the hours are interpolated. The Moon&apos;s orientation: IAU/WGCCRE rotation model; its
           surface: NASA SVS CGI Moon Kit maps from Lunar Reconnaissance Orbiter data. Earth&apos;s orientation: the
@@ -1506,43 +1506,13 @@ export default function SystemView({
       <section aria-label="Sun, Earth and Moon diagram" className="flex min-h-0 min-w-0 flex-1 flex-col">
         <h2 className="sr-only">The Sun, Earth and Moon</h2>
 
+        <div className="relative flex min-h-0 flex-1 flex-col">
         <div
-          ref={hostRef}
-          tabIndex={0}
-          role="group"
-          aria-label="Diagram. Arrow keys turn the view; plus and minus zoom."
-          data-framing={framing.id}
-          data-focus={framing.id === "pair" ? focus.id : undefined}
-          onKeyDown={onKey}
-          onPointerMove={(e) => {
-            const box = e.currentTarget.getBoundingClientRect();
-            pointer.current = { x: e.clientX - box.left, y: e.clientY - box.top };
-          }}
-          onPointerLeave={() => {
-            pointer.current = null;
-          }}
-          onPointerDown={(e) => {
-            pressed.current = { x: e.clientX, y: e.clientY };
-          }}
-          onClick={(e) => {
-            const from = pressed.current;
-            if (framing.id !== "pair" || !(e.target instanceof HTMLCanvasElement) || !from || Math.hypot(e.clientX - from.x, e.clientY - from.y) > 4) return;
-            const body = bodyAt(e);
-            if (body) pick(body);
-          }}
-          onDoubleClick={(e) => {
-            if (framing.id === "pair" && e.target instanceof HTMLCanvasElement) pick(bodyAt(e) ?? "both");
-          }}
-          className="relative isolate min-h-[22rem] flex-1 overflow-hidden bg-paper focus-visible:outline-2 focus-visible:-outline-offset-2"
-        >
-          {levelNav && <div className="pointer-events-none absolute top-2 left-2 z-20">{levelNav}</div>}
-          {/* The view's controls, top right over the diagram: framing, scale, the framing's own tools and how to read it. */}
-          <div
             role="toolbar"
             aria-label="System view"
-            className="absolute top-2 right-2 z-30 flex max-w-[calc(100%-15rem)] flex-col items-end gap-1 max-sm:top-12 max-sm:max-w-[calc(100%-1rem)]"
+            className="z-30 flex flex-col items-end gap-1 max-md:items-start max-md:border-b max-md:border-rule max-md:bg-paper-2 max-md:p-2 md:absolute md:top-2 md:right-2 md:max-w-[calc(100%-15rem)]"
           >
-            <div className="flex flex-wrap justify-end gap-1">
+            <div className="flex flex-wrap justify-end gap-1 max-md:justify-start">
               <Segmented
                 label="Framing"
                 value={framing.id}
@@ -1574,24 +1544,24 @@ export default function SystemView({
                     { id: "true", label: "True scale" },
                   ]}
                 />
-                <p className="mt-2 text-[0.8rem] leading-snug text-ink-2">
+                <p className="mt-2 text-small leading-snug text-ink-2">
                   {scale === "display"
                     ? "Display scale stretches the bodies and the Earth to Moon distance so all three can be seen at once."
                     : "True scale keeps real sizes and distances, so the bodies are specks inside the rings that mark them."}
                 </p>
               </Popover>
               <Popover label="About this view" button={<>About</>} title="How to read the System view" buttonClassName={`${toggleClass(false, "md")} bg-paper`} panelClassName="w-[min(26rem,calc(100vw-2rem))] p-3">
-                <p className="text-[0.8rem] leading-snug text-ink">{caption}</p>
+                <p className="text-small leading-snug text-ink">{caption}</p>
               </Popover>
             </div>
             {framing.id === "earth" && earthFrame && (
-              <div role="group" aria-label="Face Earth towards" className="flex flex-wrap items-center justify-end gap-1">
+              <div role="group" aria-label="Face Earth towards" className="flex flex-wrap items-center justify-end gap-1 max-md:justify-start">
                 <SelectField
                   aria-label="Face a launch site"
                   value={!aim.dir && launchId ? launchId : ""}
                   onChange={(e) => e.target.value && chooseSite(e.target.value)}
                   wrapClassName="w-[15rem]"
-                  className="text-[0.844rem]"
+                  className="text-body"
                 >
                   <option value="">Face a launch site…</option>
                   {(["us", "nasa-partner", "us-partner"] as SiteGroup[]).map((g) => {
@@ -1612,7 +1582,7 @@ export default function SystemView({
               </div>
             )}
             {framing.id === "pair" && (
-              <div className="flex flex-wrap items-center justify-end gap-1">
+              <div className="flex flex-wrap items-center justify-end gap-1 max-md:justify-start">
                 <Segmented
                   label="Centre the view on"
                   value={focus.id}
@@ -1639,22 +1609,53 @@ export default function SystemView({
               </div>
             )}
           </div>
-          <p className="pointer-events-none absolute bottom-2 left-2 z-10 border border-rule bg-paper/90 px-2 py-0.5 text-[0.75rem] text-ink-2 max-sm:hidden">
+        <div
+          ref={hostRef}
+          tabIndex={0}
+          role="group"
+          aria-label="Diagram. Arrow keys turn the view; plus and minus zoom."
+          data-framing={framing.id}
+          data-focus={framing.id === "pair" ? focus.id : undefined}
+          onKeyDown={onKey}
+          onPointerMove={(e) => {
+            const box = e.currentTarget.getBoundingClientRect();
+            pointer.current = { x: e.clientX - box.left, y: e.clientY - box.top };
+          }}
+          onPointerLeave={() => {
+            pointer.current = null;
+          }}
+          onPointerDown={(e) => {
+            pressed.current = { x: e.clientX, y: e.clientY };
+          }}
+          onClick={(e) => {
+            const from = pressed.current;
+            if (framing.id !== "pair" || !(e.target instanceof HTMLCanvasElement) || !from || Math.hypot(e.clientX - from.x, e.clientY - from.y) > 4) return;
+            const body = bodyAt(e);
+            if (body) pick(body);
+          }}
+          onDoubleClick={(e) => {
+            if (framing.id === "pair" && e.target instanceof HTMLCanvasElement) pick(bodyAt(e) ?? "both");
+          }}
+          className="relative isolate min-h-[18rem] flex-1 overflow-hidden bg-paper focus-visible:outline-2 focus-visible:-outline-offset-2"
+        >
+          {levelNav && <div className="pointer-events-none absolute top-2 left-2 z-20">{levelNav}</div>}
+          {/* The view's controls, top right over the diagram: framing, scale, the framing's own tools and how to read it. */}
+          <p className="pointer-events-none absolute bottom-2 left-2 z-10 border border-rule bg-paper/90 px-2 py-0.5 text-label text-ink-2 max-sm:hidden">
             {framing.id === "pair" ? "Drag to turn · scroll to zoom · click a body to centre on it" : "Drag to turn · scroll to zoom"}
           </p>
           <div className="pointer-events-none absolute inset-x-0 top-11 bottom-0 z-20">
             <ZoomHint text={hintText} progress={progress} action={hintAction} />
           </div>
           {load.status === "loading" && (
-            <p role="status" className="absolute inset-0 grid place-items-center text-[0.844rem] text-ink-2">
+            <p role="status" className="absolute inset-0 grid place-items-center text-body text-ink-2">
               Loading the 2027 ephemeris
             </p>
           )}
           {load.status === "error" && (
             <div role="alert" className="absolute inset-0 grid place-items-center px-6">
               <div className="max-w-[44ch] border border-ink p-4">
-                <p className="text-[0.95rem] font-semibold text-ink">The Sun, Earth and Moon positions did not load.</p>
-                <p className="mt-1 text-[0.844rem] text-ink-2">{load.message}</p>
+                <p className="text-lead font-semibold text-ink">The Sun, Earth and Moon positions did not load.</p>
+                <p className="mt-1 text-body text-ink-2">{load.message}</p>
                 <button
                   type="button"
                   onClick={() => {
@@ -1721,6 +1722,7 @@ export default function SystemView({
           )}
         </div>
 
+        </div>
       </section>
 
       {inspector === undefined ? (

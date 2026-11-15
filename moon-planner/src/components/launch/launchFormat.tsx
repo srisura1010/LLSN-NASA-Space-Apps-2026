@@ -60,7 +60,7 @@ export function plainReason(o: LaunchOpportunity, site: LaunchSite): string | nu
 export function Status({ rating, className = "" }: { rating: Rating; className?: string }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 text-[0.844rem] font-semibold whitespace-nowrap ${
+      className={`inline-flex items-center gap-1.5 text-body font-semibold whitespace-nowrap ${
         rating === "blocked" ? "text-limit" : "text-ink"
       } ${className}`}
     >

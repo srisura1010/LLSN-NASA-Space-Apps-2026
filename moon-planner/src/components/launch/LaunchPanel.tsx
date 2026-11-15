@@ -138,7 +138,7 @@ function SkeletonRows() {
 
 function Notice({ children, action }: { children: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <div className="mx-4 my-4 flex flex-wrap items-center gap-x-4 gap-y-2 border border-ink px-3 py-2.5 text-[0.95rem] text-ink">
+    <div className="mx-4 my-4 flex flex-wrap items-center gap-x-4 gap-y-2 border border-ink px-3 py-2.5 text-lead text-ink">
       <p className="min-w-0 flex-1 basis-64 text-pretty">{children}</p>
       {action}
     </div>
@@ -263,14 +263,14 @@ export default function LaunchPanel({
   return (
     <section aria-labelledby={`${id}-title`} className={`@container bg-paper-2 text-ink ${className}`}>
       <header className="px-4 pt-5 pb-4">
-        <h2 id={`${id}-title`} className="text-[1.352rem] leading-tight font-semibold text-ink">
+        <h2 id={`${id}-title`} className="text-title leading-tight font-semibold text-ink">
           Launch from Earth
         </h2>
-        <p className="mt-1.5 max-w-[75ch] text-[0.95rem] text-pretty text-ink-2 tabular-nums">
+        <p className="mt-1.5 max-w-[75ch] text-lead text-pretty text-ink-2 tabular-nums">
           When to lift off, and from where, to reach <span className="font-semibold text-ink">{siteName}</span> at the start of the
           mission window set in the window chip above, with the whole window on the surface to follow.
         </p>
-        <p className="mt-1.5 max-w-[75ch] text-[0.844rem] text-pretty text-ink-2">
+        <p className="mt-1.5 max-w-[75ch] text-body text-pretty text-ink-2">
           In the table, <span className="font-semibold text-ink">azimuth</span> is the compass direction of launch (90° is due east),{" "}
           <span className="font-semibold text-ink">inclination</span> is the tilt of the orbit against the equator, and{" "}
           <span className="font-semibold text-ink">rotation gain</span> is the speed the rocket gets for free from Earth&rsquo;s spin. Select a site for its
@@ -309,7 +309,7 @@ export default function LaunchPanel({
             ))}
           </SelectField>
         </div>
-        <label className="inline-flex h-8 cursor-pointer items-center gap-2 text-[0.95rem] text-ink">
+        <label className="inline-flex h-8 cursor-pointer items-center gap-2 text-lead text-ink">
           <input type="checkbox" checked={usableOnly} onChange={(e) => setUsableOnly(e.target.checked)} className="peer sr-only" />
           <span className="grid size-4 place-items-center border border-ink bg-paper outline-offset-2 outline-earth peer-checked:bg-ink peer-focus-visible:outline-2">
             <svg viewBox="0 0 12 12" aria-hidden="true" fill="none" className="size-3">
@@ -319,7 +319,7 @@ export default function LaunchPanel({
           Usable only
         </label>
         {results && (
-          <p role="status" className="ml-auto pb-1 text-[0.844rem] text-ink-2 tabular-nums">
+          <p role="status" className="ml-auto pb-1 text-body text-ink-2 tabular-nums">
             <span className="font-semibold text-ink">
               {usableCount} of {listed.length}
             </span>{" "}
@@ -387,7 +387,7 @@ export default function LaunchPanel({
               </Notice>
             )}
             {rows.length === 0 && listed.length > 0 && (
-              <div className="flex flex-wrap items-center gap-3 border-b border-rule px-4 py-4 text-[0.95rem] text-ink-2">
+              <div className="flex flex-wrap items-center gap-3 border-b border-rule px-4 py-4 text-lead text-ink-2">
                 <span>All {listed.length} listed sites are blocked, and blocked sites are hidden.</span>
                 <button type="button" className={buttonClass.secondary} onClick={() => setUsableOnly(false)}>
                   Show blocked sites
@@ -409,7 +409,7 @@ export default function LaunchPanel({
                       onClick={() => select(r.site.id)}
                       aria-expanded={open}
                       aria-current={on ? "true" : undefined}
-                      className={`relative grid w-full grid-cols-2 items-start gap-x-4 gap-y-2 py-3 pr-11 pl-4 text-left text-[0.95rem] tabular-nums transition-colors duration-150 focus-visible:outline-offset-[-2px] @xl:grid-cols-3 @3xl:grid-cols-5 @6xl:gap-y-0 @6xl:pr-4 ${TABLE_COLS} ${
+                      className={`relative grid w-full grid-cols-2 items-start gap-x-4 gap-y-2 py-3 pr-11 pl-4 text-left text-lead tabular-nums transition-colors duration-150 focus-visible:outline-offset-[-2px] @xl:grid-cols-3 @3xl:grid-cols-5 @6xl:gap-y-0 @6xl:pr-4 ${TABLE_COLS} ${
                         on ? "bg-paper shadow-[inset_0_0_0_1px_var(--color-ink)]" : "hover:bg-paper active:bg-paper-3"
                       }`}
                     >
@@ -419,7 +419,7 @@ export default function LaunchPanel({
                       </span>
                       <span className="col-span-full min-w-0 @6xl:col-span-1">
                         <span className={`block leading-snug text-balance text-ink ${on ? "font-semibold" : "font-medium"}`}>{r.site.name}</span>
-                        <span className="block text-[0.844rem] text-ink-2">
+                        <span className="block text-body text-ink-2">
                           {r.site.country} · {r.site.operator}
                         </span>
                       </span>
@@ -432,7 +432,7 @@ export default function LaunchPanel({
                             {span ? (
                               <>
                                 <span className="block text-ink">{span}</span>
-                                <span className="block text-[0.844rem] text-ink-2">{fmtMinutes(o.windowMinutes)}</span>
+                                <span className="block text-body text-ink-2">{fmtMinutes(o.windowMinutes)}</span>
                               </>
                             ) : (
                               <span className="text-ink-2">No window</span>
@@ -452,7 +452,7 @@ export default function LaunchPanel({
                           </Cell>
                           <span className="col-span-full min-w-0 @6xl:col-span-1 @6xl:pr-7">
                             <Status rating={o.rating} />
-                            {reason && <span className="block text-[0.844rem] text-pretty text-ink-2">{reason}</span>}
+                            {reason && <span className="block text-body text-pretty text-ink-2">{reason}</span>}
                           </span>
                         </>
                       ) : (
@@ -481,10 +481,10 @@ export default function LaunchPanel({
       {/* ---------- Slip analysis ---------- */}
       {results && focus && planBest && (
         <section aria-labelledby={`${id}-slip`} className="px-4 pt-7 pb-2">
-          <h3 id={`${id}-slip`} className="text-[1.068rem] leading-tight font-semibold text-ink">
+          <h3 id={`${id}-slip`} className="text-heading leading-tight font-semibold text-ink">
             If the landing slips
           </h3>
-          <p className="mt-1 max-w-[75ch] text-[0.95rem] text-pretty text-ink-2">
+          <p className="mt-1 max-w-[75ch] text-lead text-pretty text-ink-2">
             The same search, run again for a later arrival, from <span className="font-semibold text-ink">{focus.site.name}</span>
             {selected ? "" : " (the top-ranked site; select another to follow it)"}.{" "}
             {slipLoss ? (
@@ -510,10 +510,10 @@ export default function LaunchPanel({
           </div>
           <ul className="mt-3 border-t border-ink @4xl:mt-0 @4xl:border-t-0">
             {slipRows.map((s) => (
-              <li key={s.label} className={`grid grid-cols-2 items-start gap-x-4 gap-y-2 border-b border-rule py-2.5 text-[0.95rem] tabular-nums @xl:grid-cols-3 @4xl:gap-y-0 ${SLIP_COLS}`}>
+              <li key={s.label} className={`grid grid-cols-2 items-start gap-x-4 gap-y-2 border-b border-rule py-2.5 text-lead tabular-nums @xl:grid-cols-3 @4xl:gap-y-0 ${SLIP_COLS}`}>
                 <span className="col-span-full @4xl:col-span-1">
                   <span className="font-semibold text-ink">{s.label}</span>
-                  <span className="ml-2 text-[0.844rem] text-ink-2 @4xl:ml-0 @4xl:block">{fmtDate(s.arrivalMs)}</span>
+                  <span className="ml-2 text-body text-ink-2 @4xl:ml-0 @4xl:block">{fmtDate(s.arrivalMs)}</span>
                 </span>
                 {s.results === null ? (
                   <span className="col-span-full text-ink-2 @4xl:col-[2/-1]">Outside the 2027 ephemeris, so not worked out.</span>
@@ -540,14 +540,14 @@ export default function LaunchPanel({
                       <span className="font-semibold text-ink">
                         {s.usable} of {s.total}
                       </span>
-                      <span className="text-[0.844rem] text-ink-2"> ({s.good} without a cost)</span>
+                      <span className="text-body text-ink-2"> ({s.good} without a cost)</span>
                     </Cell>
                   </>
                 )}
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-[0.844rem] text-ink-2 tabular-nums">
+          <p className="mt-2 text-body text-ink-2 tabular-nums">
             Allowed launch directions (azimuths) at {focus.site.name}: {formatAzimuthRanges(focus.site)} ({focus.site.azimuthSource}).
           </p>
         </section>
@@ -555,10 +555,10 @@ export default function LaunchPanel({
 
       {/* ---------- Honest labelling ---------- */}
       <aside aria-labelledby={`${id}-method`} className="mx-4 mt-6 mb-6 border border-ink bg-paper px-4 py-3.5">
-        <h3 id={`${id}-method`} className="text-[0.95rem] font-semibold text-ink">
+        <h3 id={`${id}-method`} className="text-lead font-semibold text-ink">
           Estimate, not a trajectory design
         </h3>
-        <p className="mt-1 max-w-[80ch] text-[0.844rem] text-pretty text-ink-2">
+        <p className="mt-1 max-w-[80ch] text-body text-pretty text-ink-2">
           Simplified geometry: the spacecraft leaves in the flat plane that holds Earth&rsquo;s centre, the launch site at lift-off and the Moon at arrival.
           A launch window is the time the compass direction it needs (the azimuth) stays inside the directions the site allows. Checked against Apollo 11,
           the estimate comes within about 20 minutes and 2°. The Moon&rsquo;s gravity, the energy of the departure burn, braking into lunar orbit, mid-flight
@@ -566,11 +566,11 @@ export default function LaunchPanel({
           figures; they are not range-safety data.
         </p>
         <details className="group mt-2">
-          <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-[0.844rem] font-medium text-earth underline decoration-1 underline-offset-[3px] hover:text-ink [&::-webkit-details-marker]:hidden">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-body font-medium text-earth underline decoration-1 underline-offset-[3px] hover:text-ink [&::-webkit-details-marker]:hidden">
             Full method and what it leaves out
             <ChevronMark className="size-3.5 transition-transform duration-150 group-open:rotate-180" />
           </summary>
-          <div className="mt-2 max-w-[80ch] space-y-2 text-[0.844rem] text-pretty text-ink-2">
+          <div className="mt-2 max-w-[80ch] space-y-2 text-body text-pretty text-ink-2">
             {LAUNCH_METHOD.split("\n").map((p) => (
               <p key={p.slice(0, 24)}>{p}</p>
             ))}

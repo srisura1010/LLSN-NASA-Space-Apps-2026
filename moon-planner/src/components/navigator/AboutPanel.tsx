@@ -28,10 +28,10 @@ const SECTIONS = [
 function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
     <section id={id} aria-labelledby={`${id}-h`} className="scroll-mt-16 border-t border-rule pt-5 mt-9 first:mt-0">
-      <h3 id={`${id}-h`} className="text-[1.068rem] font-semibold leading-snug text-ink text-balance">
+      <h3 id={`${id}-h`} className="text-heading font-semibold leading-snug text-ink text-balance">
         {title}
       </h3>
-      <div className="mt-2.5 space-y-3 text-[0.95rem] leading-[1.6] text-ink">{children}</div>
+      <div className="mt-2.5 space-y-3 text-lead leading-[1.6] text-ink">{children}</div>
     </section>
   );
 }
@@ -135,27 +135,27 @@ function ValidationTable({ entries, loading }: Props) {
 
   const worstSun = largest((d) => d.sunlit);
   const worstEarth = largest((d) => d.earth);
-  const th = "pb-1.5 text-right text-[0.75rem] font-semibold uppercase tracking-[0.06em] text-ink-2";
+  const th = "pb-1.5 text-right text-label font-semibold uppercase tracking-[0.06em] text-ink-2";
   const td = "py-1.5 text-right tabular-nums";
   return (
     <>
       <div className="relative -mx-4 overflow-x-auto px-4" tabIndex={0} role="region" aria-label="Check against NASA, scrolls sideways">
-        <table className="w-full min-w-[36rem] text-[0.844rem]">
+        <table className="w-full min-w-[36rem] text-body">
           <caption className="sr-only">
             Share of hours with the Sun and Earth visible: this model over 2027 against NASA&apos;s LOLA long-term average
           </caption>
           <thead>
             <tr>
-              <th scope="col" rowSpan={2} className="border-b border-ink pb-1.5 text-left align-bottom text-[0.75rem] font-semibold uppercase tracking-[0.06em] text-ink-2">
+              <th scope="col" rowSpan={2} className="border-b border-ink pb-1.5 text-left align-bottom text-label font-semibold uppercase tracking-[0.06em] text-ink-2">
                 Region
               </th>
-              <th scope="colgroup" colSpan={3} className="border-l border-rule pb-1 pl-3 text-left text-[0.844rem] font-semibold text-ink">
+              <th scope="colgroup" colSpan={3} className="border-l border-rule pb-1 pl-3 text-left text-body font-semibold text-ink">
                 <span className="inline-flex items-center gap-1.5">
                   <SunMark className="size-3.5" />
                   Sun visible
                 </span>
               </th>
-              <th scope="colgroup" colSpan={3} className="border-l border-rule pb-1 pl-3 text-left text-[0.844rem] font-semibold text-ink">
+              <th scope="colgroup" colSpan={3} className="border-l border-rule pb-1 pl-3 text-left text-body font-semibold text-ink">
                 <span className="inline-flex items-center gap-1.5">
                   <EarthMark className="size-3.5" />
                   Earth visible
@@ -200,7 +200,7 @@ function AboutPanel({ entries, loading }: Props) {
   return (
     <div className="mx-auto w-full max-w-[72rem] px-4 py-6 xl:grid xl:grid-cols-[13rem_minmax(0,1fr)] xl:gap-12 xl:px-8 xl:py-8">
       <nav aria-label="On this page" className="hidden xl:block">
-        <ol className="sticky top-16 space-y-1.5 border-l border-rule pl-3 text-[0.844rem]">
+        <ol className="sticky top-16 space-y-1.5 border-l border-rule pl-3 text-body">
           {SECTIONS.map(([href, label]) => (
             <li key={href}>
               <a href={`#${href}`} className="text-ink-2 underline-offset-[3px] hover:text-ink hover:underline">
@@ -212,8 +212,8 @@ function AboutPanel({ entries, loading }: Props) {
       </nav>
 
       <div className="max-w-[68ch]">
-        <h2 className="text-[1.52rem] font-semibold leading-tight text-ink text-balance">About the Navigator and its data</h2>
-        <p className="mt-3 text-[1.068rem] leading-[1.55] text-ink">
+        <h2 className="text-display font-semibold leading-tight text-ink text-balance">About the Navigator and its data</h2>
+        <p className="mt-3 text-heading leading-[1.55] text-ink">
           The Navigator answers one planning question for the lunar south pole: over a mission window, when does a
           landing region see the Sun above its real terrain horizon, for power, and when does it see Earth, for direct
           radio contact? It ranks the regions on that answer and shows what a slip, or the next region over, changes.
@@ -370,7 +370,7 @@ function AboutPanel({ entries, loading }: Props) {
                   <p className="font-semibold">{c.name}</p>
                   <p className="text-ink-2">{c.who}</p>
                   <p className="mt-1">{c.use}</p>
-                  <p className="mt-1 text-[0.844rem]">
+                  <p className="mt-1 text-body">
                     <Ext href={c.href}>{c.link}</Ext>
                   </p>
                 </li>

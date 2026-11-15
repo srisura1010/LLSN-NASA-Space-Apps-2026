@@ -418,12 +418,12 @@ export default function HorizonPlot({
       <figcaption
         className={`flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 ${rail ? "pb-1" : "pb-1.5"} ${plotShown ? "" : "sr-only"}`}
       >
-        <span className="text-[0.95rem] font-semibold text-ink">
-          {figure ? <span className="mr-2 text-[0.75rem] font-bold uppercase tracking-[0.1em]">{figure}</span> : null}
+        <span className="text-lead font-semibold text-ink">
+          {figure ? <span className="mr-2 text-label font-bold uppercase tracking-[0.1em]">{figure}</span> : null}
           Horizon from {siteName}
         </span>
         <span className="flex items-baseline gap-3">
-          <span className={`text-ink-2 tabular-nums ${rail ? "text-[0.75rem]" : "text-[0.844rem]"}`}>{note}</span>
+          <span className={`text-ink-2 tabular-nums ${rail ? "text-label" : "text-body"}`}>{note}</span>
           {dock && layout ? (
             <Popover
               label="Key to the horizon plot"
@@ -433,7 +433,7 @@ export default function HorizonPlot({
               side="above"
               panelClassName="w-[min(34rem,calc(100vw-2rem))] p-3"
             >
-              <p data-how-to-read className="mb-2 border-b border-rule pb-2 text-[0.844rem] leading-snug text-ink">
+              <p data-how-to-read className="mb-2 border-b border-rule pb-2 text-body leading-snug text-ink">
                 <span className="font-semibold">How to read this:</span> left to right is compass direction, up is height above
                 level. The grey shape is the terrain; the yellow line is the Sun&apos;s path, the blue line Earth&apos;s.
               </p>
@@ -441,7 +441,7 @@ export default function HorizonPlot({
             </Popover>
           ) : null}
         </span>
-        {overflow ? <span className="basis-full text-[0.75rem] text-ink-2">Scroll sideways for all 360°</span> : null}
+        {overflow ? <span className="basis-full text-label text-ink-2">Scroll sideways for all 360°</span> : null}
       </figcaption>
 
       <div className={`relative ${plotShown ? "" : "hidden"}`}>
@@ -572,14 +572,14 @@ function NowReadout({
     };
   });
   return (
-    <div id={id} className="mt-1.5 flex flex-wrap items-start gap-x-8 gap-y-1 text-[0.844rem] text-ink">
+    <div id={id} className="mt-1.5 flex flex-wrap items-start gap-x-8 gap-y-1 text-body text-ink">
       <p className="flex items-center gap-2 tabular-nums">
         {onTogglePlay ? (
           <button
             type="button"
             onClick={onTogglePlay}
             aria-pressed={playing}
-            className="inline-flex size-7 items-center justify-center border border-ink bg-paper text-ink transition-colors duration-150 hover:bg-paper-3 active:bg-umbra-soft"
+            className="inline-flex size-7 items-center justify-center border border-ink bg-paper text-ink max-md:size-11 transition-colors duration-150 hover:bg-paper-3 active:bg-umbra-soft"
           >
             <PlayMark playing={playing} />
             <span className="sr-only">{playing ? "Pause" : "Play the window"}</span>
@@ -660,7 +660,7 @@ function DockReadout({
     };
   });
   return (
-    <div id={id} className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[0.844rem] text-ink tabular-nums">
+    <div id={id} className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-small text-ink tabular-nums">
       <span className="flex shrink-0 items-center gap-2">
         {controls}
         {onTogglePlay ? (
@@ -670,7 +670,7 @@ function DockReadout({
             aria-pressed={playing}
             title={playing ? "Pause" : "Play the window"}
             data-play
-            className="inline-flex size-7 items-center justify-center border border-ink bg-paper text-ink transition-colors duration-150 hover:bg-paper-3 active:bg-umbra-soft"
+            className="inline-flex size-7 items-center justify-center border border-ink bg-paper text-ink max-md:size-11 transition-colors duration-150 hover:bg-paper-3 active:bg-umbra-soft"
           >
             <PlayMark playing={playing} />
             <span className="sr-only">{playing ? "Pause" : "Play the window"}</span>
@@ -1059,7 +1059,7 @@ function Legend({ layout: L, compact = false }: { layout: Layout; compact?: bool
   const item = "flex items-center gap-2";
   return (
     <div
-      className={`flex min-w-0 flex-col gap-1.5 text-[0.75rem] text-ink-2 ${compact ? "mt-1.5 border-t border-rule pt-1.5" : "max-w-[52rem] flex-1"}`}
+      className={`flex min-w-0 flex-col gap-1.5 text-label text-ink-2 ${compact ? "mt-1.5 border-t border-rule pt-1.5" : "max-w-[52rem] flex-1"}`}
     >
       <ul className={`m-0 flex list-none flex-wrap items-center p-0 ${compact ? "gap-x-4 gap-y-1" : "gap-x-5 gap-y-1.5"}`}>
         <li className={item}>
@@ -1133,11 +1133,11 @@ function Circumstances({ site, now }: { site: SiteData; now: ReturnType<typeof s
       : now.sunFraction >= 1
         ? "Full disc up"
         : `${Math.round(now.sunFraction * 100)}% of disc up`;
-  const th = "px-1.5 py-0.5 text-right text-[0.75rem] font-semibold uppercase tracking-[0.06em] text-ink-2";
+  const th = "px-1.5 py-0.5 text-right text-label font-semibold uppercase tracking-[0.06em] text-ink-2";
   const td = "px-1.5 py-0.5 text-right tabular-nums";
   return (
-    <table className="border-collapse text-[0.844rem] text-ink">
-      <caption className="pb-1 text-left text-[0.844rem] text-ink-2">At {fmtFull(now.ms)}</caption>
+    <table className="border-collapse text-body text-ink">
+      <caption className="pb-1 text-left text-body text-ink-2">At {fmtFull(now.ms)}</caption>
       <thead>
         <tr className="border-b border-rule">
           <th scope="col" className={`${th} pl-0 text-left`}>

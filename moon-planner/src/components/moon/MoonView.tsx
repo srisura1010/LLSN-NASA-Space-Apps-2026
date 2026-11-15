@@ -369,7 +369,7 @@ function PolarFallback({ frame, selectedId, onSelect }: { frame: MoonFrame; sele
   const e1 = edge(frame.subEarth.lon, 108);
   return (
     <div className="absolute inset-0 flex flex-col">
-      <p className="border-b border-rule px-4 py-2 text-[0.844rem] text-ink-2">
+      <p className="border-b border-rule px-4 py-2 text-body text-ink-2">
         This browser could not start WebGL, so the globe is replaced by a flat chart of the south polar cap. The ticks at
         the edge point to the longitudes where the Sun and Earth are overhead; the table values are unaffected.
       </p>
@@ -429,20 +429,20 @@ function Readout({ frame, state, site }: { frame: MoonFrame; state: SystemState;
               <Row label="Earth elevation" value={fmtSigned(elevationDeg(site.lat, site.lon, frame.earthKm), 2)} />
             </tbody>
           </table>
-          <p className="mt-2 text-[0.8rem] leading-snug text-ink-2">
+          <p className="mt-2 text-small leading-snug text-ink-2">
             Elevation of each body&apos;s centre over a smooth sphere of radius 1,737.4 km. The site level measures it
             against the terrain.
           </p>
         </>
       ) : (
-        <p className="mt-2 text-[0.844rem] leading-snug text-ink-2">Choose one of the nine regions below to see how high the Sun and Earth stand there.</p>
+        <p className="mt-2 text-body leading-snug text-ink-2">Choose one of the nine regions below to see how high the Sun and Earth stand there.</p>
       )}
     </div>
   );
 }
 
 function Legend({ showLandings, showPoint }: { showLandings: boolean; showPoint: boolean }) {
-  const item = "flex items-center gap-2.5 py-1 text-[0.844rem] leading-snug text-ink-2";
+  const item = "flex items-center gap-2.5 py-1 text-body leading-snug text-ink-2";
   const line = "block h-0 w-4 shrink-0 border-t";
   return (
     <ul>
@@ -700,7 +700,7 @@ export default function MoonView({
         {frame && state ? (
           <Readout frame={frame} state={state} site={site} />
         ) : (
-          <p className="text-[0.844rem] text-ink-2">{load.status === "error" ? "No values to show." : "Loading values"}</p>
+          <p className="text-body text-ink-2">{load.status === "error" ? "No values to show." : "Loading values"}</p>
         )}
 
         {onPoint && (
@@ -743,12 +743,12 @@ export default function MoonView({
           <Legend showLandings={showLandings} showPoint={!!point} />
         </div>
         {showLandings && (
-          <table className="mt-2 w-full border-collapse text-[0.8rem]">
+          <table className="mt-2 w-full border-collapse text-small">
             <caption className="sr-only">Earlier landings shown on the globe</caption>
             <tbody>
               {LANDINGS.map((l) => (
                 <tr key={l.id} className="border-b border-rule">
-                  <th scope="row" className="w-11 py-1 text-left text-[0.69rem] font-semibold tracking-[0.1em] text-ink uppercase">
+                  <th scope="row" className="w-11 py-1 text-left text-label font-semibold tracking-[0.1em] text-ink uppercase">
                     {l.short}
                   </th>
                   <td className="py-1 text-ink-2">
@@ -763,7 +763,7 @@ export default function MoonView({
           </table>
         )}
 
-        <p className="mt-6 border-t border-rule pt-3 text-[0.8rem] leading-snug text-ink-2">
+        <p className="mt-6 border-t border-rule pt-3 text-small leading-snug text-ink-2">
           Orientation: IAU/WGCCRE rotation model for the Moon, with Earth and Moon positions from NASA/JPL Horizons.
           Surface: NASA SVS CGI Moon Kit colour and elevation maps from Lunar Reconnaissance Orbiter data, printed in
           grey, with Lunar Reconnaissance Orbiter Camera mosaic tiles from NASA Moon Trek when zoomed in; region
@@ -778,15 +778,8 @@ export default function MoonView({
       <section aria-label="Globe of the Moon" className="flex min-h-0 min-w-0 flex-1 flex-col">
         <h2 className="sr-only">The Moon</h2>
 
-        <div
-          ref={setHost}
-          onPointerDownCapture={onPressDown}
-          onPointerUpCapture={onPressUp}
-          className={`relative isolate min-h-[24rem] flex-1 overflow-hidden bg-paper ${pickMode ? "cursor-crosshair" : ""}`}
-        >
-          {levelNav && <div className="pointer-events-none absolute top-2 left-2 z-20">{levelNav}</div>}
-          {/* The view's controls, top right over the globe: framing, pick a point, layers and how to read it. */}
-          <div role="toolbar" aria-label="Moon view" className="absolute top-2 right-2 z-30 flex max-w-[calc(100%-15rem)] flex-wrap justify-end gap-1 max-sm:max-w-[calc(100%-1rem)] max-sm:top-12">
+        <div className="relative flex min-h-0 flex-1 flex-col">
+        <div role="toolbar" aria-label="Moon view" className="z-30 flex flex-wrap justify-end gap-1 max-md:justify-start max-md:border-b max-md:border-rule max-md:bg-paper-2 max-md:p-2 md:absolute md:top-2 md:right-2 md:max-w-[calc(100%-15rem)]">
             <Segmented
               label="View from"
               value={framing.id as FramingId}
@@ -806,34 +799,42 @@ export default function MoonView({
             )}
             <Popover label="Layers on the globe" button={<>Layers</>} buttonClassName={`${toggleClass(false, "md")} bg-paper`} panelClassName="w-[17rem] p-2">
               <fieldset>
-                <legend className="px-1 pb-1.5 text-[0.75rem] font-semibold tracking-[0.08em] text-ink-2 uppercase">Show on the globe</legend>
-                <label className="flex cursor-pointer items-center gap-2 px-1 py-1 text-[0.844rem] text-ink hover:bg-paper-2">
+                <legend className="px-1 pb-1.5 text-label font-semibold tracking-[0.08em] text-ink-2 uppercase">Show on the globe</legend>
+                <label className="flex cursor-pointer items-center gap-2 px-1 py-1 text-body text-ink hover:bg-paper-2">
                   <input type="checkbox" checked={showLandings} onChange={(e) => setShowLandings(e.target.checked)} className="size-4 accent-[var(--color-ink)]" />
                   Earlier landings
                 </label>
                 {gl && (
-                  <label className="flex cursor-pointer items-center gap-2 px-1 py-1 text-[0.844rem] text-ink hover:bg-paper-2" title="Load sharper surface tiles from NASA Moon Trek when zoomed in; needs a network connection">
+                  <label className="flex cursor-pointer items-center gap-2 px-1 py-1 text-body text-ink hover:bg-paper-2" title="Load sharper surface tiles from NASA Moon Trek when zoomed in; needs a network connection">
                     <input type="checkbox" checked={detail} onChange={(e) => setDetail(e.target.checked)} className="size-4 accent-[var(--color-ink)]" />
                     Detail tiles from NASA Moon Trek
                   </label>
                 )}
               </fieldset>
               {gl && (
-                <p data-tile-status className="mt-1 border-t border-rule px-1 pt-1.5 text-[0.75rem] leading-snug text-ink-2 tabular-nums">
+                <p data-tile-status className="mt-1 border-t border-rule px-1 pt-1.5 text-label leading-snug text-ink-2 tabular-nums">
                   {detailText}
                 </p>
               )}
             </Popover>
             <Popover label="About this view" button={<>About</>} title="How to read the Moon view" buttonClassName={`${toggleClass(false, "md")} bg-paper`} panelClassName="w-[min(24rem,calc(100vw-2rem))] p-3">
-              <p className="text-[0.844rem] leading-snug text-ink">
+              <p className="text-body leading-snug text-ink">
                 Drag to turn the globe, scroll to zoom, shift-click to pick a point. Zooming all the way in opens the site level of the place at the centre of the view (the selected region over the south pole); zooming out opens the System level.
               </p>
-              <p className="mt-2 text-[0.8rem] leading-snug text-ink-2">
+              <p className="mt-2 text-small leading-snug text-ink-2">
                 The terminator, the lines to the Sun and Earth and the Moon&apos;s orientation are computed for the time shown. Relief shading is exaggerated and no cast shadows are drawn, so use the site level for terrain shadow.
               </p>
             </Popover>
           </div>
-          <p className="pointer-events-none absolute bottom-2 left-2 z-10 border border-rule bg-paper/90 px-2 py-0.5 text-[0.75rem] text-ink-2 max-sm:hidden">
+        <div
+          ref={setHost}
+          onPointerDownCapture={onPressDown}
+          onPointerUpCapture={onPressUp}
+          className={`relative isolate min-h-[18rem] flex-1 overflow-hidden bg-paper ${pickMode ? "cursor-crosshair" : ""}`}
+        >
+          {levelNav && <div className="pointer-events-none absolute top-2 left-2 z-20">{levelNav}</div>}
+          {/* The view's controls, top right over the globe: framing, pick a point, layers and how to read it. */}
+          <p className="pointer-events-none absolute bottom-2 left-2 z-10 border border-rule bg-paper/90 px-2 py-0.5 text-label text-ink-2 max-sm:hidden">
             Drag to turn · scroll to zoom · shift-click to pick a point
           </p>
           <div className="pointer-events-none absolute inset-x-0 top-11 bottom-0 z-20">
@@ -847,20 +848,20 @@ export default function MoonView({
             </svg>
           )}
           {pickMode && frame && (
-            <p role="status" className="pointer-events-none absolute bottom-9 left-2 z-10 border border-ink bg-paper px-2.5 py-1 text-[0.8rem] leading-snug text-ink">
+            <p role="status" className="pointer-events-none absolute bottom-9 left-2 z-10 border border-ink bg-paper px-2.5 py-1 text-small leading-snug text-ink">
               Click the globe to drop a pin. Drag still turns it.
             </p>
           )}
           {load.status === "loading" && (
-            <p role="status" className="absolute inset-0 grid place-items-center text-[0.844rem] text-ink-2">
+            <p role="status" className="absolute inset-0 grid place-items-center text-body text-ink-2">
               Loading the Moon globe and the 2027 ephemeris
             </p>
           )}
           {load.status === "error" && (
             <div role="alert" className="absolute inset-0 grid place-items-center px-6">
               <div className="max-w-[44ch] border border-ink p-4">
-                <p className="text-[0.95rem] font-semibold text-ink">The Moon globe did not load.</p>
-                <p className="mt-1 text-[0.844rem] text-ink-2">{load.message} Check the connection, then try again.</p>
+                <p className="text-lead font-semibold text-ink">The Moon globe did not load.</p>
+                <p className="mt-1 text-body text-ink-2">{load.message} Check the connection, then try again.</p>
                 <button
                   type="button"
                   onClick={() => {
@@ -913,6 +914,7 @@ export default function MoonView({
           )}
         </div>
 
+        </div>
       </section>
 
       {inspector === undefined ? (

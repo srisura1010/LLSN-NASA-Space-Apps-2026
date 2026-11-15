@@ -8,7 +8,7 @@
 // view at 1440x900.
 
 import { useCallback, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
-import { useStored, useTallViewport } from "@/state/stored";
+import { useStored, useTallViewport, useWideViewport } from "@/state/stored";
 import { ChevronMark, toggleClass } from "../ui";
 
 const MIN_H = 90;
@@ -34,7 +34,10 @@ export default function Dock({ panelId, children }: { panelId: string; children:
   const winH = useWindowHeight();
   const [storedOpen, setOpen] = useStored<boolean | null>("llsn.dock.open", null);
   const [storedH, setStoredH] = useStored<number | null>("llsn.dock.h", null);
-  const open = storedOpen ?? tall;
+  // Below xl the horizon plot is a panel of its own under the dock (the workspace's panel switch),
+  // so the dock keeps only the rail and the readout there.
+  const wide = useWideViewport(1280);
+  const open = wide && (storedOpen ?? tall);
   const maxH = Math.max(MIN_H + 40, Math.round(winH * 0.42));
   const defaultH = Math.round(Math.min(200, Math.max(124, winH * 0.165)));
   const clamp = useCallback((h: number) => Math.round(Math.min(maxH, Math.max(MIN_H, h))), [maxH]);
@@ -68,7 +71,7 @@ export default function Dock({ panelId, children }: { panelId: string; children:
     setStoredH(clamp(next));
   };
 
-  const controls = (
+  const controls = !wide ? null : (
     <button
       type="button"
       aria-expanded={open}

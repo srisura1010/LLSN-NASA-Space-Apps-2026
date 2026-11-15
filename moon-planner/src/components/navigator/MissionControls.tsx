@@ -117,7 +117,7 @@ export function ChangeNote({
   const shift = startMs - change.fromStartMs;
   return (
     <div role="status" className={`border border-ink bg-paper px-3 py-2.5 ${className}`}>
-      <p className="text-[0.844rem] leading-snug text-ink">
+      <p className="text-body leading-snug text-ink">
         <strong className="font-semibold">
           {change.reason}, {fmtShift(shift)}.
         </strong>{" "}
@@ -125,8 +125,8 @@ export function ChangeNote({
       </p>
       {before && after && (
         <>
-          <p className="mt-2 text-[0.75rem] font-semibold uppercase tracking-[0.08em] text-ink-2">{siteName}</p>
-          <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[0.844rem] tabular-nums">
+          <p className="mt-2 text-label font-semibold uppercase tracking-[0.08em] text-ink-2">{siteName}</p>
+          <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-body tabular-nums">
             {rankBefore !== null && rankAfter !== null && (
               <Delta label="Rank" from={`${rankBefore} of ${total}`} to={`${rankAfter} of ${total}`} />
             )}
@@ -353,7 +353,7 @@ export default function MissionControls({ startMs, durationHours, site, siteName
                 </option>
               ))}
             </SelectField>
-            <span className="px-2 text-[0.95rem] text-ink tabular-nums" aria-hidden="true">
+            <span className="px-2 text-lead text-ink tabular-nums" aria-hidden="true">
               {DATA_YEAR}
             </span>
             <label htmlFor={`${id}-hour`} className="sr-only">
@@ -476,13 +476,13 @@ export default function MissionControls({ startMs, durationHours, site, siteName
 
       <div aria-live="polite">
         {error && (
-          <p id={errorId} className="mt-2 flex max-w-[68ch] gap-1.5 text-[0.844rem] font-medium leading-snug text-ink">
+          <p id={errorId} className="mt-2 flex max-w-[68ch] gap-1.5 text-body font-medium leading-snug text-ink">
             <ErrorMark />
             <span>{error.message}</span>
           </p>
         )}
         {!error && info && (
-          <p id={infoId} className="mt-2 max-w-[68ch] text-[0.844rem] leading-snug text-ink-2">
+          <p id={infoId} className="mt-2 max-w-[68ch] text-body leading-snug text-ink-2">
             {info}
           </p>
         )}

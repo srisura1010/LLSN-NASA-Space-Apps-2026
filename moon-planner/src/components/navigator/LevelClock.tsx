@@ -63,7 +63,7 @@ export default function LevelClock({
       ) : (
         <YearRail startMs={DATA_START_MS} endMs={DATA_END_MS} ms={nowMs} windowMs={{ startMs, endMs }} onScrub={onScrub} describedBy={readoutId} />
       )}
-      <div id={readoutId} className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[0.844rem] text-ink tabular-nums">
+      <div id={readoutId} className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-body text-ink tabular-nums">
         <span className="flex shrink-0 items-center gap-2">
           <button
             type="button"
@@ -71,7 +71,7 @@ export default function LevelClock({
             aria-pressed={playing}
             title={playLabel}
             data-play
-            className="inline-flex size-7 items-center justify-center border border-ink bg-paper text-ink transition-colors duration-150 hover:bg-paper-3 active:bg-umbra-soft"
+            className="inline-flex size-7 items-center justify-center border border-ink bg-paper text-ink max-md:size-11 transition-colors duration-150 hover:bg-paper-3 active:bg-umbra-soft"
           >
             <PlayMark playing={playing} />
             <span className="sr-only">{playLabel}</span>
@@ -82,8 +82,8 @@ export default function LevelClock({
           <span className="whitespace-nowrap text-ink-2">{inWindow ? fmtElapsed(nowMs - startMs) : "outside the mission window"}</span>
         </span>
         {site && inWindow ? (
-          <span className="flex min-w-0 items-center gap-3 whitespace-nowrap">
-            <span className="text-ink-2">At {siteName}</span>
+          <span className="flex min-w-0 items-center gap-3 whitespace-nowrap" title={`At ${siteName}`}>
+            <span className="hidden text-ink-2 2xl:inline">At {siteName}</span>
             {(["sun", "earth"] as const).map((b) => {
               const up = isUp(site, b, nowMs);
               return (
@@ -101,10 +101,10 @@ export default function LevelClock({
           label="Time rail covers"
           value={shown}
           onChange={onRange}
-          className="ml-auto [&_button]:h-7 [&_button]:px-2.5"
+          className="ml-auto [&_button]:h-7 [&_button]:px-2.5 max-md:[&_button]:h-11"
           options={[
-            { id: "window", label: "Mission window" },
-            { id: "year", label: "All of 2027" },
+            { id: "window", label: "Window" },
+            { id: "year", label: "All 2027" },
           ]}
         />
       </div>

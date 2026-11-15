@@ -54,12 +54,12 @@ export function LabelLayer({ bridge, labels }: { bridge: PlateBridge; labels: Pl
                 className="pointer-events-auto absolute left-[-0.5px] block whitespace-nowrap border border-ink bg-paper px-2 py-1 text-left transition-colors duration-150 group-data-[side=left]:left-auto group-data-[side=left]:right-[-0.5px] hover:bg-paper-2 active:bg-paper-3"
                 style={{ bottom: `var(--staff, ${FLAG_STAFF}px)` }}
               >
-                <span className="flex items-center gap-1.5 text-[0.79rem] font-semibold uppercase leading-tight tracking-[0.06em] text-ink">
+                <span className="flex items-center gap-1.5 text-small font-semibold uppercase leading-tight tracking-[0.06em] text-ink">
                   <Swatch tint={l.tint} />
                   {l.text}
                 </span>
                 {l.detail && (
-                  <span className="block text-[0.702rem] leading-tight text-ink-2 tabular-nums">
+                  <span className="block text-label leading-tight text-ink-2 tabular-nums">
                     <span className="sr-only">, </span>
                     {l.detail}
                   </span>
@@ -78,7 +78,7 @@ export function LabelLayer({ bridge, labels }: { bridge: PlateBridge; labels: Pl
                 onClick={l.onActivate}
                 aria-pressed="false"
                 aria-label={l.ariaLabel}
-                className={`pointer-events-auto absolute left-[7px] top-0 flex -translate-y-1/2 items-center group-data-[side=left]:left-auto group-data-[side=left]:right-[7px] gap-1.5 whitespace-nowrap border bg-paper px-1.5 py-[3px] text-[0.702rem] font-semibold uppercase leading-none tracking-[0.08em] text-ink transition-colors duration-150 hover:border-ink hover:bg-paper-2 active:bg-paper-3 ${
+                className={`pointer-events-auto absolute left-[7px] top-0 flex -translate-y-1/2 items-center group-data-[side=left]:left-auto group-data-[side=left]:right-[7px] gap-1.5 whitespace-nowrap border bg-paper px-1.5 py-[3px] text-label font-semibold uppercase leading-none tracking-[0.08em] text-ink transition-colors duration-150 hover:border-ink hover:bg-paper-2 active:bg-paper-3 ${
                   l.hovered ? "border-ink bg-paper-2" : "border-ink/35"
                 }`}
               >
@@ -99,7 +99,7 @@ export function LabelLayer({ bridge, labels }: { bridge: PlateBridge; labels: Pl
               </svg>
               <span
                 ref={setBox}
-                className="absolute left-[12px] top-0 -translate-y-1/2 whitespace-nowrap bg-paper/85 px-1 py-px text-[0.702rem] font-semibold uppercase leading-none tracking-[0.08em] text-ink group-data-[quiet=1]:invisible group-data-[side=left]:left-auto group-data-[side=left]:right-[12px]"
+                className="absolute left-[12px] top-0 -translate-y-1/2 whitespace-nowrap bg-paper/85 px-1 py-px text-label font-semibold uppercase leading-none tracking-[0.08em] text-ink group-data-[quiet=1]:invisible group-data-[side=left]:left-auto group-data-[side=left]:right-[12px]"
               >
                 {l.text}
                 {l.detail ? <span className="ml-1.5 font-normal tracking-normal text-ink-2 normal-case tabular-nums">{l.detail}</span> : null}
@@ -114,7 +114,7 @@ export function LabelLayer({ bridge, labels }: { bridge: PlateBridge; labels: Pl
               </svg>
               <span
                 ref={setBox}
-                className="absolute left-[7px] top-0 -translate-y-1/2 whitespace-nowrap bg-paper/85 group-data-[side=left]:left-auto group-data-[side=left]:right-[7px] px-1 py-px text-[0.702rem] font-medium uppercase leading-none tracking-[0.08em] text-ink-2"
+                className="absolute left-[7px] top-0 -translate-y-1/2 whitespace-nowrap bg-paper/85 group-data-[side=left]:left-auto group-data-[side=left]:right-[7px] px-1 py-px text-label font-medium uppercase leading-none tracking-[0.08em] text-ink-2"
               >
                 {l.text}
               </span>
@@ -124,7 +124,7 @@ export function LabelLayer({ bridge, labels }: { bridge: PlateBridge; labels: Pl
           body = (
             <span
               ref={setBox}
-              className="absolute left-0 top-0 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap bg-paper/85 px-1 py-px text-[0.702rem] font-medium leading-none tracking-[0.04em] text-ink-2 tabular-nums"
+              className="absolute left-0 top-0 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap bg-paper/85 px-1 py-px text-label font-medium leading-none tracking-[0.04em] text-ink-2 tabular-nums"
             >
               {l.text}
             </span>
@@ -178,7 +178,7 @@ export function Indicators({
           </span>
           <span
             ref={(node) => bridge.attachIndicator(key, "box", node)}
-            className={`absolute left-0 top-0 flex items-baseline gap-1.5 whitespace-nowrap border border-rule bg-paper px-1.5 py-[3px] text-[0.702rem] leading-none tabular-nums ${tone}`}
+            className={`absolute left-0 top-0 flex items-baseline gap-1.5 whitespace-nowrap border border-rule bg-paper px-1.5 py-[3px] text-label leading-none tabular-nums ${tone}`}
           >
             {/* Bearing and elevation are in the dock's readout; the plate names the body only. */}
             <span className="font-semibold uppercase tracking-[0.08em]">{label}</span>

@@ -25,7 +25,7 @@ export default function LevelNav({ level, onLevel, className = "" }: { level: Le
                 aria-current={on ? "step" : undefined}
                 aria-label={on ? `${l.label} level, current` : `Go to the ${l.label} level`}
                 onClick={on ? undefined : () => onLevel(l.id)}
-                className={`block h-8 px-3 text-[0.75rem] font-semibold tracking-[0.08em] whitespace-nowrap uppercase transition-colors duration-150 focus-visible:outline-offset-2 ${
+                className={`block h-8 px-3 text-label font-semibold tracking-[0.08em] whitespace-nowrap uppercase transition-colors duration-150 focus-visible:outline-offset-2 ${
                   on ? "cursor-default bg-ink text-paper" : "text-ink-2 hover:bg-paper-3 hover:text-ink"
                 }`}
               >
@@ -58,12 +58,12 @@ export function ZoomHint({
   return (
     <div role="status" className="pointer-events-none absolute top-3 left-1/2 z-20 max-w-[calc(100%-1.5rem)] -translate-x-1/2 border border-ink bg-paper">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2.5 py-1">
-        <p className="text-[0.8rem] leading-snug text-ink">{text}</p>
+        <p className="text-small leading-snug text-ink">{text}</p>
         {action && (
           <button
             type="button"
             onClick={action.onClick}
-            className="pointer-events-auto inline-flex h-7 items-center gap-1 border border-ink bg-ink px-2 text-[0.8rem] font-semibold whitespace-nowrap text-paper hover:bg-umbra"
+            className="pointer-events-auto inline-flex h-7 items-center gap-1 border border-ink bg-ink px-2 text-small font-semibold whitespace-nowrap text-paper hover:bg-umbra"
           >
             {action.label}
             <span aria-hidden="true">→</span>

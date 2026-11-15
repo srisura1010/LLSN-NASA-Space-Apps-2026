@@ -90,7 +90,7 @@ const LAYERS: { id: keyof Layers; label: string }[] = [
 
 /** The plate's key, in the Legend popover. */
 function PlateLegend({ lit, sunKnown, score, track }: { lit: boolean; sunKnown: boolean; score: boolean; track: boolean }) {
-  const item = "flex items-center gap-2.5 py-1 text-[0.844rem] text-ink";
+  const item = "flex items-center gap-2.5 py-1 text-body text-ink";
   return (
     <ul className="m-0 list-none p-0">
       {lit ? (
@@ -517,30 +517,22 @@ export default function TerrainPlate({
   // than the slot's would push the scale bar and view tools out of sight.
   return (
     <figure className={`relative flex flex-col overflow-hidden bg-paper text-ink ${className ?? ""}`}>
+      {/* Phones: the level control, title and popovers are a row above the plate. From md they float over it. */}
+      <div className="flex items-start justify-between gap-2 max-md:border-b max-md:border-rule max-md:bg-paper-2 max-md:p-2">
       {/* Top left of the stage: the level control and the figure title, over the plate. */}
       <figcaption
         ref={(el) => bridge.attachReserved("top-left", el)}
-        className="pointer-events-none absolute top-2 left-2 z-20 flex max-w-[calc(100%-11rem)] flex-wrap items-center gap-2"
+        className="pointer-events-none z-20 flex min-w-0 flex-wrap items-center gap-2 max-md:pointer-events-auto md:absolute md:top-2 md:left-2 md:max-w-[calc(100%-11rem)]"
       >
         {levelNav}
         {caption && <span className="border border-rule bg-paper/90 px-2 py-1 leading-tight">{caption}</span>}
       </figcaption>
-      <div
-        ref={stageRef}
-        className="group/stage relative min-h-0 flex-1 overflow-hidden bg-paper outline-none"
-        tabIndex={showCanvas ? 0 : -1}
-        role="group"
-        aria-roledescription="3D terrain view"
-        aria-label={localMode ? "Terrain plate around the custom site" : "Terrain plate of the lunar south pole"}
-        aria-describedby={descId}
-        onKeyDown={onKeyDown}
-      >
-        {/* The Legend and Layers popovers, top right of the stage. */}
-        <div ref={(el) => bridge.attachReserved("top-right", el)} className="absolute top-2 right-2 z-30 flex gap-1">
+        {/* The Legend and Layers popovers, top right of the plate. */}
+        <div ref={(el) => bridge.attachReserved("top-right", el)} className="z-30 flex shrink-0 gap-1 md:absolute md:top-2 md:right-2">
           <Popover
             label="Legend for the terrain plate"
             button={<>Legend</>}
-            buttonClassName={toggleClass(false, "md")}
+            buttonClassName={`${toggleClass(false, "md")} bg-paper`}
             panelClassName="w-[19rem] p-3"
           >
             <PlateLegend lit={lit} sunKnown={!!sun} score={!!regionValues && !localMode} track={!!track} />
@@ -548,13 +540,13 @@ export default function TerrainPlate({
           <Popover
             label="Layers on the terrain plate"
             button={<>Layers</>}
-            buttonClassName={toggleClass(false, "md")}
+            buttonClassName={`${toggleClass(false, "md")} bg-paper`}
             panelClassName="w-[15rem] p-2"
           >
             <fieldset>
-              <legend className="px-1 pb-1.5 text-[0.75rem] font-semibold tracking-[0.08em] text-ink-2 uppercase">Show on the plate</legend>
+              <legend className="px-1 pb-1.5 text-label font-semibold tracking-[0.08em] text-ink-2 uppercase">Show on the plate</legend>
               {LAYERS.map((l) => (
-                <label key={l.id} className="flex cursor-pointer items-center gap-2 px-1 py-1 text-[0.844rem] text-ink hover:bg-paper-2">
+                <label key={l.id} className="flex cursor-pointer items-center gap-2 px-1 py-1 text-body text-ink hover:bg-paper-2">
                   <input
                     type="checkbox"
                     checked={layers[l.id]}
@@ -567,6 +559,17 @@ export default function TerrainPlate({
             </fieldset>
           </Popover>
         </div>
+      </div>
+      <div
+        ref={stageRef}
+        className="group/stage relative min-h-0 flex-1 overflow-hidden bg-paper outline-none"
+        tabIndex={showCanvas ? 0 : -1}
+        role="group"
+        aria-roledescription="3D terrain view"
+        aria-label={localMode ? "Terrain plate around the custom site" : "Terrain plate of the lunar south pole"}
+        aria-describedby={descId}
+        onKeyDown={onKeyDown}
+      >
         <ZoomHint
           text={zoomHint === "out" && showCanvas ? "Keep zooming out for the Moon level, or" : null}
           progress={zoomProgress}
@@ -631,7 +634,7 @@ export default function TerrainPlate({
 
         {showPlan && (
           <div className="absolute inset-0 flex flex-col">
-            <p className="border-b border-rule bg-paper-2 px-3 py-2 text-[0.79rem] text-ink-2">
+            <p className="border-b border-rule bg-paper-2 px-3 py-2 text-small text-ink-2">
               {glFailed === "lost"
                 ? "The 3D view stopped because the graphics context was lost. "
                 : localMode
@@ -664,8 +667,8 @@ export default function TerrainPlate({
         {loading && (
           <div className="absolute inset-0 flex items-end bg-paper-2 p-4" role="status" aria-live="polite">
             <div className="w-full max-w-[22rem]">
-              <p className="text-[0.79rem] font-semibold uppercase tracking-[0.06em] text-ink">Loading LOLA terrain</p>
-              <p className="mt-0.5 text-[0.79rem] text-ink-2 tabular-nums">
+              <p className="text-small font-semibold uppercase tracking-[0.06em] text-ink">Loading LOLA terrain</p>
+              <p className="mt-0.5 text-small text-ink-2 tabular-nums">
                 {gl === "checking"
                   ? "Checking graphics support"
                   : terrain
@@ -687,7 +690,7 @@ export default function TerrainPlate({
         <div className="pointer-events-none absolute inset-x-2 bottom-2 z-10 flex items-end justify-between gap-3">
           <div ref={(el) => bridge.attachReserved("scale", el)} className="flex flex-wrap items-end gap-x-3 gap-y-1">
             {showCanvas && <ScaleBar drawer={rose} />}
-            <p className={`bg-paper/85 px-1.5 py-0.5 text-[0.702rem] leading-snug text-ink-2 ${localMode && error ? "hidden" : ""}`}>
+            <p className={`bg-paper/85 px-1.5 py-0.5 text-label leading-snug text-ink-2 ${localMode && error ? "hidden" : ""}`}>
               {localMode ? (localTerrain ? `${localTerrain.label}; ±${Math.round(localTerrain.half / 1000)} km` : "LOLA terrain from NASA Moon Trek") : "LOLA 640 m grid"}, relief ×{EXAGGERATION}
               {lit ? "; shadows traced at true scale" : ""}
             </p>
@@ -718,15 +721,15 @@ export default function TerrainPlate({
         {error && !showPlan && (
           <div className="absolute inset-0 flex items-end bg-paper-2 p-4" role="alert">
             <div className="max-w-[26rem]">
-              <p className="text-[0.79rem] font-semibold uppercase tracking-[0.06em] text-ink">Terrain unavailable</p>
-              <p className="mt-0.5 text-[0.79rem] text-ink-2">
+              <p className="text-small font-semibold uppercase tracking-[0.06em] text-ink">Terrain unavailable</p>
+              <p className="mt-0.5 text-small text-ink-2">
                 {error}
                 {localMode ? " Until it loads, the numbers beside this plate use a smooth horizon." : " Check the connection, then try again."}
               </p>
               <button
                 type="button"
                 onClick={retry}
-                className="mt-2 border border-ink bg-paper px-2.5 py-1 text-[0.79rem] font-semibold text-ink transition-colors duration-150 hover:bg-paper-3"
+                className="mt-2 border border-ink bg-paper px-2.5 py-1 text-small font-semibold text-ink transition-colors duration-150 hover:bg-paper-3"
               >
                 Try again
               </button>

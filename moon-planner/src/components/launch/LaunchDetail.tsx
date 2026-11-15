@@ -44,7 +44,7 @@ function OpportunityAxis({ list, chosen }: { list: LaunchOpportunity[]; chosen: 
     <div aria-hidden="true" className="select-none">
       {SWEEPS.map((s) => (
         <div key={s.key} className="mt-2 first:mt-0">
-          <p className="text-[0.75rem] text-ink-2">{s.label}</p>
+          <p className="text-label text-ink-2">{s.label}</p>
           <div className="relative mt-1 h-7 border-b border-ink">
             {ticks.map((t) => (
               <span
@@ -61,7 +61,7 @@ function OpportunityAxis({ list, chosen }: { list: LaunchOpportunity[]; chosen: 
                   return (
                     <span key={o.launchMs} className="absolute inset-y-0" style={{ left: x(o.launchMs) }}>
                       <span className={`absolute bottom-0 block h-4 w-[3px] -translate-x-1/2 bg-umbra ${on ? "outline-2 outline-offset-1 outline-ink" : ""}`} />
-                      <span className={`absolute bottom-0.5 ${frac(o.launchMs) > 0.7 ? "right-1.5" : "left-1.5"} text-[0.75rem] leading-none font-medium whitespace-nowrap text-umbra tabular-nums`}>
+                      <span className={`absolute bottom-0.5 ${frac(o.launchMs) > 0.7 ? "right-1.5" : "left-1.5"} text-label leading-none font-medium whitespace-nowrap text-umbra tabular-nums`}>
                         needs {o.azimuthDeg.toFixed(0)}°
                       </span>
                     </span>
@@ -94,12 +94,12 @@ function OpportunityAxis({ list, chosen }: { list: LaunchOpportunity[]; chosen: 
         {ticks
           .filter((t) => t % DAY_MS === 0 && frac(t) < 0.88)
           .map((t) => (
-            <span key={t} className="absolute top-1 text-[0.75rem] text-ink-2 tabular-nums whitespace-nowrap" style={{ left: x(t) }}>
+            <span key={t} className="absolute top-1 text-label text-ink-2 tabular-nums whitespace-nowrap" style={{ left: x(t) }}>
               {fmtDate(t)}
             </span>
           ))}
       </div>
-      <p className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[0.75rem] text-ink-2">
+      <p className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-label text-ink-2">
         <span className="inline-flex items-center gap-1.5">
           <span className="block h-2.5 w-4 border border-earth bg-earth" />
           Window, usable
@@ -181,8 +181,8 @@ function MissionSteps({ o, transitDays }: { o: LaunchOpportunity; transitDays: n
             }`}
           />
           <span className={`block ${capsLabel}`}>{s.label}</span>
-          <span className="block text-[0.95rem] font-semibold text-ink tabular-nums">{s.value}</span>
-          <span className="block text-[0.844rem] text-ink-2 tabular-nums">{s.note}</span>
+          <span className="block text-lead font-semibold text-ink tabular-nums">{s.value}</span>
+          <span className="block text-body text-ink-2 tabular-nums">{s.note}</span>
         </li>
       ))}
     </ol>
@@ -216,11 +216,11 @@ export default function LaunchDetail({ site, list, chosen, transitDays, onChoose
     <div role="region" aria-labelledby={headingId} className="border-t border-rule bg-paper px-4 pt-4 pb-5">
       <div className="grid gap-x-8 gap-y-6 @5xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
         <div className="min-w-0">
-          <h4 className="text-[0.95rem] font-semibold text-ink">
+          <h4 className="text-lead font-semibold text-ink">
             Every opportunity within a day of the nominal departure
           </h4>
           {list.length === 0 ? (
-            <p className="mt-2 text-[0.844rem] text-ink-2">No launch opportunity falls inside the search span for this transfer time.</p>
+            <p className="mt-2 text-body text-ink-2">No launch opportunity falls inside the search span for this transfer time.</p>
           ) : (
             <>
               <div className="mt-3">
@@ -236,7 +236,7 @@ export default function LaunchDetail({ site, list, chosen, transitDays, onChoose
                         type="button"
                         aria-pressed={on}
                         onClick={() => onChoose(o)}
-                        className={`grid w-full grid-cols-[0.875rem_minmax(0,1fr)] items-baseline gap-x-2 px-1.5 py-1.5 text-left text-[0.844rem] tabular-nums transition-colors duration-150 focus-visible:outline-offset-[-2px] @2xl:grid-cols-[0.875rem_8rem_minmax(0,1fr)_minmax(0,1fr)_auto] ${
+                        className={`grid w-full grid-cols-[0.875rem_minmax(0,1fr)] items-baseline gap-x-2 px-1.5 py-1.5 text-left text-body tabular-nums transition-colors duration-150 focus-visible:outline-offset-[-2px] @2xl:grid-cols-[0.875rem_8rem_minmax(0,1fr)_minmax(0,1fr)_auto] ${
                           on ? "bg-paper-3" : "hover:bg-paper-2 active:bg-paper-3"
                         }`}
                       >
@@ -259,13 +259,13 @@ export default function LaunchDetail({ site, list, chosen, transitDays, onChoose
         </div>
 
         <div className="min-w-0">
-          <h4 className="text-[0.95rem] font-semibold text-ink">Allowed launch directions</h4>
+          <h4 className="text-lead font-semibold text-ink">Allowed launch directions</h4>
           <div className="mt-3 flex items-start gap-4">
             <AzimuthDial site={site} azimuthDeg={chosen?.azimuthDeg ?? null} blocked={chosen?.rating === "blocked"} />
-            <div className="min-w-0 text-[0.844rem] text-ink-2">
-              <p className="text-[0.95rem] font-semibold text-ink tabular-nums">
+            <div className="min-w-0 text-body text-ink-2">
+              <p className="text-lead font-semibold text-ink tabular-nums">
                 {formatAzimuthRanges(site)}{" "}
-                <span className="ml-1 border border-ink-2 px-1 align-[0.1em] text-[0.75rem] font-semibold uppercase tracking-[0.06em] text-ink-2">
+                <span className="ml-1 border border-ink-2 px-1 align-[0.1em] text-label font-semibold uppercase tracking-[0.06em] text-ink-2">
                   {site.azimuthSource === "published" ? "Published" : "Approximate"}
                 </span>
               </p>
@@ -293,10 +293,10 @@ export default function LaunchDetail({ site, list, chosen, transitDays, onChoose
 
       {chosen && (
         <div className="mt-6">
-          <h4 className="text-[0.95rem] font-semibold text-ink">
+          <h4 className="text-lead font-semibold text-ink">
             Mission timeline for the {fmtClock(chosen.launchMs)} UTC lift-off on {fmtDate(chosen.launchMs)}
           </h4>
-          {chosen.rating !== "good" && <p className="mt-1 max-w-[70ch] text-[0.844rem] text-pretty text-ink-2">{plainReason(chosen, site)}</p>}
+          {chosen.rating !== "good" && <p className="mt-1 max-w-[70ch] text-body text-pretty text-ink-2">{plainReason(chosen, site)}</p>}
           <div className="mt-4 pl-1 @3xl:pl-0">
             <MissionSteps o={chosen} transitDays={transitDays} />
           </div>
@@ -304,7 +304,7 @@ export default function LaunchDetail({ site, list, chosen, transitDays, onChoose
             <Button variant="primary" onClick={showOnEarth}>
               Show this launch on Earth
             </Button>
-            <p className="min-w-0 flex-1 basis-64 text-[0.844rem] text-pretty text-ink-2">
+            <p className="min-w-0 flex-1 basis-64 text-body text-pretty text-ink-2">
               Opens the System level with {site.name} marked on Earth and the path to the Moon drawn for this lift-off.
             </p>
           </div>
