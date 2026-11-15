@@ -4,7 +4,7 @@ export function MoonSky() {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none fixed inset-0 -z-10 bg-black bg-cover bg-center bg-no-repeat"
+      className="landing-moon pointer-events-none fixed inset-0 -z-10 bg-black bg-cover bg-center bg-no-repeat"
       style={{ backgroundImage: "url(/landing/moon.jpg?v=4)" }}
     />
   );
