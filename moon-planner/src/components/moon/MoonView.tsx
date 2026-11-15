@@ -19,6 +19,7 @@ import { useZoomGate } from "../levels/useZoomGate";
 import { BearingTag, Bearing, CLUSTER_AT, ClusterMark, Flag, HIT, LABEL_TEXT, LINE_NAMES, LIFT, LineLegend, LabelProjector, OVER, POLE_DIR, RAY, Ray, arcTowards, handoff, onGlobe, toScene, type Label } from "./marks";
 import { MoonGlobe, loadFineTextures, loadTextures, type FineTextures, type Textures } from "./moonMaterial";
 import PointPanel, { type PickedPoint } from "./PointPanel";
+import { REGION_GATE_LAT, centreOf, siteTarget, viewCentre } from "./siteTarget";
 import type { TileStatus } from "./tiles/TileLayer";
 
 export type MoonViewProps = {
@@ -26,12 +27,17 @@ export type MoonViewProps = {
   onScrub?: (ms: number) => void;
   selectedId: string | null;
   onSelect: (id: string) => void;
-  /** Zooming in past the limit over the south polar cap steps down to the terrain plate. */
-  onOpenSite?: () => void;
+  /**
+   * Zooming in past the limit steps down to the site level of the place at the centre of the view, given here; the
+   * rule for what opens there is siteTarget.
+   */
+  onOpenSite?: (centre: LatLon) => void;
   /** Zooming out past the limit steps up to the Earth–Moon framing of the System level. */
   onOpenSystem?: () => void;
   /** How the view was reached by zoom: "above" opens far out, "below" opens close in on the south pole. */
   entry?: "above" | "below" | null;
+  /** Arriving from the site level of a point outside the nine regions, the view opens close in on that point instead. */
+  entryPoint?: LatLon | null;
   /** The level indicator and step buttons, shown with the view's controls. */
   levelNav?: ReactNode;
   /** The mission window, marked on the year rail. */
@@ -120,12 +126,10 @@ async function loadOutlines(): Promise<RegionOutline[]> {
 // ---------- Camera ----------
 
 type FramingId = "pole" | "near" | "sun" | "point";
-type Framing = { id: FramingId; dir: Vec3; zoom?: "near" | "far" };
+type Framing = { id: FramingId; dir: Vec3; zoom?: "near" | "far" | "close" };
 const MIN_DISTANCE = 1.45;
 /** Camera distance, in Moon radii, at which zooming in over the polar cap opens the site level; the plate outline is still whole in view. */
 const SITE_GATE_DISTANCE = 1.9;
-/** The gate is open while the point under the view centre is south of this latitude, so the site-level outline is what the view is closing on. */
-const SITE_GATE_SIN = Math.sin(-70 * RAD);
 /** Default camera distance: the globe spans about five sixths of the view's height, leaving room for the lines to the Sun and Earth. */
 const BASE_DISTANCE = 4.7;
 /** Inside this distance the nine regions are drawn one by one; beyond it (with some slack, so the change does not flicker) they are one mark. */
@@ -134,7 +138,10 @@ const REGIONS_FAR = 3.4;
 /** Arriving from the site level: almost straight down on the pole, so the plate outline fills the view. */
 const POLE_CLOSE_DIR = onGlobe(-85, 0);
 
-function Rig({ framing, onView }: { framing: Framing; onView: (distance: number, min: number, max: number, inOk: boolean) => void }) {
+/** What the rig reports each frame: the camera distance, the far limit, and the place at the centre of the view. */
+type OnView = (distance: number, max: number, centre: LatLon) => void;
+
+function Rig({ framing, onView }: { framing: Framing; onView: OnView }) {
   const camera = useThree((s) => s.camera);
   const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
   const invalidate = useThree((s) => s.invalidate);
@@ -144,7 +151,7 @@ function Rig({ framing, onView }: { framing: Framing; onView: (distance: number,
   const max = base * 1.6;
 
   useEffect(() => {
-    const d = framing.zoom === "near" ? SITE_GATE_DISTANCE * 1.3 : framing.zoom === "far" ? max * 0.8 : base;
+    const d = framing.zoom === "near" ? SITE_GATE_DISTANCE * 1.3 : framing.zoom === "close" ? MIN_DISTANCE * 1.3 : framing.zoom === "far" ? max * 0.8 : base;
     camera.position.set(framing.dir[0] * d, framing.dir[1] * d, framing.dir[2] * d);
     controls.current?.target.set(0, 0, 0);
     controls.current?.update();
@@ -154,7 +161,8 @@ function Rig({ framing, onView }: { framing: Framing; onView: (distance: number,
   useFrame(({ camera: cam }) => {
     const d = cam.position.length();
     handoff.moonDir = [cam.position.x / d, cam.position.y / d, cam.position.z / d];
-    onView(d, SITE_GATE_DISTANCE, max, cam.position.y / d <= SITE_GATE_SIN);
+    viewCentre.current = centreOf(handoff.moonDir);
+    onView(d, max, viewCentre.current);
   }, -1);
 
   return (
@@ -223,7 +231,7 @@ function Scene({
   framing: Framing;
   labels: Label[];
   overlay: RefObject<HTMLDivElement | null>;
-  onView: (distance: number, min: number, max: number, inOk: boolean) => void;
+  onView: OnView;
   outlines: RegionOutline[];
   near: boolean;
   site: Site | null;
@@ -527,6 +535,7 @@ export default function MoonView({
   onOpenSite,
   onOpenSystem,
   entry,
+  entryPoint = null,
   levelNav,
   windowMs,
   point = null,
@@ -540,11 +549,13 @@ export default function MoonView({
   const [attempt, setAttempt] = useState(0);
   // Opened from a link that carries a point, the globe starts turned to it.
   const [framing, setFraming] = useState<Framing>(() =>
-    entry === "below"
-      ? { id: "pole", dir: POLE_CLOSE_DIR, zoom: "near" }
-      : !entry && point
-        ? { id: "point", dir: onGlobe(point.lat, point.lon) }
-        : { id: "pole", dir: POLE_DIR, zoom: entry === "above" ? "far" : undefined },
+    entry === "below" && entryPoint
+      ? { id: "point", dir: onGlobe(entryPoint.lat, entryPoint.lon), zoom: entryPoint.lat <= REGION_GATE_LAT ? "near" : "close" }
+      : entry === "below"
+        ? { id: "pole", dir: POLE_CLOSE_DIR, zoom: "near" }
+        : !entry && point
+          ? { id: "point", dir: onGlobe(point.lat, point.lon) }
+          : { id: "pole", dir: POLE_DIR, zoom: entry === "above" ? "far" : undefined },
   );
   // Pick mode: a click on the globe that is not a drag drops the pin. Shift-click does the same with the mode off.
   const [pickMode, setPickMode] = useState(false);
@@ -567,13 +578,26 @@ export default function MoonView({
     onPoint?.({ lat, lon });
     setFraming({ id: "point", dir: onGlobe(lat, lon) });
   };
-  const { setHost, report, hint, progress } = useZoomGate({ onIn: onOpenSite, onOut: onOpenSystem });
+  // The gate opens the site level of whatever is at the centre of the view when it fires.
+  const centreRef = useRef<LatLon | null>(null);
+  const openCentre = useCallback(() => {
+    if (centreRef.current) onOpenSite?.(centreRef.current);
+  }, [onOpenSite]);
+  const { setHost, report, hint, progress } = useZoomGate({ onIn: onOpenSite ? openCentre : undefined, onOut: onOpenSystem });
+  // The view centre, kept as state only while the camera is near the zoom-in limit, where the hint names it.
+  const [centre, setCentre] = useState<LatLon | null>(null);
   // What the camera distance changes besides the picture: whether the regions are drawn one by one, and how long
   // the bearing lines are on the globe so that they stay about the same length on screen.
   const [zoom, setZoom] = useState<{ near: boolean; step: number }>({ near: entry === "below", step: 12 });
   const onView = useCallback(
-    (distance: number, min: number, max: number, inOk: boolean) => {
-      report(distance, min, max, inOk);
+    (distance: number, max: number, at: LatLon) => {
+      // Over the polar cap the gate opens early, while the plate outline is still whole in view; anywhere else the
+      // camera goes all the way in first, so the detail tiles can be looked at without leaving the Moon level.
+      const min = at.lat <= REGION_GATE_LAT ? SITE_GATE_DISTANCE : MIN_DISTANCE;
+      centreRef.current = at;
+      report(distance, min, max, true);
+      const shown = distance <= min * 1.2 ? at : null;
+      setCentre((prev) => (prev === shown || (prev && shown && prev.lat === shown.lat && prev.lon === shown.lon) ? prev : shown));
       setZoom((prev) => {
         const near = distance < (prev.near ? REGIONS_FAR : REGIONS_NEAR);
         const step = Math.round(Math.log(Math.max(distance - 1, 0.3)) / Math.log(1.1));
@@ -583,14 +607,6 @@ export default function MoonView({
     [report],
   );
   const bearingLen = Math.min(0.3, Math.max(0.03, 0.062 * 1.1 ** zoom.step));
-  const hintText =
-    hint === "in"
-      ? "Keep zooming to open the site level"
-      : hint === "in-blocked"
-        ? "Turn the south pole towards you, then zoom in to open the site level"
-        : hint === "out"
-          ? "Keep zooming out to open the System level"
-          : null;
   const [showLandings, setShowLandings] = useState(true);
   // Detail tiles come from NASA Moon Trek as the view closes in; off, the globe is drawn from the bundled maps alone.
   const [detail, setDetail] = useState(true);
@@ -642,6 +658,16 @@ export default function MoonView({
   const frame = useMemo(() => (data ? moonFrameAt(data, ms) : null), [data, ms]);
   const state = useMemo(() => (data ? stateAt(data, ms) : null), [data, ms]);
   const site = useMemo(() => sites.find((s) => s.id === selectedId) ?? null, [selectedId]);
+
+  // The zoom-in hint names what will open: the picked point, the selected region, or the place at the view centre.
+  const target = hint === "in" && centre ? siteTarget(centre, point) : null;
+  const hintText = target
+    ? target.kind === "region"
+      ? `Keep zooming to open ${site ? site.name : "the site level"}`
+      : `Keep zooming to open ${target.kind === "point" ? "the picked point" : "a site here"}: ${fmtLat(target.lat)}, ${fmtLon(target.lon)}`
+    : hint === "out"
+      ? "Keep zooming out to open the System level"
+      : null;
 
   const span = useMemo(() => (data ? { startMs: data.startMs, endMs: systemEndMs(data) } : null), [data]);
   useYearPlayback(playing, span, ms, onScrub);
@@ -758,6 +784,13 @@ export default function MoonView({
           className={`relative isolate min-h-[24rem] flex-1 overflow-hidden bg-paper ${pickMode ? "cursor-crosshair" : ""}`}
         >
           <ZoomHint text={hintText} progress={progress} />
+          {target && (
+            // The spot the hint names: four hairline ticks about the view centre, cased in paper so they read on the night side.
+            <svg data-centre-mark aria-hidden="true" viewBox="-14 -14 28 28" className="pointer-events-none absolute top-1/2 left-1/2 z-10 size-7 -translate-x-1/2 -translate-y-1/2">
+              <path d="M-13 0h8M5 0h8M0-13v8M0 5v8" fill="none" stroke={PAPER} strokeWidth="3" />
+              <path d="M-13 0h8M5 0h8M0-13v8M0 5v8" fill="none" stroke={INK} strokeWidth="1" />
+            </svg>
+          )}
           {pickMode && frame && (
             <p role="status" className="pointer-events-none absolute top-3 left-3 z-10 border border-ink bg-paper px-2.5 py-1 text-[0.8rem] leading-snug text-ink">
               Click the globe to drop a pin. Drag still turns it.
@@ -827,8 +860,8 @@ export default function MoonView({
 
         <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2 border-t border-rule px-4 py-2">
           <p className="min-w-[16rem] flex-1 text-[0.8rem] leading-snug text-ink-2">
-            Drag to turn the globe, scroll to zoom, shift-click to pick a point; zooming in on the south pole opens the site level, zooming out opens
-            the System level. The terminator, the lines to the Sun and Earth and the Moon&apos;s orientation are
+            Drag to turn the globe, scroll to zoom, shift-click to pick a point; zooming all the way in opens the site level of the place at the
+            centre of the view (the selected region over the south pole), zooming out opens the System level. The terminator, the lines to the Sun and Earth and the Moon&apos;s orientation are
             computed for the time shown; relief shading is exaggerated and no cast shadows are drawn, so use the site
             level for terrain shadow.
           </p>

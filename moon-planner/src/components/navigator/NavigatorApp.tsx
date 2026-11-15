@@ -19,6 +19,7 @@ import { formatLatLon, sites } from "@/lib/sites";
 import { customHorizonMethod, loadCustomSite } from "@/lib/customSite";
 import { POINT_SITE_ID, SMOOTH_METHOD, buildSmoothSite, isSmoothSite } from "@/lib/anySite";
 import { buildGlobalSite, isGlobalSite, loadLocalTerrain } from "@/lib/localTerrain";
+import { siteTarget, viewCentre } from "../moon/siteTarget";
 import { loadSystem, type SystemData } from "@/lib/system";
 import HorizonPlot from "./HorizonPlot";
 import RegionTable, { CustomSiteForm, GAP_LIMITS, type CustomSiteState, type RankedRow } from "./RegionTable";
@@ -783,7 +784,6 @@ export default function NavigatorApp() {
   const stepLevel = useCallback((to: Level) => goLevel(to, false), [goLevel]);
   const zoomToSystem = useCallback(() => goLevel("system", true), [goLevel]);
   const zoomToMoon = useCallback(() => goLevel("moon", true), [goLevel]);
-  const zoomToSite = useCallback(() => goLevel("site", true), [goLevel]);
   const systemSample = useMemo(
     () => (view === "system" && selectedData ? sampleAt(selectedData, systemNow) : null),
     [view, selectedData, systemNow],
@@ -948,6 +948,39 @@ export default function NavigatorApp() {
       changeView("navigator");
     },
     [addCustom, changeView],
+  );
+
+  /**
+   * Step down from the Moon level to the site level of the place at the centre of the view: the picked point if it
+   * is close by, the selected region over the south polar cap, and anywhere else the centre itself, which becomes
+   * the picked point. A point opens through the same load as "Open site level".
+   */
+  const openSiteAt = useCallback(
+    (centre: { lat: number; lon: number } | null, byZoom: boolean) => {
+      if (hop.current) return;
+      const t = centre ? siteTarget(centre, point) : null;
+      if (t && t.kind !== "region") {
+        if (t.kind === "centre") pickPoint({ lat: t.lat, lon: t.lon });
+        // The same point, already loaded, is opened as it stands.
+        if (custom && custom.status === "ready" && samePoint(custom, t)) setSelectedId(CUSTOM_ID);
+        else addCustom(t.lat, t.lon);
+      }
+      goLevel("site", byZoom);
+    },
+    [point, custom, pickPoint, addCustom, goLevel],
+  );
+  const zoomToSite = useCallback((centre: { lat: number; lon: number }) => openSiteAt(centre, true), [openSiteAt]);
+  /** The Moon level's step buttons: down to the site level follows the same rule as zooming in. */
+  const stepFromMoon = useCallback(
+    (to: Level) => (to === "site" ? openSiteAt(viewCentre.current, false) : goLevel(to, false)),
+    [openSiteAt, goLevel],
+  );
+  // Leaving the site level of a point outside the nine regions, the Moon level opens centred on that point.
+  const moonEntryLat = custom?.lat;
+  const moonEntryLon = custom?.lon;
+  const moonEntryPoint = useMemo(
+    () => (effectiveId === CUSTOM_ID && moonEntryLat !== undefined && moonEntryLon !== undefined ? { lat: moonEntryLat, lon: moonEntryLon } : null),
+    [effectiveId, moonEntryLat, moonEntryLon],
   );
 
   /** Put the picked point in the Compare view, beside what is already there, and open it. */
@@ -1159,7 +1192,8 @@ export default function NavigatorApp() {
             onOpenSite={zoomToSite}
             onOpenSystem={zoomToSystem}
             entry={arrival}
-            levelNav={<LevelNav level="moon" onLevel={stepLevel} />}
+            entryPoint={moonEntryPoint}
+            levelNav={<LevelNav level="moon" onLevel={stepFromMoon} />}
             windowMs={systemWindow}
             point={point}
             pointSite={pointSite}
