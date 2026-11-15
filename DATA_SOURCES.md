@@ -238,3 +238,9 @@ the United States; Space Apps asks that each source is credited.
 - **Credit line:** Moon and Earth positions: NASA/JPL Horizons. Launch site
   data: operators and agencies as listed; azimuth ranges marked approximate
   are this project's estimates.
+
+## Earth globe (System level)
+
+- **Blue Marble Next Generation with Topography and Bathymetry, July 2004** (`world.topo.bathy.200407.3x5400x2700.jpg`). NASA Earth Observatory (Reto Stöckli); public domain. Source: https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-topography-bathymetry/july/world.topo.bathy.200407.3x5400x2700.jpg. Resized to `moon-planner/public/textures/earth_color_2k.jpg` and `earth_color_4k.jpg`.
+- Earth's orientation uses the Earth Rotation Angle (IAU 2000, UT1 taken as UTC) about the mean pole; see `moon-planner/src/lib/earthFrame.ts` and `npx tsx scripts/check-earth-frame.ts`.
+

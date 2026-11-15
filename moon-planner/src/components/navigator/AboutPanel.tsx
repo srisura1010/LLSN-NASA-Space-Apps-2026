@@ -343,6 +343,12 @@ function AboutPanel({ entries, loading }: Props) {
               time are computed from those vectors. The default drawing enlarges the bodies and stretches the Earth to
               Moon distance so all three are visible, and says so; the true scale option keeps real ratios.
             </p>
+            <p>
+              Earth is drawn from NASA Earth Observatory&apos;s Blue Marble Next Generation picture (July 2004, with
+              topography and bathymetry; NASA Earth Observatory, Reto Stöckli), printed as sea, land relief and
+              coastline, and turned by the Earth Rotation Angle about the pole of date, so the lit hemisphere and the
+              points where the Sun and Moon are overhead are right for the time shown to about 0.01°.
+            </p>
           </Section>
 
           <Section id="about-check" title="Checked against NASA">

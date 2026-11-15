@@ -16,6 +16,7 @@ import {
 } from "react";
 import { loadSite, rankSites, sampleAt, type MissionScore, type SiteData } from "@/lib/sky";
 import { formatLatLon, sites } from "@/lib/sites";
+import { launchSites } from "@/lib/launchSites";
 import { customHorizonMethod, loadCustomSite } from "@/lib/customSite";
 import { POINT_SITE_ID, SMOOTH_METHOD, buildSmoothSite, isSmoothSite } from "@/lib/anySite";
 import { buildGlobalSite, isGlobalSite, loadLocalTerrain } from "@/lib/localTerrain";
@@ -61,6 +62,9 @@ const DEFAULT_GAP = 48;
 const CUSTOM_MARGIN_MS = 14 * DAY;
 /** Playback runs through the whole window in this many milliseconds. */
 const PLAY_SPAN_MS = 12_000;
+
+/** The launch sites in the shape the System view draws: marks plus the allowed azimuth fan. */
+const LAUNCH_MARKS = launchSites.map((s) => ({ id: s.id, name: s.name, group: s.group, lat: s.lat, lon: s.lon, azimuthRanges: s.azimuths.map((r) => [r.min, r.max] as [number, number]) }));
 
 type View = "navigator" | "moon" | "system" | "compare" | "about";
 const TABS: { id: View; label: string }[] = [
@@ -402,6 +406,8 @@ const samePoint = (a: { lat: number; lon: number }, b: { lat: number; lon: numbe
 
 export default function NavigatorApp() {
   const params = useSearchParams();
+  // TODO(launch window, step 3): remove with the ?launchdemo=1 sample transfer below.
+  const [launchDemo] = useState(() => Boolean(params.get("launchdemo")));
   const pathname = usePathname();
   const query = params.toString();
   const [init] = useState(() => readUrl(new URLSearchParams(query)));
@@ -1177,6 +1183,8 @@ export default function NavigatorApp() {
             onOpenMoon={zoomToMoon}
             entry={arrival}
             levelNav={<LevelNav level="system" onLevel={stepLevel} />}
+            launchSites={LAUNCH_MARKS}
+            transferArc={launchDemo ? { launchMs: systemNow, arrivalMs: systemNow + 3.2 * 86_400_000, launchSiteId: "kennedy" } : null}
             className="h-full"
           />
         </div>
