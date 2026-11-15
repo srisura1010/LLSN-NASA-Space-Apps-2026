@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "precompute": "tsx scripts/precompute-horizons.ts",
-    "process-dem": "tsx scripts/process-dem.ts"
+    "process-dem": "tsx scripts/process-dem.ts",
+    "build-sky": "tsx scripts/build-sky.ts"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",
