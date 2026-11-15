@@ -1,13 +1,18 @@
 "use client";
 
 // System level: the Sun, Earth and Moon from JPL Horizons vectors, drawn as a
-// printed orbit diagram and driven by the Navigator's clock.
+// printed orbit diagram and driven by the Navigator's clock. The Moon is the
+// same relief globe as the Moon level, turned by the same rotation model, and
+// carries the same lines to the Sun and Earth, so the geometry can be followed
+// from here down to the site.
 
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Line, OrbitControls } from "@react-three/drei";
-import { BackSide, Color, Quaternion, Vector3, type Group } from "three";
+import { Color, Matrix4, Quaternion, Vector3, type Camera, type Group, type ShaderMaterial } from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
+import { elevationDeg, equatorialToEcliptic, moonAxes, moonFrameAt, type MoonFrame } from "@/lib/moonFrame";
+import { sites, type Site } from "@/lib/sites";
 import {
   AU_KM,
   EARTH_RADIUS_KM,
@@ -23,6 +28,26 @@ import {
 import YearSlider, { MONTHS, fmtUtc, useYearPlayback } from "./YearSlider";
 import { ZoomHint } from "../levels/LevelNav";
 import { useZoomGate } from "../levels/useZoomGate";
+import {
+  Bearing,
+  BearingTag,
+  CLUSTER_AT,
+  ClusterMark,
+  Flag,
+  LABEL_TEXT,
+  LINE_NAMES,
+  LabelProjector,
+  LineLegend,
+  POLE_DIR,
+  Ray,
+  arcTowards,
+  handoff,
+  onGlobe,
+  toScene as bodyToScene,
+  type Label,
+  type Sphere,
+} from "../moon/marks";
+import { MoonGlobe, Rim, loadFineTextures, loadTextures, type FineTextures, type Textures } from "../moon/moonMaterial";
 
 export type SystemViewProps = {
   nowMs: number;
@@ -44,26 +69,28 @@ export type SystemViewProps = {
 
 type Scale = "display" | "true";
 type FramingId = "system" | "pair";
-/** start: where the camera opens. "near" and "far" keep its direction and sit just inside a zoom limit. */
+/** start: where the camera opens. "near" and "far" sit just inside a zoom limit. */
 type Framing = { id: FramingId; start: "default" | "near" | "far" };
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
+const RAD = Math.PI / 180;
+const J2000_MS = Date.UTC(2000, 0, 1, 12, 0, 0);
 /** Scene units per km: 1 au is 100 units. */
 const U = 100 / AU_KM;
 /** Display scale: how far the Earth-Moon distance and the body radii are stretched. */
 const PAIR_STRETCH = 50;
 const BODY_STRETCH = 800;
 const SUN_STRETCH = 15;
+const FOV = 35;
 
 const INK = "#121a22";
 const INK_2 = "#3a4752";
 const RULE = "#b9c3c2";
 const PAPER = "#eef1f0";
 const SUN = "#f0b400";
-const SUN_INK = "#7a5600";
 const EARTH_LIT = "#2453c2";
-const EARTH_DARK = "#1c2b47";
+const EARTH_DARK = "#273a52";
 const MOON_LIT = "#c4cacb";
 const UMBRA = "#3d5466";
 
@@ -72,101 +99,172 @@ const toScene = (v: Vec3, k = U): Vec3 => [v[0] * k, v[2] * k, -v[1] * k];
 const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const mul = (a: Vec3, k: number): Vec3 => [a[0] * k, a[1] * k, a[2] * k];
 const unit = (a: Vec3): Vec3 => mul(a, 1 / Math.hypot(a[0], a[1], a[2]));
+const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 
 const fmtInt = (n: number) => Math.round(n).toLocaleString("en-US");
 const fmtSigned = (n: number, digits = 1) => `${n < 0 ? "−" : "+"}${Math.abs(n).toFixed(digits)}°`;
 
-// ---------- Scene ----------
+/**
+ * The rotation that carries a body's own scene axes (x through its 0° N 0° E, y through its north pole) into this
+ * scene, from the body's x and z axes in equatorial J2000.
+ */
+function bodyOrientation(xEq: Vec3, zEq: Vec3): Quaternion {
+  const yEq: Vec3 = [zEq[1] * xEq[2] - zEq[2] * xEq[1], zEq[2] * xEq[0] - zEq[0] * xEq[2], zEq[0] * xEq[1] - zEq[1] * xEq[0]];
+  const s = (v: Vec3) => new Vector3(...toScene(equatorialToEcliptic(v), 1));
+  return new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(s(xEq), s(zEq), s(yEq).negate()));
+}
+
+/**
+ * Earth's orientation: the pole of J2000 and the prime meridian from Greenwich mean sidereal time. Precession since
+ * 2000 (about 0.4° by 2027), nutation and polar motion are left out, which is far below what this diagram shows.
+ */
+function earthOrientation(ms: number): Quaternion {
+  const gmst = (280.46061837 + 360.98564736629 * ((ms - J2000_MS) / DAY)) * RAD;
+  return bodyOrientation([Math.cos(gmst), Math.sin(gmst), 0], [0, 0, 1]);
+}
+
+// ---------- Bodies ----------
 
 const BODY_VERT = /* glsl */ `
-  varying vec3 vN;
+  varying vec3 vP;
+  varying vec3 vViewN;
+  varying vec3 vViewP;
   void main() {
-    vN = normalize(mat3(modelMatrix) * normal);
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    vP = position;
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    vViewN = normalMatrix * normal;
+    vViewP = mv.xyz;
+    gl_Position = projectionMatrix * mv;
   }
 `;
-// Flat two-tone shading with a crisp terminator, as a printed diagram would show it.
-const BODY_FRAG = /* glsl */ `
+// Earth as a printed globe: cobalt day side, slate night side, a crisp terminator, and the same map lines as the
+// Moon (30-degree graticule, equator and prime meridian), which fade out while the disc is small. No continents.
+const EARTH_FRAG = /* glsl */ `
   uniform vec3 uSunDir;
   uniform vec3 uLit;
   uniform vec3 uDark;
-  varying vec3 vN;
+  uniform vec3 uPaper;
+  uniform float uPx;
+  uniform float uLines;
+  varying vec3 vP;
+  varying vec3 vViewN;
+  varying vec3 vViewP;
+  float stroke(float d, float w, float hw) {
+    return 1.0 - smoothstep(hw - 0.5, hw + 0.5, d / max(w * uPx, 1e-7));
+  }
   void main() {
-    float t = smoothstep(-0.02, 0.02, dot(normalize(vN), uSunDir));
+    vec3 n = normalize(vP);
+    float geo = dot(n, uSunDir);
+    float lit = smoothstep(-0.012, 0.012, geo);
+    vec3 col = mix(uDark, uLit * mix(0.86, 1.0, sqrt(clamp(geo, 0.0, 1.0))), lit);
+    col *= mix(0.88, 1.0, smoothstep(0.0, 0.5, dot(normalize(vViewN), normalize(-vViewP))));
+    float latDeg = degrees(asin(clamp(n.y, -1.0, 1.0)));
+    float lonDeg = degrees(atan(-n.z, n.x));
+    float g = stroke(abs(fract(latDeg / 30.0 + 0.5) - 0.5) * 30.0, fwidth(latDeg), 0.5) * step(abs(latDeg), 75.0);
+    g = max(g, stroke(abs(fract(lonDeg / 30.0 + 0.5) - 0.5) * 30.0, fwidth(lonDeg), 0.5) * (1.0 - smoothstep(80.0, 84.0, abs(latDeg))));
+    col = mix(col, uPaper, g * 0.28 * uLines);
+    float major = max(stroke(abs(n.y), fwidth(n.y), 0.6), stroke(abs(n.z), fwidth(n.z), 0.6) * step(0.0, n.x));
+    col = mix(col, uPaper, major * 0.8 * uLines);
+    gl_FragColor = vec4(col, 1.0);
+    #include <colorspace_fragment>
+  }
+`;
+// Flat two-tone shading with a crisp terminator: the Moon until its maps have loaded.
+const FLAT_FRAG = /* glsl */ `
+  uniform vec3 uSunDir;
+  uniform vec3 uLit;
+  uniform vec3 uDark;
+  varying vec3 vP;
+  void main() {
+    float t = smoothstep(-0.02, 0.02, dot(normalize(vP), uSunDir));
     gl_FragColor = vec4(mix(uDark, uLit, t), 1.0);
     #include <colorspace_fragment>
   }
 `;
 
-function Outline({ radius }: { radius: number }) {
-  return (
-    <mesh scale={1.06}>
-      <sphereGeometry args={[radius, 48, 24]} />
-      <meshBasicMaterial color={INK} side={BackSide} toneMapped={false} />
-    </mesh>
-  );
-}
-
-function LitBody({ position, radius, lit, dark, sunDir }: { position: Vec3; radius: number; lit: string; dark: string; sunDir: Vec3 }) {
+/** A unit sphere shaded by the Sun; sunDir is in the body's own axes. With lines it is Earth's globe. */
+function LitBody({ lit, dark, sunDir, lines = false, pxRef }: { lit: string; dark: string; sunDir: Vec3; lines?: boolean; pxRef?: { current: number } }) {
+  const dpr = useThree((s) => s.viewport.dpr);
+  const material = useRef<ShaderMaterial>(null);
   const uniforms = useMemo(
-    () => ({ uSunDir: { value: new Vector3(1, 0, 0) }, uLit: { value: new Color(lit) }, uDark: { value: new Color(dark) } }),
+    () => ({
+      uSunDir: { value: new Vector3(1, 0, 0) },
+      uLit: { value: new Color(lit) },
+      uDark: { value: new Color(dark) },
+      uPaper: { value: new Color(PAPER) },
+      uPx: { value: 1 },
+      uLines: { value: 0 },
+    }),
     [lit, dark],
   );
+  useFrame(() => {
+    const t = clamp01(((pxRef?.current ?? 0) - 30) / 60);
+    if (material.current) material.current.uniforms.uLines.value = t * t * (3 - 2 * t);
+  });
   return (
-    <group position={position}>
+    <>
       <mesh>
-        <sphereGeometry args={[radius, 64, 32]} />
-        <shaderMaterial vertexShader={BODY_VERT} fragmentShader={BODY_FRAG} uniforms={uniforms} uniforms-uSunDir-value={sunDir} />
+        <sphereGeometry args={[1, 96, 48]} />
+        <shaderMaterial ref={material} vertexShader={BODY_VERT} fragmentShader={lines ? EARTH_FRAG : FLAT_FRAG} uniforms={uniforms} uniforms-uSunDir-value={sunDir} uniforms-uPx-value={dpr} />
       </mesh>
-      <Outline radius={radius} />
-    </group>
+      <Rim />
+    </>
   );
 }
 
-// Labels are plain DOM over the canvas; the scene projects their anchor points each frame.
+// ---------- Labels ----------
 
-type Label = { key: string; at: Vec3; node: ReactNode };
+// Labels are plain DOM over the canvas, placed each frame by the projector the Moon level uses: text that would
+// cover text or a mark already placed is hidden, lower priority numbers first.
 
-const LABEL_TEXT = "text-[0.69rem] leading-4 font-semibold tracking-[0.1em] whitespace-nowrap uppercase select-none";
+/** Where a label stands. Bodies move with the clock and the framed point glides, so anchors are resolved each frame. */
+type Anchor =
+  | { kind: "point"; at: Vec3 }
+  /** The top (1) or bottom (-1) of a body's disc as seen on screen. */
+  | { kind: "limb"; body: "sun" | "earth" | "moon"; side: 1 | -1 }
+  /** A point in the Moon's body-fixed scene axes, in Moon radii. */
+  | { kind: "moon"; at: Vec3 }
+  /** The arrowhead of a line from the Moon. */
+  | { kind: "ray"; to: "sun" | "earth" };
+type SysLabel = Label & { anchor: Anchor };
 
-/** A body's name on a short leader; in true scale a ring marks the speck. */
-function BodyTag({ text, speck, below = false, regions = false }: { text: string; speck: boolean; below?: boolean; regions?: boolean }) {
+const ORIGIN: Vec3 = [0, 0, 0];
+
+/** A body's name on a short leader from its limb; a ring marks a body too small to see. */
+function BodyTag({ text, speck, below = false, sub }: { text: string; speck: boolean; below?: boolean; sub?: string }) {
   const lead = below ? (speck ? "top-[6px] h-6" : "top-0 h-5") : speck ? "bottom-[6px] h-6" : "bottom-0 h-5";
   const name = below ? (speck ? "top-[30px]" : "top-5") : speck ? "bottom-[30px]" : "bottom-5";
   return (
-    <div className="relative">
+    <div aria-hidden="true" className="relative">
       {speck && <span className="absolute -top-[6px] -left-[6px] block size-[12px] rounded-full border border-ink" />}
       <span className={`absolute left-0 block w-px bg-ink ${lead}`} />
-      {regions && <span className={`absolute -left-1 block size-2 border border-paper bg-ink ${speck ? "top-[10px]" : "-top-1"}`} />}
-      <span className={`absolute left-0 block bg-paper/85 pr-1 pl-1.5 text-ink ${LABEL_TEXT} ${name}`}>{text}</span>
+      <span data-box className={`absolute left-0 block border-l border-ink bg-paper/90 px-1.5 text-ink ${LABEL_TEXT} ${name}`}>
+        {text}
+        {sub && <span className="-mx-1.5 mt-0.5 block bg-ink px-1.5 py-0.5 text-paper">{sub}</span>}
+      </span>
     </div>
   );
 }
 
 function CentredTag({ text, className }: { text: string; className: string }) {
-  return <span className={`absolute block -translate-x-1/2 -translate-y-1/2 ${LABEL_TEXT} ${className}`}>{text}</span>;
+  return (
+    <span data-box aria-hidden="true" className={`absolute block -translate-x-1/2 -translate-y-1/2 ${LABEL_TEXT} ${className}`}>
+      {text}
+    </span>
+  );
 }
 
-/** Points are in scene units from the Sun; the group holds the offset that puts the framed point at the origin. */
-function LabelProjector({ points, overlay, group }: { points: Vec3[]; overlay: RefObject<HTMLDivElement | null>; group: RefObject<Group | null> }) {
-  const v = useMemo(() => new Vector3(), []);
-  useFrame(({ camera, size }) => {
-    const host = overlay.current;
-    if (!host) return;
-    camera.updateMatrixWorld();
-    const g = group.current?.position;
-    if (!g) return;
-    for (let i = 0; i < points.length; i++) {
-      const el = host.children[i] as HTMLElement | undefined;
-      if (!el) continue;
-      v.set(points[i][0] + g.x, points[i][1] + g.y, points[i][2] + g.z).project(camera);
-      const shown = v.z > -1 && v.z < 1;
-      el.style.setProperty("visibility", shown ? "visible" : "hidden");
-      if (shown) el.style.setProperty("transform", `translate3d(${((v.x + 1) / 2) * size.width}px, ${((1 - v.y) / 2) * size.height}px, 0)`);
-    }
-  });
-  return null;
+/** The selected region on the Moon: a square with its name on a flag, as on the Moon level. */
+function SiteFlag({ text }: { text: string }) {
+  return (
+    <div aria-hidden="true" className="relative">
+      <Flag text={text} />
+      <span className="absolute -top-[4.5px] -left-[4.5px] block size-[9px] border border-paper bg-ink" />
+    </div>
+  );
 }
+
+// ---------- Scene ----------
 
 type Geometry = {
   /** Scene positions relative to the Sun. */
@@ -180,8 +278,9 @@ type Geometry = {
   moonR: number;
   stretch: number;
   pairReach: number;
+  /** Earth to Moon as drawn, in Moon radii. */
+  pairRadii: number;
   earthToSun: Vec3;
-  speck: boolean;
 };
 
 function geometry(state: SystemState, scale: Scale, framing: FramingId): Geometry {
@@ -190,18 +289,19 @@ function geometry(state: SystemState, scale: Scale, framing: FramingId): Geometr
   const earth = toScene(state.earth);
   const rel: Vec3 = [state.moon[0] - state.earth[0], state.moon[1] - state.earth[1], state.moon[2] - state.earth[2]];
   const moon = add(earth, toScene(rel, U * stretch));
+  const moonR = MOON_RADIUS_KM * U * bodyK;
   return {
     earth,
     moon,
-    focusFrom: framing === "system" ? [0, 0, 0] : earth,
+    focusFrom: framing === "system" ? ORIGIN : earth,
     focusTo: framing === "system" ? earth : moon,
     sunR: SUN_RADIUS_KM * U * (scale === "display" ? SUN_STRETCH : 1),
     earthR: EARTH_RADIUS_KM * U * bodyK,
-    moonR: MOON_RADIUS_KM * U * bodyK,
+    moonR,
     stretch,
     pairReach: 384_400 * U * stretch,
+    pairRadii: (state.earthMoonKm * U * stretch) / moonR,
     earthToSun: unit(mul(earth, -1)),
-    speck: scale === "true",
   };
 }
 
@@ -215,76 +315,132 @@ function monthPoints(data: SystemData): Vec3[] {
   });
 }
 
-const UP = new Vector3(0, 1, 0);
+/** What the camera's place changes besides the picture; the scene reports it and the view turns it into marks. */
+type Metrics = { moonPx: number; earthPx: number; sunPx: number; pairPx: number; moonRadii: number; poleSeen: boolean };
+type OnView = (distance: number, min: number, max: number, m: Metrics) => void;
 
-function SunArrow({ from, dir, reach }: { from: Vec3; dir: Vec3; reach: number }) {
-  const a = add(from, mul(dir, reach * 1.1));
-  const b = add(from, mul(dir, reach * 1.3));
-  const quaternion = new Quaternion().setFromUnitVectors(UP, new Vector3(...dir));
-  return (
-    <>
-      <Line points={[a, b]} color={SUN_INK} lineWidth={1.5} />
-      <mesh position={b} quaternion={quaternion}>
-        <coneGeometry args={[reach * 0.022, reach * 0.08, 16]} />
-        <meshBasicMaterial color={SUN_INK} toneMapped={false} />
-      </mesh>
-    </>
-  );
-}
+/** Tilt of the opening views above the ecliptic, in degrees. */
+const TILT = { system: 50, pair: 56 };
 
 /**
  * Camera placement and limits for each framing. The scene keeps the framed
  * point at the origin, and that point glides as the camera closes in: from the
  * Sun to Earth in the Sun–Earth–Moon framing, from Earth to the Moon in the
  * Earth–Moon framing. The inner limit of one framing meets the outer limit of
- * the next, so zooming through them reads as one move.
+ * the next, so zooming through them reads as one move. Closing on the Moon,
+ * the camera also swings to the view from below the south pole that the Moon
+ * level opens with, and swings back above the ecliptic on the way out.
  */
 function Rig({
   framing,
   geo,
   group,
+  moonQ,
+  earthPxRef,
   onView,
 }: {
   framing: Framing;
   geo: Geometry;
   group: RefObject<Group | null>;
-  onView: (distance: number, min: number, max: number) => void;
+  moonQ: Quaternion;
+  /** Receives Earth's radius on screen, in pixels. */
+  earthPxRef: { current: number };
+  onView: OnView;
 }) {
   const camera = useThree((s) => s.camera);
   const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
   const invalidate = useThree((s) => s.invalidate);
   const controls = useRef<OrbitControlsImpl>(null);
   const narrow = Math.max(1, 1.35 / aspect);
-  const pairBase = geo.pairReach * 4.8;
-  const pairMax = pairBase * narrow * 2.2;
+  const pairBase = geo.pairReach * 3.6;
+  const pairMax = pairBase * narrow * 1.5;
   const system = framing.id === "system";
-  const base = system ? 365 : pairBase;
-  const min = system ? pairMax * 0.9 : Math.max(geo.moonR * 5, pairBase * 0.03);
-  const max = base * narrow * 2.2;
+  const base = system ? 352 : pairBase;
+  // Close enough that the Moon is the size the Moon level opens it at; in true scale the limit stays further out.
+  const min = system ? pairMax * 0.9 : Math.max(geo.moonR * 5.1, geo.pairReach * 0.144);
+  const max = system ? base * narrow * 1.5 : pairMax;
+  const q = useRef(moonQ);
+  useEffect(() => {
+    q.current = moonQ;
+  }, [moonQ]);
+  const last = useRef(0);
+  const scratch = useRef<{ a: Vector3; b: Vector3; m: Metrics } | null>(null);
 
   useEffect(() => {
     if (framing.start === "default") {
       const d = base * narrow;
-      const tilt = ((system ? 52 : 58) * Math.PI) / 180;
+      const tilt = (system ? TILT.system : TILT.pair) * RAD;
       camera.position.set(0, d * Math.sin(tilt), d * Math.cos(tilt));
+    } else if (framing.start === "near" && !system) {
+      // From the Moon level: the same face of the Moon, at the size it had there.
+      const dir = handoff.moonDir ?? POLE_DIR;
+      camera.position.set(dir[0], dir[1], dir[2]).applyQuaternion(q.current).setLength(min * 1.35);
     } else {
       camera.position.setLength(framing.start === "near" ? min * 1.35 : max * 0.8);
     }
+    last.current = 0;
     controls.current?.target.set(0, 0, 0);
     controls.current?.update();
     invalidate();
   }, [camera, base, narrow, min, max, system, framing, invalidate]);
 
   const { focusFrom: a, focusTo: b } = geo;
-  useFrame(({ camera: cam }) => {
+  useFrame(({ camera: cam, size }) => {
+    const tmp = (scratch.current ??= { a: new Vector3(), b: new Vector3(), m: { moonPx: 0, earthPx: 0, sunPx: 0, pairPx: 0, moonRadii: 0, poleSeen: false } });
     const d = cam.position.length();
-    const f = Math.min(1, Math.max(0, Math.log(base / d) / Math.log(base / (min * 1.4))));
+    const prev = last.current;
+    last.current = d;
+    if (!system && prev > 0 && Math.abs(d - prev) > 1e-7 * d) {
+      const zone = pairBase * 0.5;
+      const below = Math.PI / 2 - 0.06;
+      const polar = Math.acos(Math.min(1, Math.max(-1, cam.position.y / d)));
+      if (d < prev && d < zone) {
+        // Closing on the Moon: turn towards the view from below its south pole, arriving there at the limit.
+        const from = Math.min(prev, zone);
+        const k = from <= min * 1.0001 ? 1 : clamp01(Math.log(from / d) / Math.log(from / min));
+        const to = tmp.a.set(POLE_DIR[0], POLE_DIR[1], POLE_DIR[2]).applyQuaternion(q.current);
+        const dir = tmp.b.copy(cam.position).divideScalar(d);
+        const angle = dir.angleTo(to);
+        if (angle > 1e-4) {
+          to.crossVectors(dir, to);
+          if (to.lengthSq() > 1e-10) {
+            dir.applyAxisAngle(to.normalize(), angle * k);
+            cam.position.copy(dir).multiplyScalar(d);
+            controls.current?.update();
+          }
+        }
+      } else if (d > prev && polar > below) {
+        // Pulling away from below the ecliptic: rise to the opening tilt by the outer limit.
+        const k = prev >= max * 0.9999 ? 1 : clamp01(Math.log(d / prev) / Math.log(max / prev));
+        const next = polar + ((90 - TILT.pair) * RAD - polar) * k;
+        const az = Math.atan2(cam.position.x, cam.position.z);
+        cam.position.set(d * Math.sin(next) * Math.sin(az), d * Math.cos(next), d * Math.sin(next) * Math.cos(az));
+        controls.current?.update();
+      }
+    }
+    const f = clamp01(Math.log(base / d) / Math.log(base / (min * 1.4)));
     const e = f * f * (3 - 2 * f);
-    group.current?.position.set(-(a[0] + (b[0] - a[0]) * e), -(a[1] + (b[1] - a[1]) * e), -(a[2] + (b[2] - a[2]) * e));
+    const g = group.current?.position;
+    g?.set(-(a[0] + (b[0] - a[0]) * e), -(a[1] + (b[1] - a[1]) * e), -(a[2] + (b[2] - a[2]) * e));
     cam.near = d / 200;
     cam.far = d * 50 + 250;
     cam.updateProjectionMatrix();
-    onView(d, min, max);
+    if (!g) return;
+    const perPx = (2 * Math.tan((FOV * RAD) / 2)) / size.height;
+    const moonAt = tmp.a.set(geo.moon[0] + g.x, geo.moon[1] + g.y, geo.moon[2] + g.z);
+    const moonD = Math.max(cam.position.distanceTo(moonAt), 1e-9);
+    const m = tmp.m;
+    m.moonPx = geo.moonR / (moonD * perPx);
+    m.moonRadii = moonD / geo.moonR;
+    // The nine regions are on the side of the Moon towards the camera.
+    const pole = tmp.b.set(CLUSTER_AT[0], CLUSTER_AT[1], CLUSTER_AT[2]).applyQuaternion(q.current);
+    m.poleSeen = pole.dot(moonAt.sub(cam.position).negate()) / moonD > 0.3;
+    const earthD = Math.max(cam.position.distanceTo(tmp.a.set(geo.earth[0] + g.x, geo.earth[1] + g.y, geo.earth[2] + g.z)), 1e-9);
+    m.earthPx = geo.earthR / (earthD * perPx);
+    m.pairPx = (geo.pairRadii * geo.moonR) / (earthD * perPx);
+    m.sunPx = geo.sunR / (Math.max(cam.position.distanceTo(tmp.a.set(g.x, g.y, g.z)), 1e-9) * perPx);
+    earthPxRef.current = m.earthPx;
+    onView(d, min, max, m);
   }, -1);
 
   return (
@@ -295,42 +451,81 @@ function Rig({
       minDistance={min}
       maxDistance={max}
       minPolarAngle={0.08}
-      maxPolarAngle={Math.PI / 2 - 0.06}
+      maxPolarAngle={system ? Math.PI / 2 - 0.06 : Math.PI - 0.08}
       rotateSpeed={0.6}
-      zoomSpeed={1.6}
+      zoomSpeed={system ? 2.2 : 3.8}
     />
   );
 }
 
+/** What is drawn on and around the Moon at the camera's present distance. */
+type Detail = { rays: boolean; onBody: boolean; close: boolean; step: number; speck: { sun: boolean; earth: boolean; moon: boolean } };
+
+type DayTick = { ms: number; at: Vec3 };
+
 function Scene({
   data,
   state,
+  frame,
   geo,
   framing,
   months,
-  labelPoints,
+  days,
+  labels,
   overlay,
   onView,
+  textures,
+  fine,
+  detail,
+  site,
+  bearingLen,
+  rayLen,
 }: {
   data: SystemData;
   state: SystemState;
+  frame: MoonFrame;
   geo: Geometry;
   framing: Framing;
   months: Vec3[];
-  labelPoints: Vec3[];
+  days: DayTick[];
+  labels: SysLabel[];
   overlay: RefObject<HTMLDivElement | null>;
-  onView: (distance: number, min: number, max: number) => void;
+  onView: OnView;
+  textures: Textures | null;
+  fine: FineTextures | null;
+  detail: Detail;
+  site: Site | null;
+  bearingLen: number;
+  rayLen: { sun: { current: number }; earth: { current: number } };
 }) {
-  const { earth, moon, sunR, earthR, moonR, stretch, pairReach, earthToSun } = geo;
+  const { earth, moon, sunR, earthR, moonR, stretch, earthToSun } = geo;
   const group = useRef<Group>(null);
+  const earthPx = useRef(0);
 
-  const moonToSun = unit(mul(moon, -1));
+  const moonQ = useMemo(() => {
+    const axes = moonAxes(state.ms);
+    return bodyOrientation(axes.x, axes.z);
+  }, [state.ms]);
+  const earthQ = useMemo(() => earthOrientation(state.ms), [state.ms]);
+  const earthSun = useMemo<Vec3>(() => {
+    const v = new Vector3(...earthToSun).applyQuaternion(earthQ.clone().invert());
+    return [v.x, v.y, v.z];
+  }, [earthToSun, earthQ]);
+  // The true directions from the Moon, in its own axes: what the Moon level draws.
+  const sun = useMemo(() => bodyToScene(frame.sunDir), [frame]);
+  const toEarth = useMemo(() => bodyToScene(frame.earthDir), [frame]);
+  const from = useMemo(() => (site ? onGlobe(site.lat, site.lon) : null), [site]);
 
+  // Earth's orbit at 12-hour steps, with Earth's present position put in so the line passes through the body at any zoom.
   const orbit = useMemo(() => {
     const pts: Vec3[] = [];
-    for (let i = 0; i < data.count; i += 6) pts.push(toScene([data.earth[i * 3], data.earth[i * 3 + 1], data.earth[i * 3 + 2]]));
+    const now = (state.ms - data.startMs) / data.stepMs;
+    for (let i = 0; i < data.count; i += 12) {
+      pts.push(toScene([data.earth[i * 3], data.earth[i * 3 + 1], data.earth[i * 3 + 2]]));
+      if (now > i && now < i + 12) pts.push(earth);
+    }
     return pts;
-  }, [data]);
+  }, [data, state.ms, earth]);
 
   // The Moon's path about Earth over one sidereal month centred on the current hour.
   const centre = Math.round((state.ms - data.startMs) / data.stepMs);
@@ -344,34 +539,87 @@ function Scene({
     return pts;
   }, [data, centre, stretch]);
 
+  const locate = useCallback(
+    (label: SysLabel, out: Vector3, camera: Camera) => {
+      const a = label.anchor;
+      if (a.kind === "point") out.set(a.at[0], a.at[1], a.at[2]);
+      else if (a.kind === "limb") {
+        const r = a.body === "sun" ? sunR : a.body === "earth" ? earthR : moonR;
+        const c = a.body === "sun" ? ORIGIN : a.body === "earth" ? earth : moon;
+        out.set(0, a.side * r, 0).applyQuaternion(camera.quaternion);
+        out.set(out.x + c[0], out.y + c[1], out.z + c[2]);
+      } else {
+        const k = a.kind === "ray" ? rayLen[a.to].current * moonR : moonR;
+        const p = a.kind === "ray" ? (a.to === "sun" ? sun : toEarth) : a.at;
+        out.set(p[0] * k, p[1] * k, p[2] * k).applyQuaternion(moonQ);
+        out.set(out.x + moon[0], out.y + moon[1], out.z + moon[2]);
+      }
+      const g = group.current?.position;
+      if (g) out.add(g);
+    },
+    [earth, moon, sunR, earthR, moonR, moonQ, sun, toEarth, rayLen],
+  );
+  const balls = useMemo<Sphere[]>(() => [0, 1, 2].map(() => ({ x: 0, y: 0, z: 0, r: 0 })), []);
+  const spheres = useCallback(() => {
+    const g = group.current?.position;
+    const set = (s: Sphere, c: Vec3, r: number) => {
+      s.x = c[0] + (g?.x ?? 0);
+      s.y = c[1] + (g?.y ?? 0);
+      s.z = c[2] + (g?.z ?? 0);
+      s.r = r;
+    };
+    set(balls[0], ORIGIN, sunR);
+    set(balls[1], earth, earthR);
+    set(balls[2], moon, moonR);
+    return balls;
+  }, [balls, earth, moon, sunR, earthR, moonR]);
+
   return (
     <>
       <color attach="background" args={[PAPER]} />
-      <Rig framing={framing} geo={geo} group={group} onView={onView} />
-      <LabelProjector points={labelPoints} overlay={overlay} group={group} />
+      <Rig framing={framing} geo={geo} group={group} moonQ={moonQ} earthPxRef={earthPx} onView={onView} />
       <group ref={group}>
-        <Line points={orbit} color={INK_2} lineWidth={1} />
-        <Line points={[[0, 0, 0], earth]} color={RULE} lineWidth={1} />
-        {framing.id === "system" && months.map((p, i) => <Line key={i} points={[mul(p, 0.975), mul(p, 1.025)]} color={INK} lineWidth={1} />)}
+        <Line points={orbit} color={INK} lineWidth={1} />
+        <Line points={[ORIGIN, earth]} color={RULE} lineWidth={1} />
+        {months.map((p, i) => (
+          <Line key={i} points={[mul(p, 0.982), mul(p, 1.018)]} color={INK} lineWidth={1} />
+        ))}
 
-        <group>
+        <group scale={sunR}>
           <mesh>
-            <sphereGeometry args={[sunR, 48, 24]} />
+            <sphereGeometry args={[1, 64, 32]} />
             <meshBasicMaterial color={SUN} toneMapped={false} />
           </mesh>
-          <Outline radius={sunR} />
+          <Rim />
         </group>
 
         <group position={earth}>
           <Line points={moonPath} color={INK} lineWidth={1} />
+          {framing.id === "pair" && days.map((t) => <Line key={t.ms} points={[mul(t.at, 0.978), mul(t.at, 1.022)]} color={INK} lineWidth={1} />)}
         </group>
         <Line points={[earth, moon]} color={RULE} lineWidth={1} />
 
-        <LitBody position={earth} radius={earthR} lit={EARTH_LIT} dark={EARTH_DARK} sunDir={earthToSun} />
-        <LitBody position={moon} radius={moonR} lit={MOON_LIT} dark={UMBRA} sunDir={moonToSun} />
+        <group position={earth} quaternion={earthQ} scale={earthR}>
+          <LitBody lit={EARTH_LIT} dark={EARTH_DARK} sunDir={earthSun} lines pxRef={earthPx} />
+        </group>
 
-        {framing.id === "pair" && <SunArrow from={earth} dir={earthToSun} reach={pairReach} />}
+        <group position={moon} quaternion={moonQ} scale={moonR}>
+          {textures ? <MoonGlobe textures={textures} fine={fine} sunDir={sun} /> : <LitBody lit={MOON_LIT} dark={UMBRA} sunDir={sun} />}
+          {detail.rays && (
+            <>
+              <Ray dir={sun} color={SUN} casing={INK} beyondPx={26} lenRef={rayLen.sun} />
+              <Ray dir={toEarth} color={EARTH_LIT} casing={PAPER} beyondPx={26} maxLen={geo.pairRadii * 0.55} lenRef={rayLen.earth} />
+            </>
+          )}
+          {detail.close && from && site && (
+            <>
+              <Bearing from={from} towards={toEarth} len={bearingLen} color={EARTH_LIT} casing={PAPER} below={elevationDeg(site.lat, site.lon, frame.earthKm) < 0} />
+              <Bearing from={from} towards={sun} len={bearingLen} color={SUN} casing={INK} below={elevationDeg(site.lat, site.lon, frame.sunKm) < 0} />
+            </>
+          )}
+        </group>
       </group>
+      <LabelProjector labels={labels} overlay={overlay} locate={locate} spheres={spheres} />
     </>
   );
 }
@@ -482,10 +730,10 @@ function PhaseDisc({ illuminated, waxing }: { illuminated: number; waxing: boole
 function Row({ label, value, note }: { label: string; value: ReactNode; note?: ReactNode }) {
   return (
     <tr className="border-b border-rule align-baseline">
-      <th scope="row" className="py-2 pr-3 text-left text-[0.844rem] font-normal text-ink-2">
+      <th scope="row" className="py-2 pr-2 text-left text-[0.844rem] font-normal whitespace-nowrap text-ink-2">
         {label}
       </th>
-      <td className="py-2 text-right text-[0.95rem] font-semibold whitespace-nowrap text-ink">
+      <td className="py-2 text-right text-[0.95rem] font-semibold whitespace-nowrap text-ink tabular-nums">
         {value}
         {note && <span className="block text-[0.8rem] font-normal text-ink-2">{note}</span>}
       </td>
@@ -498,19 +746,42 @@ function fmtLight(s: number) {
   return `${Math.floor(s / 60)} min ${Math.round(s % 60)} s`;
 }
 
+const H3 = "border-b border-ink pb-1.5 text-[0.75rem] font-semibold tracking-[0.08em] text-ink uppercase";
+
+function Legend() {
+  const item = "flex items-center gap-2.5 py-1 text-[0.844rem] leading-snug text-ink-2";
+  return (
+    <ul>
+      <LineLegend item={item} />
+      <li className={item}>
+        <span className="block h-0 w-4 shrink-0 border-t border-ink" />
+        Earth&apos;s orbit, ticked at each month, and the Moon&apos;s path over one month, ticked at each day (0 h UTC)
+      </li>
+      <li className={item}>
+        <span className="mx-[3px] block size-[10px] shrink-0 border-[1.5px] border-ink" />
+        Artemis III candidate regions at the Moon&apos;s south pole; the selected one is named
+      </li>
+      <li className={item}>
+        <span className="mx-[3px] block size-[10px] shrink-0 bg-umbra" />
+        Night side
+      </li>
+    </ul>
+  );
+}
+
 function Readout({ state, siteName, sunEl, earthEl }: { state: SystemState; siteName?: string; sunEl?: number | null; earthEl?: number | null }) {
   const el = (v?: number | null) => (v == null || !Number.isFinite(v) ? "Not available" : fmtSigned(v, 2));
   return (
     <div>
-      <h3 className="border-b border-ink pb-1.5 text-[0.75rem] font-semibold tracking-[0.08em] text-ink uppercase">Circumstances</h3>
+      <h3 className={H3}>Circumstances</h3>
       <table className="w-full border-collapse">
         <tbody>
           <Row label="Time" value={fmtUtc(state.ms)} />
           <Row label="Earth to Sun" value={`${state.sunEarthAu.toFixed(4)} au`} note={`${fmtInt(state.sunEarthKm / 1000)},000 km`} />
           <Row label="Earth to Moon" value={`${fmtInt(state.earthMoonKm)} km`} note={`${(state.earthMoonKm / EARTH_RADIUS_KM).toFixed(1)} Earth radii`} />
           <Row label="Moon illuminated" value={`${(state.illuminated * 100).toFixed(1)} %`} note={`Phase angle ${state.phaseAngleDeg.toFixed(1)}°`} />
-          <Row label="Light time to Moon" value={fmtLight(state.lightTimeEarthMoonS)} note="one way" />
-          <Row label="Light time from Sun" value={fmtLight(state.lightTimeSunEarthS)} />
+          <Row label="Light to the Moon" value={fmtLight(state.lightTimeEarthMoonS)} note="from Earth, one way" />
+          <Row label="Light from the Sun" value={fmtLight(state.lightTimeSunEarthS)} note="to Earth" />
         </tbody>
       </table>
 
@@ -524,9 +795,7 @@ function Readout({ state, siteName, sunEl, earthEl }: { state: SystemState; site
 
       {siteName && (
         <>
-          <h3 className="mt-6 border-b border-ink pb-1.5 text-[0.75rem] font-semibold tracking-[0.08em] text-ink uppercase">
-            At {siteName}
-          </h3>
+          <h3 className={`mt-6 ${H3}`}>At {siteName}</h3>
           <table className="w-full border-collapse">
             <tbody>
               <Row label="Sun elevation" value={el(sunEl)} />
@@ -547,6 +816,23 @@ function Readout({ state, siteName, sunEl, earthEl }: { state: SystemState; site
 
 type Load = { status: "loading" } | { status: "ready"; data: SystemData } | { status: "error"; message: string };
 
+const DAY_LABEL = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+
+/** Each 0 h UTC along the Moon's drawn path (one sidereal month about now), as its position from Earth in scene units. */
+function dayTicks(data: SystemData, ms: number, stretch: number): DayTick[] {
+  const half = (27.32 * DAY) / 2;
+  const out: DayTick[] = [];
+  for (let t = Math.ceil((ms - half) / DAY) * DAY; t <= ms + half; t += DAY) {
+    const i = Math.round((t - data.startMs) / data.stepMs);
+    if (i < 0 || i >= data.count) continue;
+    const k = i * 3;
+    out.push({ ms: t, at: toScene([data.moon[k] - data.earth[k], data.moon[k + 1] - data.earth[k + 1], data.moon[k + 2] - data.earth[k + 2]], U * stretch) });
+  }
+  return out;
+}
+
+const FAR: Detail = { rays: false, onBody: false, close: false, step: 12, speck: { sun: false, earth: false, moon: false } };
+
 export default function SystemView({ nowMs, onScrub, siteName, sunElevationDeg, earthElevationDeg, windowMs, onOpenMoon, entry, levelNav, className = "" }: SystemViewProps) {
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
@@ -554,6 +840,9 @@ export default function SystemView({ nowMs, onScrub, siteName, sunElevationDeg, 
   const [framing, setFraming] = useState<Framing>(() => (entry === "below" ? { id: "pair", start: "near" } : { id: "system", start: "default" }));
   const [playing, setPlaying] = useState(false);
   const [gl] = useState(hasWebGL);
+  const [textures, setTextures] = useState<Textures | null>(null);
+  const [fine, setFine] = useState<FineTextures | null>(null);
+  const [detail, setDetail] = useState<Detail>(FAR);
 
   useEffect(() => {
     let live = true;
@@ -566,32 +855,76 @@ export default function SystemView({ nowMs, onScrub, siteName, sunElevationDeg, 
     };
   }, [attempt]);
 
+  // The Moon's maps are the Moon level's, and are extras here: until they arrive, or if they fail, the Moon is a plain two-tone body.
+  useEffect(() => {
+    if (!gl) return;
+    let live = true;
+    loadTextures().then(
+      (t) => live && setTextures(t),
+      () => undefined,
+    );
+    loadFineTextures().then(
+      (t) => live && setFine(t),
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [gl]);
+
   const data = load.status === "ready" ? load.data : null;
   const ms = data ? Math.min(Math.max(nowMs, data.startMs), systemEndMs(data)) : nowMs;
   const state = useMemo(() => (data ? stateAt(data, ms) : null), [data, ms]);
+  const frame = useMemo(() => (data ? moonFrameAt(data, ms) : null), [data, ms]);
+  const site = useMemo(() => sites.find((s) => s.name === siteName) ?? null, [siteName]);
 
   const overlay = useRef<HTMLDivElement>(null);
+  const rayLen = useMemo(() => ({ sun: { current: 1.13 }, earth: { current: 1.13 } }), []);
   const months = useMemo(() => (data ? monthPoints(data) : []), [data]);
   const geo = useMemo(() => (state ? geometry(state, scale, framing.id) : null), [state, scale, framing.id]);
-  const labels = useMemo<Label[]>(() => {
-    if (!geo || !state) return [];
-    const { earth, moon, speck } = geo;
-    const out: Label[] = [];
-    if (framing.id === "system") {
-      months.forEach((p, i) => out.push({ key: MONTHS[i], at: mul(p, 1.085), node: <CentredTag text={MONTHS[i]} className="font-medium text-ink-2" /> }));
-      out.push({ key: "sun", at: [0, speck ? 0 : geo.sunR * 1.08, 0], node: <BodyTag text="Sun" speck={speck} /> });
+  const dayMs = Math.floor(ms / HOUR);
+  const days = useMemo(() => (data ? dayTicks(data, dayMs * HOUR, scale === "display" ? PAIR_STRETCH : 1) : []), [data, dayMs, scale]);
+  // The bearing marks keep about the same length on screen, and match the Moon level's where the two levels meet.
+  const bearingLen = Math.min(0.3, Math.max(0.03, 0.073 * 1.1 ** detail.step));
+
+  const labels = useMemo<SysLabel[]>(() => {
+    if (!geo || !state || !frame) return [];
+    const { earth } = geo;
+    const { speck } = detail;
+    const out: SysLabel[] = [];
+    const push = (key: string, anchor: Anchor, pri: number, node: ReactNode, more?: Partial<Label>) => out.push({ key, at: ORIGIN, anchor, pri, node, ...more });
+    push("sun", { kind: "limb", body: "sun", side: 1 }, 0, <BodyTag text="Sun" speck={speck.sun} />, { free: true });
+    push("earth", { kind: "limb", body: "earth", side: 1 }, 0, <BodyTag text="Earth" speck={speck.earth} />, { free: true });
+    if (detail.onBody) {
+      push("moon", { kind: "limb", body: "moon", side: 1 }, 0, <BodyTag text="Moon" speck={false} />, { free: true });
+      if (site) push("site", { kind: "moon", at: onGlobe(site.lat, site.lon) }, 0, <SiteFlag text={site.name} />, { dot: 6 });
+      push("cluster", { kind: "moon", at: CLUSTER_AT }, 2, <ClusterMark onOpen={() => onOpenMoon?.()} hint="Open the Moon level to tell them apart." />, { dot: 8 });
     } else {
-      out.push({
-        key: "to-sun",
-        at: add(earth, mul(geo.earthToSun, geo.pairReach * 1.42)),
-        node: <CentredTag text={`To the Sun, ${state.sunEarthAu.toFixed(3)} au`} className="bg-paper/85 px-1 text-sun-ink" />,
-      });
+      push("moon", { kind: "limb", body: "moon", side: -1 }, 0, <BodyTag text="Moon · 9 candidate regions" sub={site?.name} speck={speck.moon} below />, { free: true });
     }
-    out.push({ key: "earth", at: add(earth, [0, speck ? 0 : geo.earthR * 1.08, 0]), node: <BodyTag text="Earth" speck={speck} /> });
-    out.push({ key: "moon", at: add(moon, [0, speck ? 0 : -geo.moonR * 1.1, 0]), node: <BodyTag text="Moon · 9 candidate regions" speck={speck} below regions /> });
+    if (detail.rays) {
+      push("to-sun", { kind: "ray", to: "sun" }, 1, <BearingTag text={LINE_NAMES.sun} className="text-sun-ink" />, { dot: 9, float: true });
+      push("to-earth", { kind: "ray", to: "earth" }, 1, <BearingTag text={LINE_NAMES.earth} className="text-earth" />, { dot: 9, float: true });
+    }
+    if (detail.close && site) {
+      const from = onGlobe(site.lat, site.lon);
+      for (const [key, dir, km, name, className] of [
+        ["bear-sun", frame.sunDir, frame.sunKm, "Sun", "text-sun-ink"],
+        ["bear-earth", frame.earthDir, frame.earthKm, "Earth", "text-earth"],
+      ] as const) {
+        const at = arcTowards(from, bodyToScene(dir));
+        if (at) push(key, { kind: "moon", at: at(bearingLen * 1.08) }, 1, <BearingTag text={`${name} ${fmtSigned(elevationDeg(site.lat, site.lon, km), 1)}`} className={className} />, { float: true });
+      }
+    }
+    months.forEach((p, i) => push(MONTHS[i], { kind: "point", at: mul(p, 1.075) }, 4, <CentredTag text={MONTHS[i]} className="font-medium text-ink-2" />));
+    if (framing.id === "pair") {
+      for (const t of days) {
+        if ((new Date(t.ms).getUTCDate() - 1) % 7) continue;
+        push(`day-${t.ms}`, { kind: "point", at: add(earth, mul(t.at, 1.09)) }, 5, <CentredTag text={DAY_LABEL.format(t.ms)} className="font-medium text-ink-2" />);
+      }
+    }
     return out;
-  }, [geo, state, framing.id, months]);
-  const labelPoints = useMemo(() => labels.map((l) => l.at), [labels]);
+  }, [geo, state, frame, framing.id, months, days, detail, site, bearingLen, onOpenMoon]);
 
   // The zoom chain: Sun–Earth–Moon, then Earth–Moon, then down to the Moon level.
   const zoomIn = useCallback(() => {
@@ -604,6 +937,24 @@ export default function SystemView({ nowMs, onScrub, siteName, sunElevationDeg, 
     onOut: framing.id === "pair" ? zoomOut : undefined,
   });
   useEffect(() => rearm(), [framing, rearm]);
+  const onView = useCallback<OnView>(
+    (distance, min, max, m) => {
+      report(distance, min, max);
+      setDetail((prev) => {
+        // Each switch has some slack, so a mark does not flicker at its threshold.
+        const rays = m.pairPx > (prev.rays ? 16 : 19);
+        const onBody = m.poleSeen && m.moonPx > (prev.onBody ? 22 : 26);
+        const close = onBody && m.moonPx > (prev.close ? 64 : 74);
+        const step = Math.round(Math.log(Math.max(m.moonRadii - 1, 0.3)) / Math.log(1.1));
+        const sun = m.sunPx < 5;
+        const earth = m.earthPx < 5;
+        const moon = m.moonPx < 5;
+        const same = rays === prev.rays && onBody === prev.onBody && close === prev.close && step === prev.step && sun === prev.speck.sun && earth === prev.speck.earth && moon === prev.speck.moon;
+        return same ? prev : { rays, onBody, close, step, speck: { sun, earth, moon } };
+      });
+    },
+    [report],
+  );
   const hintText =
     hint === "in"
       ? framing.id === "system"
@@ -618,8 +969,8 @@ export default function SystemView({ nowMs, onScrub, siteName, sunElevationDeg, 
 
   const caption =
     scale === "display"
-      ? `Display scale, not to scale: Earth and the Moon are drawn ${BODY_STRETCH} times too large, the Sun ${SUN_STRETCH} times, and the Earth to Moon distance ${PAIR_STRETCH} times too long, so all three can be seen at once. Positions, lighting and the table are true.`
-      : "True scale: sizes and distances keep their real ratios, so the bodies are specks inside the rings that mark them. Zoom in on the Earth–Moon framing to find them.";
+      ? `Display scale, not to scale: Earth and the Moon are drawn ${BODY_STRETCH} times too large, the Sun ${SUN_STRETCH} times, and the Earth to Moon distance ${PAIR_STRETCH} times too long, so all three can be seen at once. Positions, the Moon's orientation, the terminator and the table are true; the line to the Sun keeps its true direction, which the stretch can leave up to 7° off the Sun as drawn.`
+      : "True scale: sizes and distances keep their real ratios, so the bodies are specks inside the rings that mark them. Zoom in on the Earth–Moon framing to find them; the lines from the Moon and its terminator are true.";
 
   return (
     <div className={`flex min-h-0 flex-col xl:flex-row ${className}`}>
@@ -677,20 +1028,37 @@ export default function SystemView({ nowMs, onScrub, siteName, sunElevationDeg, 
             </div>
           )}
           {data && state && !gl && <PlanFallback data={data} state={state} />}
-          {data && state && geo && gl && (
+          {data && state && frame && geo && gl && (
             <GlBoundary fallback={<PlanFallback data={data} state={state} />}>
               <Canvas
                 flat
                 frameloop="demand"
                 dpr={[1, 2]}
-                camera={{ fov: 35, position: [0, 260, 203], near: 1, far: 5000 }}
+                camera={{ fov: FOV, position: [0, 260, 203], near: 1, far: 5000 }}
                 gl={{ antialias: true }}
                 aria-label="3D diagram of the Sun, Earth and Moon. Drag to turn, scroll to zoom; zooming past a limit changes the framing or opens the Moon level."
                 role="img"
               >
-                <Scene data={data} state={state} geo={geo} framing={framing} months={months} labelPoints={labelPoints} overlay={overlay} onView={report} />
+                <Scene
+                  data={data}
+                  state={state}
+                  frame={frame}
+                  geo={geo}
+                  framing={framing}
+                  months={months}
+                  days={days}
+                  labels={labels}
+                  overlay={overlay}
+                  onView={onView}
+                  textures={textures}
+                  fine={fine}
+                  detail={detail}
+                  site={site}
+                  bearingLen={bearingLen}
+                  rayLen={rayLen}
+                />
               </Canvas>
-              <div ref={overlay} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+              <div ref={overlay} className="pointer-events-none absolute inset-0 overflow-hidden">
                 {labels.map((l) => (
                   <div key={l.key} className="invisible absolute top-0 left-0">
                     {l.node}
@@ -725,9 +1093,15 @@ export default function SystemView({ nowMs, onScrub, siteName, sunElevationDeg, 
         ) : (
           <p className="text-[0.844rem] text-ink-2">{load.status === "error" ? "No values to show." : "Loading values"}</p>
         )}
+        <h3 className={`mt-6 ${H3}`}>Marks</h3>
+        <div className="mt-1.5">
+          <Legend />
+        </div>
         <p className="mt-6 border-t border-rule pt-3 text-[0.8rem] leading-snug text-ink-2">
           Positions: NASA/JPL Horizons vector tables for Earth and the Moon, hourly through 2027, heliocentric ecliptic
-          J2000. Values between the hours are interpolated.
+          J2000; values between the hours are interpolated. The Moon&apos;s orientation: IAU/WGCCRE rotation model; its
+          surface: NASA SVS CGI Moon Kit maps from Lunar Reconnaissance Orbiter data. Earth is a plain globe turned by
+          sidereal time, without continents.
         </p>
       </aside>
     </div>

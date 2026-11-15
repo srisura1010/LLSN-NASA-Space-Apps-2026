@@ -432,7 +432,7 @@ export default function TerrainPlate({
                 <path d="M4.5 11.5A6.5 6.5 0 0 1 17.5 11.5" className="fill-none stroke-sun-ink" strokeWidth="3.5" />
                 <path d="M4.5 11.5A6.5 6.5 0 0 1 17.5 11.5" className="fill-none stroke-sun" strokeWidth="2" />
               </svg>
-              Bearings, ticked as Fig. 2
+              Bearings to the Sun and to Earth, ticked as Fig. 2
             </span>
           )}
         </span>

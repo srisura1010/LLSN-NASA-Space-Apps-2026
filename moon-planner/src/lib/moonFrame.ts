@@ -86,6 +86,11 @@ export function eclipticToEquatorial(v: Vec3): Vec3 {
   return [v[0], v[1] * COS_E - v[2] * SIN_E, v[1] * SIN_E + v[2] * COS_E];
 }
 
+/** Equatorial J2000 to ecliptic J2000. */
+export function equatorialToEcliptic(v: Vec3): Vec3 {
+  return [v[0], v[1] * COS_E + v[2] * SIN_E, -v[1] * SIN_E + v[2] * COS_E];
+}
+
 /** An ecliptic J2000 vector expressed in the Moon's body-fixed frame. */
 export function eclipticToBody(v: Vec3, axes: MoonAxes): Vec3 {
   const q = eclipticToEquatorial(v);

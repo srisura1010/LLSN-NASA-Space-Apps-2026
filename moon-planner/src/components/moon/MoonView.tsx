@@ -7,14 +7,15 @@
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Line, OrbitControls } from "@react-three/drei";
-import { BackSide, Color, NoColorSpace, Quaternion, RepeatWrapping, SRGBColorSpace, TextureLoader, Vector2, Vector3, type Group, type Texture } from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
-import { elevationDeg, latLonToBody, moonFrameAt, type MoonFrame } from "@/lib/moonFrame";
+import { elevationDeg, moonFrameAt, type MoonFrame } from "@/lib/moonFrame";
 import { sites, type Site } from "@/lib/sites";
-import { EARTH_RADIUS_KM, MOON_RADIUS_KM, loadSystem, stateAt, systemEndMs, type SystemData, type SystemState, type Vec3 } from "@/lib/system";
+import { EARTH_RADIUS_KM, loadSystem, stateAt, systemEndMs, type SystemData, type SystemState, type Vec3 } from "@/lib/system";
 import YearSlider, { fmtUtc, useYearPlayback } from "../system/YearSlider";
 import { ZoomHint } from "../levels/LevelNav";
 import { useZoomGate } from "../levels/useZoomGate";
+import { BearingTag, Bearing, CLUSTER_AT, ClusterMark, Flag, HIT, LABEL_TEXT, LINE_NAMES, LIFT, LineLegend, LabelProjector, OVER, POLE_DIR, RAY, Ray, arcTowards, handoff, onGlobe, toScene, type Label } from "./marks";
+import { MoonGlobe, loadFineTextures, loadTextures, type FineTextures, type Textures } from "./moonMaterial";
 
 export type MoonViewProps = {
   nowMs: number;
@@ -40,9 +41,6 @@ const SUN = "#f0b400";
 const SUN_INK = "#7a5600";
 const EARTH = "#2453c2";
 
-/** Half-width of the site-level terrain plate, km on the polar stereographic plane; its inscribed circle is 80° S. */
-const PLATE_HALF_KM = 304;
-
 /**
  * Earlier landings, shown for context. Apollo lunar module positions from the NASA NSSDCA table of lunar landing
  * sites; the 2023 and 2024 landers as located in Lunar Reconnaissance Orbiter Camera images.
@@ -61,277 +59,10 @@ const LANDINGS: { id: string; short: string; name: string; lat: number; lon: num
 ];
 
 const RAD = Math.PI / 180;
-/** Body-fixed x, y, z (x through 0° N 0° E, z north) to scene axes with north up, matching three's sphere UVs. */
-const toScene = (v: Vec3, k = 1): Vec3 => [v[0] * k, v[2] * k, -v[1] * k];
-const onGlobe = (lat: number, lon: number, k = 1): Vec3 => toScene(latLonToBody(lat, lon), k);
-
 const fmtInt = (n: number) => Math.round(n).toLocaleString("en-US");
 const fmtSigned = (n: number, digits = 2) => `${n < 0 ? "−" : "+"}${Math.abs(n).toFixed(digits)}°`;
 const fmtLat = (v: number, digits = 2) => `${Math.abs(v).toFixed(digits)}° ${v < 0 ? "S" : "N"}`;
 const fmtLon = (v: number, digits = 2) => `${Math.abs(v).toFixed(digits)}° ${v < 0 ? "W" : "E"}`;
-
-// ---------- Globe ----------
-
-// How scripts/build-moon-textures.py packs elevation into the two 8-bit maps, in km.
-const BASE_RANGE_KM = 20.5;
-const DETAIL_RANGE_KM = 3;
-
-const GLOBE_VERT = /* glsl */ `
-  varying vec2 vUv;
-  varying vec3 vP;
-  void main() {
-    vUv = uv;
-    vP = position;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`;
-// Grey relief print. Albedo sets the tone from mare grey to highland paper;
-// slopes from the elevation maps are shaded by the real Sun, strongest near
-// the terminator as on the Moon itself; past a thin penumbra band the night
-// side is umbra slate with faint relief. Every map line is drawn here, one
-// pixel wide at any zoom, so none can z-fight or show through the limb: the
-// 30-degree graticule (light), the equator and prime meridian (full ink), the
-// terminator (dashed), and the site-level plate with its 80 S circle (cased).
-const GLOBE_FRAG = /* glsl */ `
-  uniform sampler2D uMap;
-  uniform sampler2D uHeight;
-  uniform sampler2D uDetail;
-  uniform float uHasDetail;
-  uniform vec2 uBaseTexel;
-  uniform vec2 uDetailTexel;
-  uniform float uRelief;
-  uniform float uPx;
-  uniform vec3 uSunDir;
-  uniform vec3 uDayLo;
-  uniform vec3 uDayHi;
-  uniform vec3 uNightLo;
-  uniform vec3 uNightHi;
-  uniform vec3 uInk;
-  uniform vec3 uPaper;
-  varying vec2 vUv;
-  varying vec3 vP;
-
-  const float PI = 3.14159265;
-  const float R_KM = ${MOON_RADIUS_KM.toFixed(1)};
-
-  // Rise over run towards the east and the north. The east step widens with latitude so it spans the same ground everywhere.
-  vec2 slopeOf(sampler2D t, vec2 texel, float rangeKm, float cl) {
-    float du = min(texel.x / cl, 0.02);
-    float dv = texel.y;
-    float hE = texture2D(t, vUv + vec2(du, 0.0)).r - texture2D(t, vUv - vec2(du, 0.0)).r;
-    float hN = texture2D(t, vUv + vec2(0.0, dv)).r - texture2D(t, vUv - vec2(0.0, dv)).r;
-    return rangeKm * vec2(hE / (4.0 * PI * du * cl * R_KM), hN / (2.0 * PI * dv * R_KM));
-  }
-
-  // Coverage of a line whose centre is d away, where w is the change of d across one device pixel; hw is the half-width in CSS pixels.
-  float stroke(float d, float w, float hw) {
-    return 1.0 - smoothstep(hw - 0.5, hw + 0.5, d / max(w * uPx, 1e-7));
-  }
-
-  void main() {
-    vec3 n = normalize(vP);
-    float lat = asin(clamp(n.y, -1.0, 1.0));
-    float lon = atan(-n.z, n.x);
-    float cl = max(cos(lat), 0.04);
-    vec3 east = vec3(-sin(lon), 0.0, -cos(lon));
-    vec3 north = cross(n, east);
-    vec2 s = slopeOf(uHeight, uBaseTexel, ${BASE_RANGE_KM.toFixed(1)}, cl);
-    if (uHasDetail > 0.5) s += slopeOf(uDetail, uDetailTexel, ${DETAIL_RANGE_KM.toFixed(1)}, cl);
-    vec3 bn = normalize(n - uRelief * (s.x * east + s.y * north));
-
-    float geo = dot(n, uSunDir);
-    float ndl = dot(bn, uSunDir);
-    float lit = smoothstep(-0.006, 0.018, geo);
-    // Brightness of a slope relative to level ground under the same Sun.
-    float relief = clamp((ndl - geo) / (max(geo, 0.0) + 0.22), -1.0, 1.0);
-    float fall = mix(0.72, 1.0, sqrt(clamp(geo, 0.0, 1.0)));
-    float v = fall * (1.0 + 0.62 * relief);
-
-    float tone = sqrt(dot(texture2D(uMap, vUv).rgb, vec3(0.2126, 0.7152, 0.0722)));
-    tone = smoothstep(0.17, 0.8, tone);
-    vec3 night = mix(uNightLo, uNightHi, tone) * (1.0 + 0.26 * clamp((ndl - geo) * 2.5, -1.0, 1.0));
-    vec3 day = mix(night, mix(uDayLo, uDayHi, tone), clamp(v, 0.0, 1.0)) * (1.0 + 0.3 * max(v - 1.0, 0.0));
-    vec3 col = mix(night, day, lit);
-
-    // Slight limb darkening, so the globe keeps its edge against the paper.
-    float ndv = dot(n, normalize(cameraPosition - vP));
-    col *= mix(0.86, 1.0, smoothstep(0.0, 0.5, ndv));
-
-    vec3 lineCol = mix(uPaper, uInk, lit);
-    float latDeg = degrees(lat);
-    float lonDeg = degrees(lon);
-    float g = stroke(abs(fract(latDeg / 30.0 + 0.5) - 0.5) * 30.0, fwidth(latDeg), 0.5) * step(abs(latDeg), 75.0);
-    g = max(g, stroke(abs(fract(lonDeg / 30.0 + 0.5) - 0.5) * 30.0, fwidth(lonDeg), 0.5) * (1.0 - smoothstep(80.0, 84.0, abs(latDeg))));
-    col = mix(col, lineCol, g * 0.3);
-
-    float major = max(stroke(abs(n.y), fwidth(n.y), 0.6), stroke(abs(n.z), fwidth(n.z), 0.6) * step(0.0, n.x));
-    col = mix(col, lineCol, major * mix(0.4, 0.92, lit));
-
-    // The terminator, dashed every 2.5 degrees around the Sun's axis.
-    vec3 tu = normalize(cross(uSunDir, vec3(0.0, 1.0, 0.0)));
-    vec3 tv = cross(uSunDir, tu);
-    float dash = step(fract(atan(dot(n, tv), dot(n, tu)) * 72.0 / PI), 0.62);
-    col = mix(col, uInk, stroke(abs(geo), fwidth(geo), 0.6) * dash * 0.92);
-
-    // The site-level plate (a square on the south polar stereographic plane) and the 80 S circle inscribed in it.
-    if (n.y < -0.9) {
-      float c80 = abs(n.y + ${Math.sin(80 * (Math.PI / 180)).toFixed(6)});
-      vec2 st = 2.0 * R_KM * vec2(-n.z, n.x) / (1.0 - n.y);
-      float sq = abs(max(abs(st.x), abs(st.y)) - ${PLATE_HALF_KM.toFixed(1)});
-      float wc = fwidth(n.y);
-      float ws = fwidth(max(abs(st.x), abs(st.y)));
-      col = mix(col, uPaper, max(stroke(c80, wc, 1.9), stroke(sq, ws, 1.9)) * 0.9);
-      col = mix(col, uInk, max(stroke(c80, wc, 0.6), stroke(sq, ws, 0.6)));
-    }
-
-    gl_FragColor = vec4(col, 1.0);
-    #include <colorspace_fragment>
-  }
-`;
-
-/** The 2k colour map and the 1k elevation map come first; the 4k colour map and the fine relief replace and join them when loaded. */
-type Textures = { map: Texture; height: Texture };
-type FineTextures = { map: Texture; detail: Texture };
-
-const texelOf = (t: Texture) => {
-  const img = t.image as { width: number; height: number };
-  return new Vector2(1 / img.width, 1 / img.height);
-};
-
-function Globe({ textures, fine, sunDir }: { textures: Textures; fine: FineTextures | null; sunDir: Vec3 }) {
-  const dpr = useThree((s) => s.viewport.dpr);
-  const uniforms = useMemo(
-    () => ({
-      uMap: { value: null as Texture | null },
-      uHeight: { value: null as Texture | null },
-      uDetail: { value: null as Texture | null },
-      uHasDetail: { value: 0 },
-      uBaseTexel: { value: new Vector2(1 / 1024, 1 / 512) },
-      uDetailTexel: { value: new Vector2(1 / 4096, 1 / 2048) },
-      uRelief: { value: 2.6 },
-      uPx: { value: 1 },
-      uSunDir: { value: new Vector3(1, 0, 0) },
-      uDayLo: { value: new Color("#5b676d") },
-      uDayHi: { value: new Color("#f4f5f3") },
-      uNightLo: { value: new Color("#2e4455") },
-      uNightHi: { value: new Color("#496174") },
-      uInk: { value: new Color(INK) },
-      uPaper: { value: new Color(PAPER) },
-    }),
-    [],
-  );
-  const baseTexel = useMemo(() => texelOf(textures.height), [textures.height]);
-  const detailTexel = useMemo(() => (fine ? texelOf(fine.detail) : null), [fine]);
-  return (
-    <>
-      <mesh>
-        <sphereGeometry args={[1, 192, 96]} />
-        <shaderMaterial
-          vertexShader={GLOBE_VERT}
-          fragmentShader={GLOBE_FRAG}
-          uniforms={uniforms}
-          uniforms-uMap-value={fine?.map ?? textures.map}
-          uniforms-uHeight-value={textures.height}
-          uniforms-uDetail-value={fine?.detail ?? textures.height}
-          uniforms-uHasDetail-value={fine ? 1 : 0}
-          uniforms-uBaseTexel-value={baseTexel}
-          uniforms-uDetailTexel-value={detailTexel ?? baseTexel}
-          uniforms-uPx-value={dpr}
-          uniforms-uSunDir-value={sunDir}
-        />
-      </mesh>
-      <mesh scale={1.006}>
-        <sphereGeometry args={[1, 128, 64]} />
-        <meshBasicMaterial color={INK} side={BackSide} toneMapped={false} />
-      </mesh>
-    </>
-  );
-}
-
-// ---------- Lines to the Sun and Earth ----------
-
-/** A coloured line over a casing, so it reads on paper, on the lit side and on the night side. Widths are screen pixels. */
-/** Draws a line over its own casing: the two share a depth, so the upper one is pulled towards the camera. */
-const OVER = { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -6 };
-
-function Cased({ points, color, casing, dash = 0 }: { points: Vec3[]; color: string; casing: string; dash?: number }) {
-  const dashed = dash > 0 ? { dashed: true, dashSize: dash, gapSize: dash * 0.7 } : null;
-  return (
-    <>
-      <Line points={points} color={casing} lineWidth={3.5} renderOrder={1} {...dashed} />
-      <Line points={points} color={color} lineWidth={1.75} renderOrder={2} {...OVER} {...dashed} />
-    </>
-  );
-}
-
-const UP = new Vector3(0, 1, 0);
-/** Length of the lines to the Sun and Earth, in Moon radii from the centre; their labels sit beside the arrowheads. */
-const RAY = 1.13;
-
-/** The line from the Moon's centre through the point where the body is overhead, out past the limb, with an arrowhead of constant screen size. */
-function Ray({ dir, color, casing }: { dir: Vec3; color: string; casing: string }) {
-  const head = useRef<Group>(null);
-  const tip = useMemo(() => new Vector3(dir[0] * RAY, dir[1] * RAY, dir[2] * RAY), [dir]);
-  const quaternion = useMemo(() => new Quaternion().setFromUnitVectors(UP, new Vector3(...dir)), [dir]);
-  const points = useMemo<Vec3[]>(() => [[0, 0, 0], [tip.x, tip.y, tip.z]], [tip]);
-  useFrame(({ camera, size }) => {
-    // World units per CSS pixel at the tip, for a 30-degree field of view.
-    head.current?.scale.setScalar((camera.position.distanceTo(tip) * 2 * Math.tan(15 * RAD)) / size.height);
-  });
-  return (
-    <>
-      <Cased points={points} color={color} casing={casing} />
-      <group ref={head} position={tip} quaternion={quaternion}>
-        <mesh position={[0, 4.5, 0]} renderOrder={1}>
-          <coneGeometry args={[5.5, 14, 20]} />
-          <meshBasicMaterial color={casing} side={BackSide} toneMapped={false} />
-        </mesh>
-        <mesh position={[0, 4.5, 0]} renderOrder={2}>
-          <coneGeometry args={[3.5, 10, 20]} />
-          <meshBasicMaterial color={color} toneMapped={false} {...OVER} />
-        </mesh>
-      </group>
-    </>
-  );
-}
-
-const LIFT = 1.003;
-
-/** Points of the great-circle arc from a surface point towards a direction, between two angles in radians; null when the direction is overhead. */
-function arcTowards(from: Vec3, towards: Vec3): ((a: number) => Vec3) | null {
-  const d = from[0] * towards[0] + from[1] * towards[1] + from[2] * towards[2];
-  const t: Vec3 = [towards[0] - d * from[0], towards[1] - d * from[1], towards[2] - d * from[2]];
-  const l = Math.hypot(t[0], t[1], t[2]);
-  if (l < 1e-3) return null;
-  return (a) => {
-    const c = Math.cos(a) * LIFT;
-    const s = (Math.sin(a) * LIFT) / l;
-    return [from[0] * c + t[0] * s, from[1] * c + t[1] * s, from[2] * c + t[2] * s];
-  };
-}
-
-/** A short bearing line on the surface from the selected region towards the Sun or Earth, ending in an open arrowhead; dashed while the body is below the horizon. */
-function Bearing({ from, towards, len, color, casing, below }: { from: Vec3; towards: Vec3; len: number; color: string; casing: string; below: boolean }) {
-  const { shaft, head } = useMemo(() => {
-    const at = arcTowards(from, towards);
-    if (!at) return { shaft: null, head: null };
-    const shaft: Vec3[] = [];
-    for (let i = 0; i <= 10; i++) shaft.push(at(len * (0.2 + 0.8 * (i / 10))));
-    const tip = at(len);
-    const back = at(len * 0.84);
-    const side: Vec3 = [tip[1] * back[2] - tip[2] * back[1], tip[2] * back[0] - tip[0] * back[2], tip[0] * back[1] - tip[1] * back[0]];
-    const k = (len * 0.075) / Math.hypot(side[0], side[1], side[2]);
-    const wing = (sign: number): Vec3 => [back[0] + side[0] * k * sign, back[1] + side[1] * k * sign, back[2] + side[2] * k * sign];
-    return { shaft, head: [wing(1), tip, wing(-1)] };
-  }, [from, towards, len]);
-  if (!shaft || !head) return null;
-  return (
-    <>
-      <Cased points={shaft} color={color} casing={casing} dash={below ? len * 0.07 : 0} />
-      <Cased points={head} color={color} casing={casing} />
-    </>
-  );
-}
 
 /** A region's USGS outline draped on the sphere. */
 function Outline({ points, selected }: { points: Vec3[]; selected: boolean }) {
@@ -373,169 +104,6 @@ async function loadOutlines(): Promise<RegionOutline[]> {
   return out;
 }
 
-// ---------- Labels ----------
-
-// Labels and marks are plain DOM over the canvas. The scene projects their
-// anchor points each frame, hides the ones behind the globe, sets the region
-// names out in two columns, and then places the rest in priority order: text
-// that would overlap text or a mark already placed is hidden, after trying
-// its other positions.
-
-type Label = {
-  key: string;
-  at: Vec3;
-  node: ReactNode;
-  /** 0 is always shown; lower numbers are placed first and so win a collision. */
-  pri: number;
-  /** Radius in pixels of the mark at the anchor, which no other label may cover. */
-  dot?: number;
-  /** The text may sit on any side of the anchor. */
-  float?: boolean;
-  /** The columns of region names stand clear of this point. */
-  clear?: boolean;
-  /** One of the region names set out in two columns beside the group, each joined to its mark by a leader. */
-  callout?: boolean;
-};
-
-type Box = { el: HTMLElement; l: number; t: number; w: number; h: number };
-/** Left, top, right, bottom, the label it belongs to (whose own text may touch it), and for a mark its priority: text that outranks a mark may cover it. */
-type Rect = [number, number, number, number, number, number?];
-const ROW = 19;
-const FLOAT_AT: ((b: Box) => [number, number])[] = [
-  (b) => [11, -b.h / 2],
-  (b) => [-11 - b.w, -b.h / 2],
-  (b) => [-b.w / 2, -13 - b.h],
-  (b) => [-b.w / 2, 13],
-  (b) => [9, -b.h - 5],
-  () => [9, 5],
-  (b) => [-9 - b.w, -b.h - 5],
-  (b) => [-9 - b.w, 5],
-];
-
-function LabelProjector({ labels, overlay }: { labels: Label[]; overlay: RefObject<HTMLDivElement | null> }) {
-  const invalidate = useThree((s) => s.invalidate);
-  const v = useMemo(() => new Vector3(), []);
-  const measured = useRef<{ labels: Label[] | null; boxes: Box[][]; order: number[] }>({ labels: null, boxes: [], order: [] });
-  useEffect(() => invalidate(), [labels, invalidate]);
-  useEffect(() => {
-    let live = true;
-    // Text widths change when the web font arrives.
-    document.fonts?.ready.then(() => {
-      if (!live) return;
-      measured.current.labels = null;
-      invalidate();
-    });
-    return () => {
-      live = false;
-    };
-  }, [invalidate]);
-
-  useFrame(({ camera, size }) => {
-    const host = overlay.current;
-    if (!host || host.children.length < labels.length) return;
-    const m = measured.current;
-    if (m.labels !== labels) {
-      m.labels = labels;
-      m.order = labels.map((_, i) => i).sort((a, b) => labels[a].pri - labels[b].pri || a - b);
-      m.boxes = labels.map((_, i) => {
-        const el = host.children[i] as HTMLElement;
-        const o = el.getBoundingClientRect();
-        return Array.from(el.querySelectorAll<HTMLElement>("[data-box]"), (box) => {
-          const r = box.getBoundingClientRect();
-          return { el: box, l: r.left - o.left, t: r.top - o.top, w: r.width, h: r.height };
-        });
-      });
-    }
-    camera.updateMatrixWorld();
-    const c = camera.position;
-    const xs: number[] = [];
-    const ys: number[] = [];
-    const placed: Rect[] = [];
-    const callouts: number[] = [];
-    for (let i = 0; i < labels.length; i++) {
-      const el = host.children[i] as HTMLElement;
-      const label = labels[i];
-      const p = label.at;
-      // Closest approach of the sight line from the camera to the point; inside the globe means hidden.
-      const dx = p[0] - c.x;
-      const dy = p[1] - c.y;
-      const dz = p[2] - c.z;
-      const t = Math.min(1, Math.max(0, -(c.x * dx + c.y * dy + c.z * dz) / (dx * dx + dy * dy + dz * dz)));
-      const near = Math.hypot(c.x + dx * t, c.y + dy * t, c.z + dz * t);
-      v.set(p[0], p[1], p[2]).project(camera);
-      const x = ((v.x + 1) / 2) * size.width;
-      const y = ((1 - v.y) / 2) * size.height;
-      const shown = near > 0.995 && v.z > -1 && v.z < 1 && x > -40 && y > -40 && x < size.width + 40 && y < size.height + 40;
-      xs.push(shown ? x : NaN);
-      ys.push(y);
-      el.style.setProperty("visibility", shown ? "visible" : "hidden");
-      if (!shown) continue;
-      el.style.setProperty("transform", `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`);
-      if (label.dot) placed.push([x - label.dot, y - label.dot, x + label.dot, y + label.dot, i, label.pri]);
-      if (label.callout && m.boxes[i][0]) callouts.push(i);
-    }
-
-    // The region names: two columns, left and right of the group of marks, in the order of the marks down the page.
-    if (callouts.length) {
-      const cx = callouts.reduce((a, i) => a + xs[i], 0) / callouts.length;
-      const cy = callouts.reduce((a, i) => a + ys[i], 0) / callouts.length;
-      let reach = 0;
-      for (let i = 0; i < labels.length; i++) if ((labels[i].callout || labels[i].clear) && !Number.isNaN(xs[i])) reach = Math.max(reach, Math.abs(xs[i] - cx));
-      reach = Math.min(reach, size.width / 4) + 26;
-      const byX = [...callouts].sort((a, b) => xs[a] - xs[b]);
-      const split = Math.floor(byX.length / 2);
-      for (const [side, column] of [
-        [-1, byX.slice(0, split)],
-        [1, byX.slice(split)],
-      ] as const) {
-        column.sort((a, b) => ys[a] - ys[b]);
-        const top = Math.min(Math.max(cy - (column.length * ROW) / 2, 6), Math.max(6, size.height - 6 - column.length * ROW));
-        column.forEach((i, row) => {
-          const b = m.boxes[i][0];
-          const edge = side < 0 ? Math.max(cx - reach, b.w + 6) : Math.min(cx + reach, size.width - b.w - 6);
-          const left = side < 0 ? edge - b.w : edge;
-          const mid = top + row * ROW + ROW / 2;
-          b.el.style.setProperty("transform", `translate(${(left - xs[i]).toFixed(1)}px, ${(mid - b.h / 2 - ys[i]).toFixed(1)}px)`);
-          placed.push([left - 3, mid - b.h / 2 - 1, left + b.w + 3, mid + b.h / 2 + 1, i]);
-          const leader = host.children[i].querySelector<HTMLElement>("[data-leader]");
-          if (leader) {
-            const lx = edge - xs[i];
-            const ly = mid - ys[i];
-            leader.style.setProperty("width", `${Math.hypot(lx, ly).toFixed(1)}px`);
-            leader.style.setProperty("transform", `rotate(${Math.atan2(ly, lx).toFixed(4)}rad)`);
-          }
-        });
-      }
-    }
-
-    const free = (r: Rect, pri: number) =>
-      placed.every((q) => q[4] === r[4] || (q[5] !== undefined && q[5] > pri) || r[0] >= q[2] || r[2] <= q[0] || r[1] >= q[3] || r[3] <= q[1]);
-    for (const i of m.order) {
-      const x = xs[i];
-      const label = labels[i];
-      if (Number.isNaN(x) || label.callout) continue;
-      let done = false;
-      for (const b of m.boxes[i]) {
-        let ok = false;
-        if (!done) {
-          const spots: [number, number][] = label.float ? FLOAT_AT.map((f) => f(b)) : [[b.l, b.t]];
-          for (const [ox, oy] of spots) {
-            const r: Rect = [x + ox - 3, ys[i] + oy - 1, x + ox + b.w + 3, ys[i] + oy + b.h + 1, i];
-            if (label.pri !== 0 && !free(r, label.pri)) continue;
-            placed.push(r);
-            if (label.float) b.el.style.setProperty("transform", `translate(${ox.toFixed(1)}px, ${oy.toFixed(1)}px)`);
-            ok = true;
-            break;
-          }
-        }
-        b.el.style.setProperty("visibility", ok ? "inherit" : "hidden");
-        done ||= ok;
-      }
-    }
-  });
-  return null;
-}
-
 // ---------- Camera ----------
 
 type FramingId = "pole" | "near" | "sun";
@@ -550,8 +118,6 @@ const BASE_DISTANCE = 4.7;
 /** Inside this distance the nine regions are drawn one by one; beyond it (with some slack, so the change does not flicker) they are one mark. */
 const REGIONS_NEAR = 3.1;
 const REGIONS_FAR = 3.4;
-/** From below the south pole, tipped towards the near side so the 0° meridian runs up the page. */
-const POLE_DIR = onGlobe(-78, 0);
 /** Arriving from the site level: almost straight down on the pole, so the plate outline fills the view. */
 const POLE_CLOSE_DIR = onGlobe(-85, 0);
 
@@ -574,6 +140,7 @@ function Rig({ framing, onView }: { framing: Framing; onView: (distance: number,
 
   useFrame(({ camera: cam }) => {
     const d = cam.position.length();
+    handoff.moonDir = [cam.position.x / d, cam.position.y / d, cam.position.z / d];
     onView(d, SITE_GATE_DISTANCE, max, cam.position.y / d <= SITE_GATE_SIN);
   }, -1);
 
@@ -625,7 +192,7 @@ function Scene({
       <color attach="background" args={[PAPER]} />
       <Rig framing={framing} onView={onView} />
       <LabelProjector labels={labels} overlay={overlay} />
-      <Globe textures={textures} fine={fine} sunDir={sun} />
+      <MoonGlobe textures={textures} fine={fine} sunDir={sun} />
       <Ray dir={sun} color={SUN} casing={INK} />
       <Ray dir={earth} color={EARTH} casing={PAPER} />
       {near && outlines.map((o) => <Outline key={o.id} points={o.points} selected={o.id === site?.id} />)}
@@ -640,8 +207,6 @@ function Scene({
 }
 
 // ---------- Overlay marks ----------
-
-const LABEL_TEXT = "text-[0.69rem] leading-4 font-semibold tracking-[0.1em] whitespace-nowrap uppercase select-none";
 
 function GridTag({ text }: { text: string }) {
   return (
@@ -683,20 +248,6 @@ function LandingMark({ text, left }: { text: string; left?: boolean }) {
   );
 }
 
-/** The flag of the selected region: its name in ink on a leader, always shown. */
-function Flag({ text }: { text: string }) {
-  return (
-    <>
-      <span aria-hidden="true" className="absolute bottom-0 left-0 block h-9 w-px bg-ink" />
-      <span data-box aria-hidden="true" className={`absolute bottom-9 left-0 block bg-ink px-1.5 py-0.5 text-paper ${LABEL_TEXT}`}>
-        {text}
-      </span>
-    </>
-  );
-}
-
-const HIT = "pointer-events-auto absolute -top-3 -left-3 grid size-6 cursor-pointer place-items-center focus-visible:outline-offset-0";
-
 /**
  * One region. Far out it is drawn only when selected, as a square with its flag. Close in, the outline on the globe
  * is the mark, and the name stands in a column beside the group on a leader, the selected one in ink.
@@ -722,33 +273,6 @@ function RegionMark({ site, selected, callout, outlined, onSelect }: { site: Sit
         {!outlined && <span className={`block border border-paper bg-ink ${selected ? "size-[9px]" : "size-[7px]"}`} />}
       </button>
     </div>
-  );
-}
-
-/** The nine regions as one mark, for distances at which they would run together. */
-function ClusterMark({ onOpen }: { onOpen: () => void }) {
-  return (
-    <div className="relative">
-      <span
-        data-box
-        aria-hidden="true"
-        className={`absolute top-8 left-0 block border-l border-ink bg-paper/90 px-1.5 text-ink after:absolute after:bottom-full after:-left-px after:block after:h-8 after:w-px after:bg-ink ${LABEL_TEXT}`}
-      >
-        9 candidate regions
-      </span>
-      <button type="button" onClick={onOpen} aria-label="Nine candidate regions. Zoom in on the south pole to tell them apart." title="Zoom in on the nine regions" className={HIT}>
-        <span className="block size-[11px] border-[1.5px] border-ink bg-paper" />
-      </button>
-    </div>
-  );
-}
-
-/** A name beside the tip of a line to the Sun or Earth; on a bearing line it carries the body's elevation at the region. */
-function BearingTag({ text, className }: { text: string; className: string }) {
-  return (
-    <span data-box aria-hidden="true" className={`absolute top-0 left-0 block bg-paper px-1 ${LABEL_TEXT} ${className}`}>
-      {text}
-    </span>
   );
 }
 
@@ -891,18 +415,7 @@ function Legend({ showLandings }: { showLandings: boolean }) {
         <span className="block size-4 shrink-0 rounded-full border border-ink" />
         Site level plate, ±304 km about the pole, and the 80° S circle
       </li>
-      <li className={item}>
-        <span className="block h-[5px] w-4 shrink-0 border border-ink bg-sun" />
-        To the Sun: from the sub-solar point, and its bearing at the region
-      </li>
-      <li className={item}>
-        <span className="block h-[3px] w-4 shrink-0 bg-earth" />
-        To Earth: from the sub-Earth point, and its bearing at the region
-      </li>
-      <li className={item}>
-        <span className={`${line} border-dashed border-ink`} />
-        Terminator; a bearing is dashed while that body is below the horizon
-      </li>
+      <LineLegend item={item} />
       <li className={item}>
         <span className={`${line} border-ink`} />
         Equator and prime meridian; the lighter grid is every 30°
@@ -924,48 +437,6 @@ function Legend({ showLandings }: { showLandings: boolean }) {
 // ---------- View ----------
 
 type Load = { status: "loading" } | { status: "ready"; data: SystemData; textures: Textures } | { status: "error"; message: string };
-
-/** Mipmaps and anisotropic filtering keep the maps sharp towards the limb; the renderer caps the level at what the GPU offers. */
-function prepare(t: Texture, colour: boolean) {
-  t.colorSpace = colour ? SRGBColorSpace : NoColorSpace;
-  t.wrapS = RepeatWrapping;
-  t.anisotropy = 16;
-  return t;
-}
-
-async function loadTextures(): Promise<Textures> {
-  const loader = new TextureLoader();
-  try {
-    const [map, height] = await Promise.all([loader.loadAsync("/textures/moon_color_2k.jpg"), loader.loadAsync("/textures/moon_height_1k.jpg")]);
-    return { map: prepare(map, true), height: prepare(height, false) };
-  } catch {
-    throw new Error("The Moon's colour and height maps did not load.");
-  }
-}
-
-function disposeAll(t: FineTextures) {
-  t.map.dispose();
-  t.detail.dispose();
-}
-
-async function loadFineTextures(): Promise<FineTextures> {
-  const loader = new TextureLoader();
-  const [map, detail] = await Promise.all([loader.loadAsync("/textures/moon_color_4k.jpg"), loader.loadAsync("/textures/moon_relief_4k.jpg")]);
-  return { map: prepare(map, true), detail: prepare(detail, false) };
-}
-
-/** Where the cluster mark stands: the middle of the nine region centres. */
-const CLUSTER_AT: Vec3 = (() => {
-  const sum: Vec3 = [0, 0, 0];
-  for (const s of sites) {
-    const p = onGlobe(s.lat, s.lon);
-    sum[0] += p[0];
-    sum[1] += p[1];
-    sum[2] += p[2];
-  }
-  const l = Math.hypot(sum[0], sum[1], sum[2]);
-  return [sum[0] / l, sum[1] / l, sum[2] / l];
-})();
 
 const GRID_LABELS: { key: string; text: string; lat: number; lon: number }[] = [
   { key: "g-0", text: "0°", lat: -45, lon: 0 },
@@ -1031,13 +502,8 @@ export default function MoonView({ nowMs, onScrub, selectedId, onSelect, onOpenS
   useEffect(() => {
     if (!ready || !gl) return;
     let live = true;
-    let loaded: FineTextures | null = null;
     loadFineTextures().then(
-      (t) => {
-        loaded = t;
-        if (live) setFine(t);
-        else disposeAll(t);
-      },
+      (t) => live && setFine(t),
       () => undefined,
     );
     loadOutlines().then(
@@ -1046,7 +512,6 @@ export default function MoonView({ nowMs, onScrub, selectedId, onSelect, onOpenS
     );
     return () => {
       live = false;
-      if (loaded) disposeAll(loaded);
     };
   }, [ready, gl]);
 
@@ -1069,11 +534,11 @@ export default function MoonView({ nowMs, onScrub, selectedId, onSelect, onOpenS
     const out: Label[] = GRID_LABELS.map((g) => ({ key: g.key, at: onGlobe(g.lat, g.lon), pri: 5, node: <GridTag text={g.text} /> }));
     out.push({ key: "plate", at: onGlobe(-80, -140), pri: 3, node: <EdgeTag text="Site level, 80° S" className="text-ink" /> });
     if (showLandings) for (const l of LANDINGS) out.push({ key: l.id, at: onGlobe(l.lat, l.lon), pri: 4, dot: 6, node: <LandingMark text={l.short} left={l.left} /> });
-    out.push({ key: "to-sun", at: toScene(frame.sunDir, RAY), pri: 1, dot: 9, float: true, node: <BearingTag text="To the Sun" className="text-sun-ink" /> });
-    out.push({ key: "to-earth", at: toScene(frame.earthDir, RAY), pri: 1, dot: 9, float: true, node: <BearingTag text="To Earth" className="text-earth" /> });
+    out.push({ key: "to-sun", at: toScene(frame.sunDir, RAY), pri: 1, dot: 9, float: true, node: <BearingTag text={LINE_NAMES.sun} className="text-sun-ink" /> });
+    out.push({ key: "to-earth", at: toScene(frame.earthDir, RAY), pri: 1, dot: 9, float: true, node: <BearingTag text={LINE_NAMES.earth} className="text-earth" /> });
     out.push({ key: "sub-solar", at: toScene(frame.sunDir), pri: 1, dot: 7, node: <PointTag text="Sub-solar point" swatch="bg-sun" /> });
     out.push({ key: "sub-earth", at: toScene(frame.earthDir), pri: 1, dot: 7, node: <PointTag text="Sub-Earth point" swatch="bg-earth" below /> });
-    if (!near) out.push({ key: "cluster", at: CLUSTER_AT, pri: 2, dot: 8, node: <ClusterMark onOpen={openRegions} /> });
+    if (!near) out.push({ key: "cluster", at: CLUSTER_AT, pri: 2, dot: 8, node: <ClusterMark onOpen={openRegions} hint="Zoom in on the south pole to tell them apart." /> });
     // Close in, all nine; far out, only the selected one. The selected region goes last so its flag sits above its neighbours.
     for (const s of [...sites].sort((a, b) => Number(a.id === selectedId) - Number(b.id === selectedId))) {
       const selected = s.id === selectedId;
