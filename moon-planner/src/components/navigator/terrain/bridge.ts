@@ -101,6 +101,7 @@ export class PlateBridge {
   private reserved = new Map<string, HTMLElement | null>();
   /** Lowest y the indicators may use this frame: above the overlays along the bottom. */
   private floor = Infinity;
+  private onDistance: ((distance: number) => void) | null = null;
 
   // ---------- Scene hooks ----------
 
@@ -126,6 +127,11 @@ export class PlateBridge {
 
   recentre() {
     this.commands?.recentre();
+  }
+
+  /** Receives the camera's distance from its orbit centre on every rendered frame. */
+  setOnDistance(fn: ((distance: number) => void) | null) {
+    this.onDistance = fn;
   }
 
   // ---------- Rose and overlays ----------
@@ -218,6 +224,7 @@ export class PlateBridge {
    */
   sync(camera: Camera, w: number, h: number, target: Vector3 | null = null) {
     camera.updateMatrixWorld();
+    if (target) this.onDistance?.(camera.position.distanceTo(target));
     const placed: Rect[] = this.reservedRects();
     this.floor = Infinity;
     for (const r of placed) if (r[3] > h - 60) this.floor = Math.min(this.floor, r[1] - 14);
@@ -331,17 +338,26 @@ export class PlateBridge {
       return [Math.min(bx0, x - 10), y - Math.max(bh / 2, 10), Math.max(bx0 + bw, x + 10), y + Math.max(bh / 2, 10)];
     };
     // When another indicator or the flag is in the way, take the nearest free
-    // spot a whole box away, across or up and down, so a marker never drifts
-    // far from where its bearing leaves the view. Sun and Earth often share a
-    // bearing; they then stack, which also fits a narrow plate.
+    // spot straight up, down, across or back, in 6 px steps, so a marker never
+    // drifts far from where its bearing leaves the view. Sun and Earth often
+    // share a bearing; they then stack, which also fits a narrow plate. A point
+    // the ray put on the border can sit a rounding error outside it, hence the
+    // half-pixel slack.
     if (overlaps(rectAt(px, py), placed, 4)) {
-      const tries: [number, number][] = [];
-      for (const k of [1, -1, 2, -2, 3, -3, 4, -4]) tries.push([px + k * (bw / 2 + 24), py], [px, py + k * (bh + 8)]);
-      tries.sort((a, b) => Math.hypot(a[0] - px, a[1] - py) - Math.hypot(b[0] - px, b[1] - py));
-      const free = tries.find(
-        ([x, y]) => x >= rect[0] && x <= rect[2] && y >= rect[1] && y <= rect[3] && !overlaps(rectAt(x, y), placed, 4),
-      );
-      if (free) [px, py] = free;
+      const within = (x: number, y: number) => x > rect[0] - 0.5 && x < rect[2] + 0.5 && y > rect[1] - 0.5 && y < rect[3] + 0.5;
+      for (let d = 6; d <= 240; d += 6) {
+        const tries: [number, number][] = [
+          [px, py - d],
+          [px, py + d],
+          [px + d, py],
+          [px - d, py],
+        ];
+        const free = tries.find(([x, y]) => within(x, y) && !overlaps(rectAt(x, y), placed, 4));
+        if (free) {
+          [px, py] = free;
+          break;
+        }
+      }
     }
     el.style.transform = `translate3d(${px.toFixed(1)}px, ${py.toFixed(1)}px, 0)`;
     if (ind.arrow) ind.arrow.style.transform = `translate(-50%, -50%) rotate(${Math.atan2(dy, dx).toFixed(3)}rad) translateX(15px)`;

@@ -36,6 +36,7 @@ import MissionControls, {
 import SiteBulletin, { covers } from "./SiteBulletin";
 import ComparePanel, { tiedRanks, type CompareOption } from "./ComparePanel";
 import AboutPanel from "./AboutPanel";
+import LevelNav, { type Level } from "../levels/LevelNav";
 
 const TerrainPlate = dynamic(() => import("./TerrainPlate"), { ssr: false, loading: () => <PlateLoading /> });
 
@@ -229,7 +230,7 @@ function Tabs({ view, onChange, className = "" }: { view: View; onChange: (v: Vi
             tabIndex={on ? 0 : -1}
             onClick={() => onChange(t.id)}
             onKeyDown={(e) => onKey(e, i)}
-            className={`h-10 flex-1 px-3.5 text-[0.844rem] whitespace-nowrap transition-colors duration-150 focus-visible:outline-offset-[-2px] xl:flex-none ${
+            className={`h-10 flex-1 px-2 text-[0.79rem] whitespace-nowrap transition-colors duration-150 focus-visible:outline-offset-[-2px] sm:px-3.5 sm:text-[0.844rem] xl:flex-none ${
               on
                 ? "font-semibold text-ink shadow-[inset_0_-2px_0_var(--color-ink)]"
                 : "font-medium text-ink-2 hover:text-ink hover:shadow-[inset_0_-1px_0_var(--color-ink-2)]"
@@ -242,6 +243,15 @@ function Tabs({ view, onChange, className = "" }: { view: View; onChange: (v: Vi
     </div>
   );
 }
+
+/** The three zoom levels and the tabs that show them, from the outermost in. */
+const LEVEL_VIEWS: { level: Level; view: View }[] = [
+  { level: "system", view: "system" },
+  { level: "moon", view: "moon" },
+  { level: "site", view: "navigator" },
+];
+/** Length of the crossfade when zooming carries the view to another level; matches duration-200. */
+const LEVEL_FADE_MS = 200;
 
 type SiteMeta = { id: string; name: string; lat: number; lon: number; custom: boolean };
 
@@ -625,7 +635,8 @@ export default function NavigatorApp() {
   }, []);
 
   // The System view's rail covers all of 2027. Inside the mission window it moves the shared clock;
-  // outside it, the System view keeps its own time until the tab is left.
+  // outside it, the System and Moon levels share their own time, which is kept when stepping between them and
+  // dropped at the site level, which only covers the window.
   const [systemMs, setSystemMs] = useState<number | null>(null);
   const systemNow = systemMs ?? nowMs;
   const scrubSystem = useCallback(
@@ -639,17 +650,66 @@ export default function NavigatorApp() {
     },
     [startMs, endMs, scrub],
   );
-  const changeView = useCallback((v: View) => {
-    setSystemMs(null);
+  // How the level on show was reached by zoom or step: from the level above it, or from the one below.
+  const [arrival, setArrival] = useState<"above" | "below" | null>(null);
+  const [fading, setFading] = useState(false);
+  const hop = useRef(0);
+  const viewRef = useRef(view);
+  useEffect(() => {
+    viewRef.current = view;
+  }, [view]);
+  useEffect(() => () => window.clearTimeout(hop.current), []);
+
+  const showView = useCallback((v: View, from: "above" | "below" | null) => {
+    if (v !== "moon" && v !== "system") setSystemMs(null);
+    setArrival(from);
     setView(v);
   }, []);
+  const changeView = useCallback(
+    (v: View) => {
+      window.clearTimeout(hop.current);
+      hop.current = 0;
+      setFading(false);
+      showView(v, null);
+    },
+    [showView],
+  );
+  /** Step to another level. A step made by zooming crossfades, unless reduced motion is asked for. */
+  const goLevel = useCallback(
+    (to: Level, byZoom: boolean) => {
+      if (hop.current) return;
+      const next = LEVEL_VIEWS.findIndex((l) => l.level === to);
+      const now = LEVEL_VIEWS.findIndex((l) => l.view === viewRef.current);
+      if (next < 0 || next === now) return;
+      const v = LEVEL_VIEWS[next].view;
+      const from = now < 0 ? null : next > now ? "above" : "below";
+      if (!byZoom || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        showView(v, from);
+        return;
+      }
+      setFading(true);
+      hop.current = window.setTimeout(() => {
+        showView(v, from);
+        // Two frames, so the new level is mounted clear before it fades in.
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            hop.current = 0;
+            setFading(false);
+          }),
+        );
+      }, LEVEL_FADE_MS);
+    },
+    [showView],
+  );
+  const stepLevel = useCallback((to: Level) => goLevel(to, false), [goLevel]);
+  const zoomToSystem = useCallback(() => goLevel("system", true), [goLevel]);
+  const zoomToMoon = useCallback(() => goLevel("moon", true), [goLevel]);
+  const zoomToSite = useCallback(() => goLevel("site", true), [goLevel]);
   const systemSample = useMemo(
     () => (view === "system" && selectedData ? sampleAt(selectedData, systemNow) : null),
     [view, selectedData, systemNow],
   );
   const systemWindow = useMemo(() => ({ startMs, endMs }), [startMs, endMs]);
-  const openSiteLevel = useCallback(() => changeView("navigator"), [changeView]);
-  const openMoonLevel = useCallback(() => changeView("moon"), [changeView]);
 
   useEffect(() => {
     if (!playing) return;
@@ -804,6 +864,7 @@ export default function NavigatorApp() {
   const plotHeight = usePlotHeight();
   // The Sun's and Earth's bearing paths on the plate cover the same window as Fig. 2.
   const plateTrack = useMemo(() => (selectedData ? { site: selectedData, startMs, endMs } : null), [selectedData, startMs, endMs]);
+  const fade = `transition-opacity duration-200 motion-reduce:transition-none ${fading ? "opacity-0" : "opacity-100"}`;
 
   return (
     <div className="relative flex flex-col xl:h-[calc(100dvh-2.75rem)] xl:min-h-[38rem] xl:overflow-hidden">
@@ -825,7 +886,7 @@ export default function NavigatorApp() {
           role="tabpanel"
           id="view-navigator"
           aria-labelledby="tab-navigator"
-          className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(19rem,22rem)_minmax(0,1fr)] xl:grid-cols-[24rem_minmax(0,1fr)_21rem]"
+          className={`grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(19rem,22rem)_minmax(0,1fr)] xl:grid-cols-[24rem_minmax(0,1fr)_21rem] ${fade}`}
         >
           <div className="relative border-b border-rule bg-paper-2 md:row-span-2 md:border-r md:border-b-0 xl:row-span-1 xl:overflow-y-auto">
             <RegionTable
@@ -864,6 +925,8 @@ export default function NavigatorApp() {
                     customSite={customPoint}
                     track={plateTrack}
                     caption={<PlateTitle meta={meta} />}
+                    onZoomOut={zoomToMoon}
+                    levelNav={<LevelNav level="site" onLevel={stepLevel} />}
                     className="h-full w-full"
                   />
                 </PanelBoundary>
@@ -931,7 +994,7 @@ export default function NavigatorApp() {
       )}
 
       {view === "system" && (
-        <div role="tabpanel" id="view-system" aria-labelledby="tab-system" className="relative min-h-0 flex-1 xl:overflow-hidden">
+        <div role="tabpanel" id="view-system" aria-labelledby="tab-system" className={`relative min-h-0 flex-1 xl:overflow-hidden ${fade}`}>
           <SystemView
             nowMs={systemNow}
             onScrub={scrubSystem}
@@ -939,20 +1002,25 @@ export default function NavigatorApp() {
             sunElevationDeg={systemSample?.sunEl}
             earthElevationDeg={systemSample?.earthEl}
             windowMs={systemWindow}
-            onOpenMoon={openMoonLevel}
+            onOpenMoon={zoomToMoon}
+            entry={arrival}
+            levelNav={<LevelNav level="system" onLevel={stepLevel} />}
             className="h-full"
           />
         </div>
       )}
 
       {view === "moon" && (
-        <div role="tabpanel" id="view-moon" aria-labelledby="tab-moon" className="relative min-h-0 flex-1 xl:overflow-hidden">
+        <div role="tabpanel" id="view-moon" aria-labelledby="tab-moon" className={`relative min-h-0 flex-1 xl:overflow-hidden ${fade}`}>
           <MoonView
             nowMs={systemNow}
             onScrub={scrubSystem}
             selectedId={effectiveId}
             onSelect={select}
-            onOpenSite={openSiteLevel}
+            onOpenSite={zoomToSite}
+            onOpenSystem={zoomToSystem}
+            entry={arrival}
+            levelNav={<LevelNav level="moon" onLevel={stepLevel} />}
             windowMs={systemWindow}
             className="h-full"
           />

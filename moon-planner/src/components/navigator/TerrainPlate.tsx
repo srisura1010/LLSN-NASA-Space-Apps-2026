@@ -29,6 +29,8 @@ import { Indicators, LabelLayer, type PlateLabel } from "./terrain/PlateLabels";
 import { RoseDrawer, buildRoseData } from "./terrain/rose";
 import { RoseLayer, ScaleBar } from "./terrain/RoseLayer";
 import TerrainScene from "./terrain/Scene";
+import { ZoomHint } from "../levels/LevelNav";
+import { useZoomGate } from "../levels/useZoomGate";
 
 export type TerrainPlateProps = {
   selectedId: string;
@@ -48,12 +50,18 @@ export type TerrainPlateProps = {
   track?: { site: SiteData; startMs: number; endMs: number } | null;
   /** Figure title, shown in the caption bar above the plate with the legend. */
   caption?: ReactNode;
+  /** Zooming out past the whole-plate view steps up to the Moon level. */
+  onZoomOut?: () => void;
+  /** The level indicator and step buttons, shown in the caption bar. */
+  levelNav?: ReactNode;
   className?: string;
 };
 
 type Focus = { id: string; name: string; lat: number; lon: number; custom: boolean };
 
 const K = EXAGGERATION / 1000;
+/** Camera distance, km, past which the whole plate is in view and zooming out leaves the site level. */
+const LEVEL_OUT_KM = 1100;
 
 // ---------- Environment ----------
 
@@ -118,6 +126,8 @@ export default function TerrainPlate({
   customSite,
   track,
   caption,
+  onZoomOut,
+  levelNav,
   className,
 }: TerrainPlateProps) {
   const gl = useWebGL2();
@@ -138,6 +148,19 @@ export default function TerrainPlate({
     bridge.setRose(rose);
     return () => bridge.setRose(null);
   }, [bridge, rose]);
+
+  const { setHost, report, hint: zoomHint, progress: zoomProgress } = useZoomGate({ onOut: onZoomOut });
+  useEffect(() => {
+    bridge.setOnDistance((d) => report(d, 0, LEVEL_OUT_KM));
+    return () => bridge.setOnDistance(null);
+  }, [bridge, report]);
+  const stageRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      bridge.attachStage(el);
+      setHost(el);
+    },
+    [bridge, setHost],
+  );
 
   useEffect(() => {
     let alive = true;
@@ -368,10 +391,13 @@ export default function TerrainPlate({
       } ${earth ? `Earth at azimuth ${earth.az.toFixed(1)}°, elevation ${earth.el.toFixed(1)}°.` : ""}`
     : "No region selected.";
 
+  // The plate takes the height its slot gives it. A floor of its own taller
+  // than the slot's would push the scale bar and view tools out of sight.
   return (
-    <figure className={`relative flex min-h-[18rem] flex-col overflow-hidden bg-paper text-ink ${className ?? ""}`}>
+    <figure className={`relative flex flex-col overflow-hidden bg-paper text-ink ${className ?? ""}`}>
       <figcaption className="flex flex-wrap items-center justify-between gap-x-5 gap-y-1 border-b border-rule bg-paper px-4 py-1">
         {caption}
+        {levelNav}
         <span className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[0.75rem] text-ink-2">
           {lit ? (
             <>
@@ -412,7 +438,7 @@ export default function TerrainPlate({
         </span>
       </figcaption>
       <div
-        ref={(el) => bridge.attachStage(el)}
+        ref={stageRef}
         className="group/stage relative min-h-0 flex-1 overflow-hidden bg-paper outline-none"
         tabIndex={showCanvas ? 0 : -1}
         role="group"
@@ -421,6 +447,7 @@ export default function TerrainPlate({
         aria-describedby={descId}
         onKeyDown={onKeyDown}
       >
+        <ZoomHint text={zoomHint === "out" && showCanvas ? "Keep zooming out to open the Moon level" : null} progress={zoomProgress} />
         {showCanvas && (
           <GlBoundary key={attempt} onError={() => setGlFailed("error")}>
             <div className="absolute inset-0" aria-hidden>

@@ -13,14 +13,22 @@ import { elevationDeg, latLonToBody, moonFrameAt, type MoonFrame } from "@/lib/m
 import { sites, type Site } from "@/lib/sites";
 import { EARTH_RADIUS_KM, MOON_RADIUS_KM, loadSystem, stateAt, systemEndMs, type SystemData, type SystemState, type Vec3 } from "@/lib/system";
 import YearSlider, { fmtUtc, useYearPlayback } from "../system/YearSlider";
+import { ZoomHint } from "../levels/LevelNav";
+import { useZoomGate } from "../levels/useZoomGate";
 
 export type MoonViewProps = {
   nowMs: number;
   onScrub?: (ms: number) => void;
   selectedId: string | null;
   onSelect: (id: string) => void;
-  /** Steps down to the terrain plate in the Navigator tab. */
-  onOpenSite: () => void;
+  /** Zooming in past the limit over the south polar cap steps down to the terrain plate. */
+  onOpenSite?: () => void;
+  /** Zooming out past the limit steps up to the Earth–Moon framing of the System level. */
+  onOpenSystem?: () => void;
+  /** How the view was reached by zoom: "above" opens far out, "below" opens close in on the south pole. */
+  entry?: "above" | "below" | null;
+  /** The level indicator and step buttons, shown with the view's controls. */
+  levelNav?: ReactNode;
   /** The mission window, marked on the year rail. */
   windowMs?: { startMs: number; endMs: number };
   className?: string;
@@ -251,36 +259,50 @@ function LabelProjector({ points, overlay }: { points: Vec3[]; overlay: RefObjec
 }
 
 type FramingId = "pole" | "near" | "sun";
-type Framing = { id: FramingId; dir: Vec3 };
+type Framing = { id: FramingId; dir: Vec3; zoom?: "near" | "far" };
+const MIN_DISTANCE = 1.45;
+/** Camera distance, in Moon radii, at which zooming in over the polar cap opens the site level; the plate outline is still whole in view. */
+const SITE_GATE_DISTANCE = 1.9;
+/** The gate is open while the point under the view centre is south of this latitude, so the site-level outline is what the view is closing on. */
+const SITE_GATE_SIN = Math.sin(-70 * RAD);
 /** From below the south pole, tipped towards the near side so the 0° meridian runs up the page. */
-const POLE_DIR = onGlobe(-66, 0);
+const POLE_DIR = onGlobe(-78, 0);
+/** Arriving from the site level: almost straight down on the pole, so the plate outline fills the view. */
+const POLE_CLOSE_DIR = onGlobe(-85, 0);
 
-function Rig({ framing }: { framing: Framing }) {
+function Rig({ framing, onView }: { framing: Framing; onView: (distance: number, min: number, max: number, inOk: boolean) => void }) {
   const camera = useThree((s) => s.camera);
   const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
   const invalidate = useThree((s) => s.invalidate);
   const controls = useRef<OrbitControlsImpl>(null);
   const narrow = Math.max(1, 1.05 / aspect);
   const base = 5.2 * narrow;
+  const max = base * 1.6;
 
   useEffect(() => {
-    camera.position.set(framing.dir[0] * base, framing.dir[1] * base, framing.dir[2] * base);
+    const d = framing.zoom === "near" ? SITE_GATE_DISTANCE * 1.35 : framing.zoom === "far" ? max * 0.8 : base;
+    camera.position.set(framing.dir[0] * d, framing.dir[1] * d, framing.dir[2] * d);
     controls.current?.target.set(0, 0, 0);
     controls.current?.update();
     invalidate();
-  }, [camera, base, framing, invalidate]);
+  }, [camera, base, max, framing, invalidate]);
+
+  useFrame(({ camera: cam }) => {
+    const d = cam.position.length();
+    onView(d, SITE_GATE_DISTANCE, max, cam.position.y / d <= SITE_GATE_SIN);
+  }, -1);
 
   return (
     <OrbitControls
       ref={controls}
       enablePan={false}
       enableDamping={false}
-      minDistance={1.45}
-      maxDistance={base * 1.6}
+      minDistance={MIN_DISTANCE}
+      maxDistance={max}
       minPolarAngle={0.05}
       maxPolarAngle={Math.PI - 0.05}
       rotateSpeed={0.55}
-      zoomSpeed={0.8}
+      zoomSpeed={1.2}
     />
   );
 }
@@ -291,19 +313,21 @@ function Scene({
   framing,
   labelPoints,
   overlay,
+  onView,
 }: {
   textures: Textures;
   frame: MoonFrame;
   framing: Framing;
   labelPoints: Vec3[];
   overlay: RefObject<HTMLDivElement | null>;
+  onView: (distance: number, min: number, max: number, inOk: boolean) => void;
 }) {
   const sun = toScene(frame.sunDir);
   const earth = toScene(frame.earthDir);
   return (
     <>
       <color attach="background" args={[PAPER]} />
-      <Rig framing={framing} />
+      <Rig framing={framing} onView={onView} />
       <LabelProjector points={labelPoints} overlay={overlay} />
       <Globe textures={textures} sunDir={sun} />
       <CasedLine points={PLATE.circle} />
@@ -574,10 +598,21 @@ const GRID_LABELS: { key: string; text: string; lat: number; lon: number }[] = [
   { key: "g-60n", text: "60° N", lat: 60, lon: 45 },
 ];
 
-export default function MoonView({ nowMs, onScrub, selectedId, onSelect, onOpenSite, windowMs, className = "" }: MoonViewProps) {
+export default function MoonView({ nowMs, onScrub, selectedId, onSelect, onOpenSite, onOpenSystem, entry, levelNav, windowMs, className = "" }: MoonViewProps) {
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
-  const [framing, setFraming] = useState<Framing>({ id: "pole", dir: POLE_DIR });
+  const [framing, setFraming] = useState<Framing>(() =>
+    entry === "below" ? { id: "pole", dir: POLE_CLOSE_DIR, zoom: "near" } : { id: "pole", dir: POLE_DIR, zoom: entry === "above" ? "far" : undefined },
+  );
+  const { setHost, report, hint, progress } = useZoomGate({ onIn: onOpenSite, onOut: onOpenSystem });
+  const hintText =
+    hint === "in"
+      ? "Keep zooming to open the site level"
+      : hint === "in-blocked"
+        ? "Turn the south pole towards you, then zoom in to open the site level"
+        : hint === "out"
+          ? "Keep zooming out to open the System level"
+          : null;
   const [showLandings, setShowLandings] = useState(true);
   const [playing, setPlaying] = useState(false);
   const [gl] = useState(hasWebGL);
@@ -667,13 +702,12 @@ export default function MoonView({ nowMs, onScrub, selectedId, onSelect, onOpenS
             >
               Earlier landings
             </button>
-            <button type="button" onClick={onOpenSite} className={`${BUTTON} bg-ink font-semibold text-paper hover:bg-ink-2`}>
-              Open site level
-            </button>
+            {levelNav}
           </div>
         </header>
 
-        <div className="relative isolate min-h-[24rem] flex-1 overflow-hidden bg-paper">
+        <div ref={setHost} className="relative isolate min-h-[24rem] flex-1 overflow-hidden bg-paper">
+          <ZoomHint text={hintText} progress={progress} />
           {load.status === "loading" && (
             <p role="status" className="absolute inset-0 grid place-items-center text-[0.844rem] text-ink-2">
               Loading the Moon globe and the 2027 ephemeris
@@ -706,10 +740,10 @@ export default function MoonView({ nowMs, onScrub, selectedId, onSelect, onOpenS
                 dpr={[1, 2]}
                 camera={{ fov: 30, position: [POLE_DIR[0] * 5.2, POLE_DIR[1] * 5.2, POLE_DIR[2] * 5.2], near: 0.1, far: 40 }}
                 gl={{ antialias: true }}
-                aria-label="Globe of the Moon lit by the Sun. Drag to turn, scroll to zoom."
+                aria-label="Globe of the Moon lit by the Sun. Drag to turn, scroll to zoom; zooming past a limit opens the site level or the System level."
                 role="img"
               >
-                <Scene textures={textures} frame={frame} framing={framing} labelPoints={labelPoints} overlay={overlay} />
+                <Scene textures={textures} frame={frame} framing={framing} labelPoints={labelPoints} overlay={overlay} onView={report} />
               </Canvas>
               <div ref={overlay} className="pointer-events-none absolute inset-0 overflow-hidden">
                 {labels.map((l) => (
@@ -723,7 +757,8 @@ export default function MoonView({ nowMs, onScrub, selectedId, onSelect, onOpenS
         </div>
 
         <p className="border-t border-rule px-4 py-2 text-[0.8rem] leading-snug text-ink-2">
-          Drag to turn the globe, scroll to zoom. The terminator and the Moon&apos;s orientation are computed for the
+          Drag to turn the globe, scroll to zoom; zooming in on the south pole opens the site level, zooming out opens
+          the System level. The terminator and the Moon&apos;s orientation are computed for the
           time shown; relief shading is exaggerated and no cast shadows are drawn, so use the site level for terrain
           shadow.
         </p>

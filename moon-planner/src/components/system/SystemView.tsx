@@ -3,10 +3,10 @@
 // System level: the Sun, Earth and Moon from JPL Horizons vectors, drawn as a
 // printed orbit diagram and driven by the Navigator's clock.
 
-import { Component, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Line, OrbitControls } from "@react-three/drei";
-import { BackSide, Color, Quaternion, Vector3 } from "three";
+import { BackSide, Color, Quaternion, Vector3, type Group } from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import {
   AU_KM,
@@ -21,6 +21,8 @@ import {
   type Vec3,
 } from "@/lib/system";
 import YearSlider, { MONTHS, fmtUtc, useYearPlayback } from "./YearSlider";
+import { ZoomHint } from "../levels/LevelNav";
+import { useZoomGate } from "../levels/useZoomGate";
 
 export type SystemViewProps = {
   nowMs: number;
@@ -31,13 +33,19 @@ export type SystemViewProps = {
   earthElevationDeg?: number | null;
   /** The mission window, marked on the year rail. */
   windowMs?: { startMs: number; endMs: number };
-  /** Shows an "Open Moon level" button that steps down to the Moon globe. */
+  /** Zooming in past the Earth–Moon framing's limit steps down to the Moon globe. */
   onOpenMoon?: () => void;
+  /** "below" when the view was reached by zooming out of the Moon level: it opens close in on the Moon. */
+  entry?: "above" | "below" | null;
+  /** The level indicator and step buttons, shown with the view's controls. */
+  levelNav?: ReactNode;
   className?: string;
 };
 
 type Scale = "display" | "true";
-type Framing = "system" | "pair";
+type FramingId = "system" | "pair";
+/** start: where the camera opens. "near" and "far" keep its direction and sit just inside a zoom limit. */
+type Framing = { id: FramingId; start: "default" | "near" | "far" };
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -122,13 +130,14 @@ type Label = { key: string; at: Vec3; node: ReactNode };
 const LABEL_TEXT = "text-[0.69rem] leading-4 font-semibold tracking-[0.1em] whitespace-nowrap uppercase select-none";
 
 /** A body's name on a short leader; in true scale a ring marks the speck. */
-function BodyTag({ text, speck, below = false }: { text: string; speck: boolean; below?: boolean }) {
+function BodyTag({ text, speck, below = false, regions = false }: { text: string; speck: boolean; below?: boolean; regions?: boolean }) {
   const lead = below ? (speck ? "top-[6px] h-6" : "top-0 h-5") : speck ? "bottom-[6px] h-6" : "bottom-0 h-5";
   const name = below ? (speck ? "top-[30px]" : "top-5") : speck ? "bottom-[30px]" : "bottom-5";
   return (
     <div className="relative">
       {speck && <span className="absolute -top-[6px] -left-[6px] block size-[12px] rounded-full border border-ink" />}
       <span className={`absolute left-0 block w-px bg-ink ${lead}`} />
+      {regions && <span className={`absolute -left-1 block size-2 border border-paper bg-ink ${speck ? "top-[10px]" : "-top-1"}`} />}
       <span className={`absolute left-0 block bg-paper/85 pr-1 pl-1.5 text-ink ${LABEL_TEXT} ${name}`}>{text}</span>
     </div>
   );
@@ -138,16 +147,19 @@ function CentredTag({ text, className }: { text: string; className: string }) {
   return <span className={`absolute block -translate-x-1/2 -translate-y-1/2 ${LABEL_TEXT} ${className}`}>{text}</span>;
 }
 
-function LabelProjector({ points, overlay }: { points: Vec3[]; overlay: RefObject<HTMLDivElement | null> }) {
+/** Points are in scene units from the Sun; the group holds the offset that puts the framed point at the origin. */
+function LabelProjector({ points, overlay, group }: { points: Vec3[]; overlay: RefObject<HTMLDivElement | null>; group: RefObject<Group | null> }) {
   const v = useMemo(() => new Vector3(), []);
   useFrame(({ camera, size }) => {
     const host = overlay.current;
     if (!host) return;
     camera.updateMatrixWorld();
+    const g = group.current?.position;
+    if (!g) return;
     for (let i = 0; i < points.length; i++) {
       const el = host.children[i] as HTMLElement | undefined;
       if (!el) continue;
-      v.set(points[i][0], points[i][1], points[i][2]).project(camera);
+      v.set(points[i][0] + g.x, points[i][1] + g.y, points[i][2] + g.z).project(camera);
       const shown = v.z > -1 && v.z < 1;
       el.style.setProperty("visibility", shown ? "visible" : "hidden");
       if (shown) el.style.setProperty("transform", `translate3d(${((v.x + 1) / 2) * size.width}px, ${((1 - v.y) / 2) * size.height}px, 0)`);
@@ -160,7 +172,9 @@ type Geometry = {
   /** Scene positions relative to the Sun. */
   earth: Vec3;
   moon: Vec3;
-  focus: Vec3;
+  /** The framed point glides from here to there as the camera zooms in. */
+  focusFrom: Vec3;
+  focusTo: Vec3;
   sunR: number;
   earthR: number;
   moonR: number;
@@ -170,15 +184,17 @@ type Geometry = {
   speck: boolean;
 };
 
-function geometry(state: SystemState, scale: Scale, framing: Framing): Geometry {
+function geometry(state: SystemState, scale: Scale, framing: FramingId): Geometry {
   const stretch = scale === "display" ? PAIR_STRETCH : 1;
   const bodyK = scale === "display" ? BODY_STRETCH : 1;
   const earth = toScene(state.earth);
   const rel: Vec3 = [state.moon[0] - state.earth[0], state.moon[1] - state.earth[1], state.moon[2] - state.earth[2]];
+  const moon = add(earth, toScene(rel, U * stretch));
   return {
     earth,
-    moon: add(earth, toScene(rel, U * stretch)),
-    focus: framing === "system" ? [0, 0, 0] : earth,
+    moon,
+    focusFrom: framing === "system" ? [0, 0, 0] : earth,
+    focusTo: framing === "system" ? earth : moon,
     sunR: SUN_RADIUS_KM * U * (scale === "display" ? SUN_STRETCH : 1),
     earthR: EARTH_RADIUS_KM * U * bodyK,
     moonR: MOON_RADIUS_KM * U * bodyK,
@@ -216,29 +232,59 @@ function SunArrow({ from, dir, reach }: { from: Vec3; dir: Vec3; reach: number }
   );
 }
 
-/** Camera placement and limits for each framing; the scene keeps the framed body at the origin. */
-function Rig({ framing, pairReach }: { framing: Framing; pairReach: number }) {
+/**
+ * Camera placement and limits for each framing. The scene keeps the framed
+ * point at the origin, and that point glides as the camera closes in: from the
+ * Sun to Earth in the Sun–Earth–Moon framing, from Earth to the Moon in the
+ * Earth–Moon framing. The inner limit of one framing meets the outer limit of
+ * the next, so zooming through them reads as one move.
+ */
+function Rig({
+  framing,
+  geo,
+  group,
+  onView,
+}: {
+  framing: Framing;
+  geo: Geometry;
+  group: RefObject<Group | null>;
+  onView: (distance: number, min: number, max: number) => void;
+}) {
   const camera = useThree((s) => s.camera);
   const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
   const invalidate = useThree((s) => s.invalidate);
   const controls = useRef<OrbitControlsImpl>(null);
-  const base = framing === "system" ? 365 : pairReach * 4.8;
   const narrow = Math.max(1, 1.35 / aspect);
+  const pairBase = geo.pairReach * 4.8;
+  const pairMax = pairBase * narrow * 2.2;
+  const system = framing.id === "system";
+  const base = system ? 365 : pairBase;
+  const min = system ? pairMax * 0.9 : Math.max(geo.moonR * 5, pairBase * 0.03);
+  const max = base * narrow * 2.2;
 
   useEffect(() => {
-    const d = base * narrow;
-    const tilt = ((framing === "system" ? 52 : 58) * Math.PI) / 180;
-    camera.position.set(0, d * Math.sin(tilt), d * Math.cos(tilt));
+    if (framing.start === "default") {
+      const d = base * narrow;
+      const tilt = ((system ? 52 : 58) * Math.PI) / 180;
+      camera.position.set(0, d * Math.sin(tilt), d * Math.cos(tilt));
+    } else {
+      camera.position.setLength(framing.start === "near" ? min * 1.35 : max * 0.8);
+    }
     controls.current?.target.set(0, 0, 0);
     controls.current?.update();
     invalidate();
-  }, [camera, base, narrow, framing, invalidate]);
+  }, [camera, base, narrow, min, max, system, framing, invalidate]);
 
+  const { focusFrom: a, focusTo: b } = geo;
   useFrame(({ camera: cam }) => {
     const d = cam.position.length();
+    const f = Math.min(1, Math.max(0, Math.log(base / d) / Math.log(base / (min * 1.4))));
+    const e = f * f * (3 - 2 * f);
+    group.current?.position.set(-(a[0] + (b[0] - a[0]) * e), -(a[1] + (b[1] - a[1]) * e), -(a[2] + (b[2] - a[2]) * e));
     cam.near = d / 200;
     cam.far = d * 50 + 250;
     cam.updateProjectionMatrix();
+    onView(d, min, max);
   }, -1);
 
   return (
@@ -246,11 +292,12 @@ function Rig({ framing, pairReach }: { framing: Framing; pairReach: number }) {
       ref={controls}
       enablePan={false}
       enableDamping={false}
-      minDistance={base * 0.12}
-      maxDistance={base * narrow * 2.2}
+      minDistance={min}
+      maxDistance={max}
       minPolarAngle={0.08}
       maxPolarAngle={Math.PI / 2 - 0.06}
       rotateSpeed={0.6}
+      zoomSpeed={1.6}
     />
   );
 }
@@ -263,6 +310,7 @@ function Scene({
   months,
   labelPoints,
   overlay,
+  onView,
 }: {
   data: SystemData;
   state: SystemState;
@@ -271,8 +319,11 @@ function Scene({
   months: Vec3[];
   labelPoints: Vec3[];
   overlay: RefObject<HTMLDivElement | null>;
+  onView: (distance: number, min: number, max: number) => void;
 }) {
-  const { earth, moon, focus, sunR, earthR, moonR, stretch, pairReach, earthToSun } = geo;
+  const { earth, moon, sunR, earthR, moonR, stretch, pairReach, earthToSun } = geo;
+  const group = useRef<Group>(null);
+
   const moonToSun = unit(mul(moon, -1));
 
   const orbit = useMemo(() => {
@@ -296,12 +347,12 @@ function Scene({
   return (
     <>
       <color attach="background" args={[PAPER]} />
-      <Rig framing={framing} pairReach={pairReach} />
-      <LabelProjector points={labelPoints} overlay={overlay} />
-      <group position={mul(focus, -1)}>
+      <Rig framing={framing} geo={geo} group={group} onView={onView} />
+      <LabelProjector points={labelPoints} overlay={overlay} group={group} />
+      <group ref={group}>
         <Line points={orbit} color={INK_2} lineWidth={1} />
         <Line points={[[0, 0, 0], earth]} color={RULE} lineWidth={1} />
-        {framing === "system" && months.map((p, i) => <Line key={i} points={[mul(p, 0.975), mul(p, 1.025)]} color={INK} lineWidth={1} />)}
+        {framing.id === "system" && months.map((p, i) => <Line key={i} points={[mul(p, 0.975), mul(p, 1.025)]} color={INK} lineWidth={1} />)}
 
         <group>
           <mesh>
@@ -319,7 +370,7 @@ function Scene({
         <LitBody position={earth} radius={earthR} lit={EARTH_LIT} dark={EARTH_DARK} sunDir={earthToSun} />
         <LitBody position={moon} radius={moonR} lit={MOON_LIT} dark={UMBRA} sunDir={moonToSun} />
 
-        {framing === "pair" && <SunArrow from={earth} dir={earthToSun} reach={pairReach} />}
+        {framing.id === "pair" && <SunArrow from={earth} dir={earthToSun} reach={pairReach} />}
       </group>
     </>
   );
@@ -496,11 +547,11 @@ function Readout({ state, siteName, sunEl, earthEl }: { state: SystemState; site
 
 type Load = { status: "loading" } | { status: "ready"; data: SystemData } | { status: "error"; message: string };
 
-export default function SystemView({ nowMs, onScrub, siteName, sunElevationDeg, earthElevationDeg, windowMs, onOpenMoon, className = "" }: SystemViewProps) {
+export default function SystemView({ nowMs, onScrub, siteName, sunElevationDeg, earthElevationDeg, windowMs, onOpenMoon, entry, levelNav, className = "" }: SystemViewProps) {
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [scale, setScale] = useState<Scale>("display");
-  const [framing, setFraming] = useState<Framing>("system");
+  const [framing, setFraming] = useState<Framing>(() => (entry === "below" ? { id: "pair", start: "near" } : { id: "system", start: "default" }));
   const [playing, setPlaying] = useState(false);
   const [gl] = useState(hasWebGL);
 
@@ -521,12 +572,12 @@ export default function SystemView({ nowMs, onScrub, siteName, sunElevationDeg, 
 
   const overlay = useRef<HTMLDivElement>(null);
   const months = useMemo(() => (data ? monthPoints(data) : []), [data]);
-  const geo = useMemo(() => (state ? geometry(state, scale, framing) : null), [state, scale, framing]);
+  const geo = useMemo(() => (state ? geometry(state, scale, framing.id) : null), [state, scale, framing.id]);
   const labels = useMemo<Label[]>(() => {
     if (!geo || !state) return [];
     const { earth, moon, speck } = geo;
     const out: Label[] = [];
-    if (framing === "system") {
+    if (framing.id === "system") {
       months.forEach((p, i) => out.push({ key: MONTHS[i], at: mul(p, 1.085), node: <CentredTag text={MONTHS[i]} className="font-medium text-ink-2" /> }));
       out.push({ key: "sun", at: [0, speck ? 0 : geo.sunR * 1.08, 0], node: <BodyTag text="Sun" speck={speck} /> });
     } else {
@@ -537,10 +588,30 @@ export default function SystemView({ nowMs, onScrub, siteName, sunElevationDeg, 
       });
     }
     out.push({ key: "earth", at: add(earth, [0, speck ? 0 : geo.earthR * 1.08, 0]), node: <BodyTag text="Earth" speck={speck} /> });
-    out.push({ key: "moon", at: add(moon, [0, speck ? 0 : -geo.moonR * 1.1, 0]), node: <BodyTag text="Moon" speck={speck} below /> });
+    out.push({ key: "moon", at: add(moon, [0, speck ? 0 : -geo.moonR * 1.1, 0]), node: <BodyTag text="Moon · 9 candidate regions" speck={speck} below regions /> });
     return out;
-  }, [geo, state, framing, months]);
-  const labelPoints = useMemo(() => (geo ? labels.map((l) => add(l.at, mul(geo.focus, -1))) : []), [labels, geo]);
+  }, [geo, state, framing.id, months]);
+  const labelPoints = useMemo(() => labels.map((l) => l.at), [labels]);
+
+  // The zoom chain: Sun–Earth–Moon, then Earth–Moon, then down to the Moon level.
+  const zoomIn = useCallback(() => {
+    if (framing.id === "system") setFraming({ id: "pair", start: "far" });
+    else onOpenMoon?.();
+  }, [framing.id, onOpenMoon]);
+  const zoomOut = useCallback(() => setFraming({ id: "system", start: "near" }), []);
+  const { setHost, report, rearm, hint, progress } = useZoomGate({
+    onIn: framing.id === "system" || onOpenMoon ? zoomIn : undefined,
+    onOut: framing.id === "pair" ? zoomOut : undefined,
+  });
+  useEffect(() => rearm(), [framing, rearm]);
+  const hintText =
+    hint === "in"
+      ? framing.id === "system"
+        ? "Keep zooming in for the Earth–Moon framing"
+        : "Keep zooming to open the Moon level"
+      : hint === "out"
+        ? "Keep zooming out for the Sun–Earth–Moon framing"
+        : null;
 
   const span = useMemo(() => (data ? { startMs: data.startMs, endMs: systemEndMs(data) } : null), [data]);
   useYearPlayback(playing, span, ms, onScrub);
@@ -548,7 +619,7 @@ export default function SystemView({ nowMs, onScrub, siteName, sunElevationDeg, 
   const caption =
     scale === "display"
       ? `Display scale, not to scale: Earth and the Moon are drawn ${BODY_STRETCH} times too large, the Sun ${SUN_STRETCH} times, and the Earth to Moon distance ${PAIR_STRETCH} times too long, so all three can be seen at once. Positions, lighting and the table are true.`
-      : "True scale: sizes and distances keep their real ratios, so the bodies are specks inside the rings that mark them. Zoom in on the Earth and Moon framing to find them.";
+      : "True scale: sizes and distances keep their real ratios, so the bodies are specks inside the rings that mark them. Zoom in on the Earth–Moon framing to find them.";
 
   return (
     <div className={`flex min-h-0 flex-col xl:flex-row ${className}`}>
@@ -560,8 +631,8 @@ export default function SystemView({ nowMs, onScrub, siteName, sunElevationDeg, 
           <div className="flex flex-wrap gap-2.5">
             <Segmented
               label="Framing"
-              value={framing}
-              onChange={setFraming}
+              value={framing.id}
+              onChange={(id) => setFraming({ id, start: "default" })}
               options={[
                 { id: "system", label: "Sun–Earth–Moon" },
                 { id: "pair", label: "Earth–Moon" },
@@ -576,19 +647,12 @@ export default function SystemView({ nowMs, onScrub, siteName, sunElevationDeg, 
                 { id: "true", label: "True scale" },
               ]}
             />
-            {onOpenMoon && (
-              <button
-                type="button"
-                onClick={onOpenMoon}
-                className="h-8 border border-ink px-3 text-[0.8rem] font-medium whitespace-nowrap text-ink transition-colors duration-150 hover:bg-paper-3"
-              >
-                Open Moon level
-              </button>
-            )}
+            {levelNav}
           </div>
         </header>
 
-        <div className="relative isolate min-h-[22rem] flex-1 overflow-hidden bg-paper">
+        <div ref={setHost} className="relative isolate min-h-[22rem] flex-1 overflow-hidden bg-paper">
+          <ZoomHint text={hintText} progress={progress} />
           {load.status === "loading" && (
             <p role="status" className="absolute inset-0 grid place-items-center text-[0.844rem] text-ink-2">
               Loading the 2027 ephemeris
@@ -621,10 +685,10 @@ export default function SystemView({ nowMs, onScrub, siteName, sunElevationDeg, 
                 dpr={[1, 2]}
                 camera={{ fov: 35, position: [0, 260, 203], near: 1, far: 5000 }}
                 gl={{ antialias: true }}
-                aria-label="3D diagram of the Sun, Earth and Moon. Drag to turn, scroll to zoom."
+                aria-label="3D diagram of the Sun, Earth and Moon. Drag to turn, scroll to zoom; zooming past a limit changes the framing or opens the Moon level."
                 role="img"
               >
-                <Scene data={data} state={state} geo={geo} framing={framing} months={months} labelPoints={labelPoints} overlay={overlay} />
+                <Scene data={data} state={state} geo={geo} framing={framing} months={months} labelPoints={labelPoints} overlay={overlay} onView={report} />
               </Canvas>
               <div ref={overlay} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
                 {labels.map((l) => (
