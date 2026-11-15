@@ -167,11 +167,12 @@ export function Indicators({
   ];
   return (
     <>
+      {/* Above the flag (z-10), below the zoom hint (z-20): on a cramped plate a box may cross the flag's staff, which must not run through its figures. */}
       {bodies.map(({ key, v, label, tone }) => (
         <div
           key={key}
           ref={(node) => bridge.attachIndicator(key, "el", node)}
-          className="pointer-events-none absolute left-0 top-0 will-change-transform"
+          className="pointer-events-none absolute left-0 top-0 z-[15] will-change-transform"
           style={hidden}
           aria-hidden
         >

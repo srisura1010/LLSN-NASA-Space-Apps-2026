@@ -101,6 +101,8 @@ export class PlateBridge {
   private reserved = new Map<string, HTMLElement | null>();
   /** Lowest y the indicators may use this frame: above the overlays along the bottom. */
   private floor = Infinity;
+  /** This frame's flag staff and the site it stands on; an indicator may cross the staff when nothing else is free. */
+  private staff: { rect: Rect; x: number; y: number } | null = null;
   private onDistance: ((distance: number) => void) | null = null;
 
   // ---------- Scene hooks ----------
@@ -227,6 +229,7 @@ export class PlateBridge {
     if (target) this.onDistance?.(camera.position.distanceTo(target));
     const placed: Rect[] = this.reservedRects();
     this.floor = Infinity;
+    this.staff = null;
     for (const r of placed) if (r[3] > h - 60) this.floor = Math.min(this.floor, r[1] - 14);
     const ring = this.rose ? this.rose.layout(camera, w, h, target) : null;
     const projected = [...this.labels.values()].filter((e) => e.el).map((e) => ({ e, p: project(e.anchor, camera, w, h) }));
@@ -238,10 +241,13 @@ export class PlateBridge {
         e.w = e.box.offsetWidth;
         e.h = e.box.offsetHeight;
       }
-      // A flag on the rose's centre stands clear of the ring.
+      // A flag on the rose's centre stands clear of the ring. On a short plate
+      // that lift would carry the name off the top edge, so it comes down into
+      // view, nearer the ring, though never below an ordinary staff.
       let staff = FLAG_STAFF;
       if (e.kind === "flag" && ring && Math.hypot(p.x - ring.cx, p.y - ring.cy) < 3) {
         staff = Math.max(FLAG_STAFF, Math.round(ring.cy - ring.top + FLAG_CLEAR));
+        if (e.h) staff = Math.max(FLAG_STAFF, Math.min(staff, Math.floor(p.y - e.h - 2)));
       }
       if (e.kind === "flag" && el.style.getPropertyValue("--staff") !== `${staff}px`) el.style.setProperty("--staff", `${staff}px`);
       // Labels sit to the right of their anchor, or to the left when that would run off the view.
@@ -279,8 +285,11 @@ export class PlateBridge {
       if (show && el.dataset.side !== side) el.dataset.side = side;
       if (show) {
         // A flag claims its box and its staff, not the open space beside the staff.
-        if (e.kind === "flag") placed.push([r[0], r[1], r[2], p.y - staff], [p.x - 4, p.y - staff, p.x + 4, r[3]]);
-        else placed.push(r);
+        if (e.kind === "flag") {
+          const staffRect: Rect = [p.x - 4, p.y - staff, p.x + 4, r[3]];
+          placed.push([r[0], r[1], r[2], p.y - staff], staffRect);
+          this.staff = { rect: staffRect, x: p.x, y: p.y };
+        } else placed.push(r);
         if (!e.shown || Math.abs(p.x - e.x) > 0.2 || Math.abs(p.y - e.y) > 0.2) {
           el.style.transform = `translate3d(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px, 0)`;
           e.x = p.x;
@@ -332,37 +341,45 @@ export class PlateBridge {
     }
     const bw = ind.box?.offsetWidth ?? 0;
     const bh = ind.box?.offsetHeight ?? 0;
-    const rectAt = (x: number, y: number): Rect => {
-      const left = x > w / 2;
+    // The box reads inward from the marker: rightward on the left half of the view, leftward on the right half.
+    const rectAt = (x: number, y: number, left: boolean): Rect => {
       const bx0 = left ? x - 14 - bw : x + 14;
       return [Math.min(bx0, x - 10), y - Math.max(bh / 2, 10), Math.max(bx0 + bw, x + 10), y + Math.max(bh / 2, 10)];
     };
+    let left = px > w / 2;
     // When another indicator or the flag is in the way, take the nearest free
     // spot straight up, down, across or back, in 6 px steps, so a marker never
-    // drifts far from where its bearing leaves the view. Sun and Earth often
-    // share a bearing; they then stack, which also fits a narrow plate. A point
-    // the ray put on the border can sit a rounding error outside it, hence the
-    // half-pixel slack.
-    if (overlaps(rectAt(px, py), placed, 4)) {
+    // drifts far from where its bearing leaves the view; at each spot the box
+    // may turn to the marker's other side if it still fits on the plate. Sun
+    // and Earth often share a bearing; they then stack, which also fits a
+    // narrow or short plate. A point the ray put on the border can sit a
+    // rounding error outside it, hence the half-pixel slack. On a plate too
+    // small for that, the box may cross the flag's staff, though not the site.
+    if (overlaps(rectAt(px, py, left), placed, 4)) {
       const within = (x: number, y: number) => x > rect[0] - 0.5 && x < rect[2] + 0.5 && y > rect[1] - 0.5 && y < rect[3] + 0.5;
-      for (let d = 6; d <= 240; d += 6) {
-        const tries: [number, number][] = [
-          [px, py - d],
-          [px, py + d],
-          [px + d, py],
-          [px - d, py],
-        ];
-        const free = tries.find(([x, y]) => within(x, y) && !overlaps(rectAt(x, y), placed, 4));
-        if (free) {
-          [px, py] = free;
-          break;
+      const spot = (avoid: Rect[]): [number, number, boolean] | null => {
+        for (let d = 0; d <= 240; d += 6) {
+          const tries: [number, number][] = d === 0 ? [[px, py]] : [[px, py - d], [px, py + d], [px + d, py], [px - d, py]];
+          for (const [x, y] of tries) {
+            if (!within(x, y)) continue;
+            for (const l of [x > w / 2, x <= w / 2]) {
+              const r = rectAt(x, y, l);
+              if (r[0] >= 0 && r[2] <= w && !overlaps(r, avoid, 4)) return [x, y, l];
+            }
+          }
         }
-      }
+        return null;
+      };
+      const st = this.staff;
+      const found =
+        spot(placed) ??
+        (st ? spot([...placed.filter((r) => r !== st.rect), [st.x - 8, st.y - 8, st.x + 8, st.y + 8]]) : null);
+      if (found) [px, py, left] = found;
     }
     el.style.transform = `translate3d(${px.toFixed(1)}px, ${py.toFixed(1)}px, 0)`;
     if (ind.arrow) ind.arrow.style.transform = `translate(-50%, -50%) rotate(${Math.atan2(dy, dx).toFixed(3)}rad) translateX(15px)`;
-    if (ind.box) ind.box.style.transform = px > w / 2 ? "translate(calc(-100% - 14px), -50%)" : "translate(14px, -50%)";
-    placed.push(rectAt(px, py));
+    if (ind.box) ind.box.style.transform = left ? "translate(calc(-100% - 14px), -50%)" : "translate(14px, -50%)";
+    placed.push(rectAt(px, py, left));
     if (!ind.shown) el.style.visibility = "visible";
     ind.shown = true;
   }

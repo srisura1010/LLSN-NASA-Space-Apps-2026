@@ -6,12 +6,23 @@ the United States; Space Apps asks that each source is credited.
 
 ## NASA CGI Moon Kit (globe textures)
 
-- **Files:** `moon-planner/public/textures/moon_color_2k.jpg`,
-  `moon-planner/public/textures/moon_height_3ppd.jpg`
+- **Files:**
+  - `moon-planner/public/textures/moon_color_2k.jpg` (2048 x 1024, 0.46 MB):
+    colour map, shown first.
+  - `moon-planner/public/textures/moon_color_4k.jpg` (4096 x 2048, 1.4 MB):
+    colour map, replaces the 2k map once loaded. From `lroc_color_poles_4k.tif`.
+  - `moon-planner/public/textures/moon_height_1k.jpg` (1024 x 512, 0.1 MB):
+    elevation, 0 to 255 covering -9.5 to +11.0 km. From `ldem_16.tif`.
+  - `moon-planner/public/textures/moon_relief_4k.jpg` (4096 x 2048, 1.6 MB):
+    fine elevation, the 4096 x 2048 reduction of `ldem_16.tif` minus the 1k
+    map, 0 to 255 covering -1.5 to +1.5 km.
+  - `moon-planner/scripts/build-moon-textures.py` builds the last three from
+    the two TIFFs (Python with numpy and Pillow).
 - **Source:** NASA Scientific Visualization Studio, CGI Moon Kit,
-  https://svs.gsfc.nasa.gov/4720
+  https://svs.gsfc.nasa.gov/4720 (downloads `lroc_color_poles_4k.tif` and
+  `ldem_16.tif`, the 16 pixels per degree floating-point elevation in km).
 - **Underlying data:** colour map from the Lunar Reconnaissance Orbiter Camera
-  (LROC) Wide Angle Camera mosaic; height map from the Lunar Orbiter Laser
+  (LROC) Wide Angle Camera mosaic; elevation from the Lunar Orbiter Laser
   Altimeter (LOLA).
 - **Credit line:** NASA's Scientific Visualization Studio. LRO LROC and LOLA
   data courtesy NASA/GSFC/Arizona State University.
@@ -69,12 +80,27 @@ the United States; Space Apps asks that each source is credited.
   centres agree with the JPL Horizons observer tracks
   (`public/data/sky/*.json`) to 0.003 degrees at every hour of 2027.
 - **Textures:** the CGI Moon Kit colour and elevation maps listed above,
-  printed in grey with relief shading from the elevation map.
-- **Earlier landing coordinates:** Apollo 11, 12, 14, 15, 16 and 17 from the
-  NASA Space Science Data Coordinated Archive (NSSDCA),
-  https://nssdc.gsfc.nasa.gov/planetary/lunar/lunar_sites.html;
-  Chandrayaan-3 (ISRO), SLIM (JAXA), IM-1 Odysseus (Intuitive Machines / NASA
-  CLPS) and Chang'e 6 (CNSA) from the mission pages, to about 0.01 degrees.
+  printed in grey with relief shading from the slopes of the elevation maps.
+- **Region outlines:** `moon-planner/public/data/artemis3-regions.geojson`
+  (USGS, listed above), draped on the globe when zoomed in on the south pole.
+- **Earlier landing coordinates** (planetocentric, east-positive, checked
+  2026-11-14):
+  - Apollo 11, 12, 14, 15, 16 and 17 lunar modules: NASA Space Science Data
+    Coordinated Archive (NSSDCA), "Lunar landing site coordinates",
+    https://nssdc.gsfc.nasa.gov/planetary/lunar/lunar_sites.html (Mean
+    Earth/Polar Axis frame, DE421). Apollo 11 0.67416, 23.47314; Apollo 12
+    -3.0128, -23.4219; Apollo 14 -3.64589, -17.47194; Apollo 15 26.13239,
+    3.63330; Apollo 16 -8.9734, 15.5011; Apollo 17 20.1911, 30.7723.
+  - Chandrayaan-3 (2023): 69.3741 S, 32.32 E, LROC "Chandrayaan-3 Landing
+    Site", https://lroc.im-ldi.com/posts/1314
+  - SLIM (2024): 13.3160 S, 25.2510 E, NASA "NASA's LRO Spots Japan's Moon
+    Lander", https://www.nasa.gov/missions/lro/nasas-lro-spots-japans-moon-lander
+  - IM-1 Odysseus (2024): 80.13 S, 1.44 E, NASA "NASA's LRO Images Intuitive
+    Machines' Odysseus Lander",
+    https://www.nasa.gov/missions/lro/nasas-lro-images-intuitive-machines-odysseus-lander/
+  - Chang'e 6 (2024): 41.6385 S, 206.0148 E (153.9852 W), LROC "First Look:
+    Chang'e 6", https://lroc.im-ldi.com/images/1374
 - **Credit lines:** Moon maps: NASA's Scientific Visualization Studio, CGI
   Moon Kit (LRO/LROC and LOLA). Rotation model: IAU WGCCRE (Archinal et al.
-  2018). Landing coordinates: NASA NSSDCA and mission teams.
+  2018). Landing coordinates: NASA NSSDCA; NASA/GSFC/Arizona State
+  University (LROC) for the 2023 and 2024 landers.
