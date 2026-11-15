@@ -1,16 +1,51 @@
 @import "tailwindcss";
 
+/*
+  Eclipse-bulletin world (see .impeccable/surfaces/src-app-tool-page-tsx.md).
+  Paper ground, ink, umbra for shadow and lost signal, solar cadmium for
+  sunlight, Earth cobalt for direct-to-Earth contact, limit red for loss.
+*/
 @theme inline {
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
+
+  --color-paper: #eef1f0;
+  --color-paper-2: #e3e8e7; /* rails, toolbars */
+  --color-paper-3: #d6dddc; /* pressed, selected rows */
+  --color-ink: #121a22;
+  --color-ink-2: #3a4752; /* secondary text, >= 4.5:1 on paper */
+  --color-ink-3: #5d6a74; /* tertiary, large text only */
+  --color-rule: #b9c3c2; /* 1px hairlines */
+  --color-umbra: #3d5466;
+  --color-umbra-soft: #c3ced3;
+  --color-sun: #f0b400;
+  --color-sun-ink: #7a5600; /* sun-coloured text on paper */
+  --color-earth: #2453c2;
+  --color-earth-soft: #c9d5f1;
+  --color-limit: #c42b1c;
 }
 
 html,
 body {
-  background-color: #0a0a0f;
-  color: #e5e7eb;
+  background-color: var(--color-paper);
+  color: var(--color-ink);
 }
 
 body {
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-family: var(--font-sans);
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+::selection {
+  background: var(--color-sun);
+  color: var(--color-ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-earth);
+  outline-offset: 2px;
+}
+
+* {
+  scrollbar-color: var(--color-rule) transparent;
+  scrollbar-width: thin;
 }
