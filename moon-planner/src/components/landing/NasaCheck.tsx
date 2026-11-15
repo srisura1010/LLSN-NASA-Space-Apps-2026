@@ -57,26 +57,22 @@ export function NasaCheck() {
   return (
     <>
       <p className="mt-2 max-w-[62ch] text-[1rem] leading-[1.6] text-ink-2">
-        NASA&rsquo;s LOLA illumination maps (Mazarico and others, 2011) give the share of time each point near the pole
-        sees the Sun and sees Earth, averaged hour by hour over an 18.6-year lunar cycle. Table 1 sets their value at
-        each region centre beside this model&rsquo;s count over every hour of 2027, made from the same files the
-        Navigator uses.
+        NASA mapped how often the Sun and Earth are visible near the pole, averaged over many years (Mazarico and
+        others, 2011). The table puts those numbers next to what this tool counts for every hour of 2027.
       </p>
       <p className="mt-3 max-w-[62ch] text-[1rem] leading-[1.6] text-ink-2">
-        For sunlight the model is {agreement(sun, true)}. For Earth it is {agreement(earth, false)}. Some gap is
-        expected: NASA&rsquo;s maps are a long-term average read at the 120 m pixel over each centre, and this model
-        counts one year from 2 m above the centre itself.
+        For sunlight, this tool is {agreement(sun, true)}. For Earth, it is {agreement(earth, false)}. A gap is normal.
+        NASA averages many years at a point on the map. This tool counts one year, from 2 m above the ground.
       </p>
 
-      <div className="mt-6 overflow-x-auto" tabIndex={0} role="region" aria-labelledby="nasa-check-caption">
+      <div className="scroll-draw mt-6 overflow-x-auto" tabIndex={0} role="region" aria-labelledby="nasa-check-caption">
         <table className="w-full min-w-[21rem] border-collapse text-left text-[0.844rem] text-ink sm:text-[1rem]">
           <caption
             id="nasa-check-caption"
             className="caption-top pb-3 text-left text-[0.889rem] leading-[1.55] text-ink-2"
           >
-            <span className="font-semibold text-ink">Table 1.</span> Share of hours with the Sun above the terrain
-            horizon and with Earth in view, per cent. 2027 is this model over every hour of the year; NASA is the
-            long-term LOLA average at the region centre; Diff. is 2027 minus NASA, in percentage points.
+            <span className="font-semibold text-ink">Table 1.</span> Percent of the year the Sun is up, and Earth is in
+            view. 2027 is this tool. NASA is the long-term average. Diff. is 2027 minus NASA, in percentage points.
           </caption>
           <thead>
             <tr className="border-t border-ink">
@@ -86,7 +82,7 @@ export function NasaCheck() {
               <th scope="colgroup" colSpan={3} className={`${groupStart} pt-2.5 pb-1 align-bottom font-semibold`}>
                 <span className="inline-flex items-center gap-2 text-[0.844rem] text-ink sm:text-[0.889rem]">
                   <span aria-hidden="true" className="inline-block h-2 w-3.5 shrink-0 border border-sun-ink bg-sun" />
-                  Sun above terrain
+                  Sunlight
                 </span>
               </th>
               <th scope="colgroup" colSpan={3} className={`${groupStart} pt-2.5 pb-1 align-bottom font-semibold`}>
@@ -125,7 +121,7 @@ export function NasaCheck() {
           <tfoot>
             <tr className="border-y border-ink">
               <th scope="row" colSpan={3} className="py-2.5 pr-2 font-semibold sm:pr-4">
-                Mean absolute difference
+                Average gap
               </th>
               <td className={`${num} ${groupEnd} py-2.5 font-semibold`}>{sun.meanAbsDiff.toFixed(1)}</td>
               <td colSpan={2} className={groupStart} />

@@ -37,11 +37,10 @@ function dateError(date: string): string {
   const dm = dayMonthOf(date);
   if (dm && dm.month === 11) {
     return (
-      `${dm.day} Dec is too late to start: the tracks end at 00:00 UTC on 1 Jan ${DATA_YEAR + 1}, ` +
-      `and a stay runs ${STAY_DAYS} days. Pick ${LAST_START} or earlier.`
+      `${dm.day} Dec is too late. A stay is ${STAY_DAYS} days, and the data ends at midnight on 1 Jan ${DATA_YEAR + 1}. Pick ${LAST_START} or earlier.`
     );
   }
-  return `Pick a start date from 1 Jan to ${LAST_START} ${DATA_YEAR}: the tracks cover ${DATA_YEAR}, and a stay runs ${STAY_DAYS} days.`;
+  return `Pick a date from 1 Jan to ${LAST_START} ${DATA_YEAR}. A stay is ${STAY_DAYS} days, and the data covers ${DATA_YEAR}.`;
 }
 
 export function StartForm({ idPrefix, framed = false }: { idPrefix: string; framed?: boolean }) {
@@ -180,7 +179,7 @@ export function StartForm({ idPrefix, framed = false }: { idPrefix: string; fram
         </div>
 
         <p className="text-[0.889rem] leading-snug text-ink-2 sm:col-span-2 lg:hidden xl:block xl:flex-1 xl:self-center xl:pt-6">
-          A 6.5-day stay from 00:00 UTC, measured hour by hour.
+          A 6.5-day stay, from midnight UTC.
         </p>
 
         <button
@@ -188,7 +187,7 @@ export function StartForm({ idPrefix, framed = false }: { idPrefix: string; fram
           aria-disabled={pending}
           className="inline-flex h-11 items-center justify-center gap-2.5 bg-ink px-5 text-[1rem] font-semibold text-paper transition-colors duration-150 select-none hover:bg-ink-2 active:bg-ink aria-disabled:cursor-progress sm:col-span-2 lg:ml-auto lg:shrink-0 xl:ml-0"
         >
-          {pending ? "Opening the Navigator" : "Open in the Navigator"}
+          {pending ? "Opening" : "Open this window"}
           <ArrowRight className={pending ? "opacity-60" : ""} />
         </button>
       </div>

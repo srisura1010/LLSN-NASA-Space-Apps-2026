@@ -30,9 +30,29 @@ const TONE: Record<PlateLabel["tone"], string> = {
 };
 const HALO: Record<PlateLabel["halo"], string> = { paper: "stroke-paper", terrain: "stroke-paper-3" };
 
-const REVEAL_CSS =
-  "@keyframes plate-reveal{from{clip-path:inset(0 0 0 100%)}to{clip-path:inset(0 0 0 0)}}" +
-  "@media (prefers-reduced-motion:no-preference){.plate-reveal{animation:plate-reveal 1100ms cubic-bezier(0.16,1,0.3,1) backwards}}";
+// Scroll tells the story: the photograph drifts as you leave it, the ground
+// rises into the chart, the Sun and Earth trace across, and a stay fills in.
+// With motion reduced, or without scroll timelines, everything stays visible.
+const REVEAL_CSS = `
+@keyframes landing-moon-drift{from{background-position:50% 50%}to{background-position:50% 72%}}
+@keyframes horizon-rise{from{clip-path:inset(100% 0 0 0)}to{clip-path:inset(0 0 0 0)}}
+@keyframes trace-across{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+@keyframes stay-trace{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@media (prefers-reduced-motion:no-preference){
+  @supports (animation-timeline:scroll()){
+    .landing-moon{animation:landing-moon-drift linear both;animation-timeline:scroll(root block);animation-range:0vh 85vh}
+  }
+  @supports (animation-timeline:view()){
+    .horizon-rise{animation:horizon-rise cubic-bezier(0.16,1,0.3,1) both;animation-timeline:view();animation-duration:auto;animation-range:cover 32% cover 58%}
+    .plate-reveal{animation:trace-across cubic-bezier(0.16,1,0.3,1) both;animation-timeline:view();animation-duration:auto;animation-range:cover 38% cover 64%}
+    .stay-trace,.scroll-rule{transform-origin:left center;animation:stay-trace cubic-bezier(0.16,1,0.3,1) both;animation-timeline:view();animation-duration:auto;animation-range:cover 32% cover 55%}
+    .scroll-draw{animation:trace-across cubic-bezier(0.16,1,0.3,1) both;animation-timeline:view();animation-duration:auto;animation-range:cover 32% cover 58%}
+  }
+  .hero-draw{animation:trace-across 720ms cubic-bezier(0.16,1,0.3,1) both}
+  .hero-draw:nth-child(2){animation-delay:90ms}
+  .hero-draw:nth-child(3){animation-delay:180ms}
+}
+`;
 
 function plotHeight(w: number) {
   return w >= 900 ? 360 : w >= 600 ? 320 : 288;
@@ -73,14 +93,14 @@ export function HorizonPlate() {
 
   return (
     <figure className="m-0 grid lg:grid-cols-[minmax(0,1fr)_19.5rem]">
-      <style href="landing-plate-reveal" precedence="default">
+      <style href="landing-scroll-v3" precedence="default">
         {REVEAL_CSS}
       </style>
 
       <div className="min-w-0">
         <div
           ref={plotRef}
-          className="@container relative w-full overflow-hidden bg-paper"
+          className="scroll-draw @container relative w-full overflow-hidden bg-paper"
           style={{ height: width ? height : undefined }}
           aria-busy={status === "loading"}
         >
@@ -132,16 +152,15 @@ export function HorizonPlate() {
       />
 
       <figcaption className="border-t border-ink px-4 py-3 text-[0.889rem] leading-[1.55] text-ink-2 sm:px-5 lg:col-span-2">
-        <span className="font-semibold text-ink">Figure 1.</span> The horizon seen from 2 m above the centre of{" "}
-        {shownSite?.name ?? "the region"}, traced from LOLA terrain, with the Sun&rsquo;s and Earth&rsquo;s paths from
-        JPL Horizons over the stay. Up is elevation above level; across is direction, clockwise from local north.{" "}
+        <span className="font-semibold text-ink">Figure 1.</span> The view from 2 m above the center of{" "}
+        {shownSite?.name ?? "the region"}. The filled shape is the ground. The paths are the Sun and Earth during the
+        stay. Up is higher in the sky. Across is direction, from north, going clockwise.{" "}
         {plate && (
           <>
-            Sun ticked every {plate.sun.tickHours === 1 ? "hour" : `${plate.sun.tickHours} hours`}
-            {plate.earth ? `, Earth every ${plate.earth.tickHours} hours` : ""}; dates mark 00:00 UTC. Height is
-            exaggerated {plate.exaggeration.toFixed(1)}&times; so the terrain reads.
-            {plate.earthOffView &&
-              ` Earth is outside this view, near azimuth ${plate.earthOffView.azimuth}°, so only its numbers are shown.`}
+            Sun marks are every {plate.sun.tickHours === 1 ? "hour" : `${plate.sun.tickHours} hours`}
+            {plate.earth ? `, Earth every ${plate.earth.tickHours} hours` : ""}. Dates are midnight UTC. The hills are
+            drawn {plate.exaggeration.toFixed(1)}&times; taller so you can see them.
+            {plate.earthOffView && " Earth is off this picture, so only its numbers are shown."}
           </>
         )}
       </figcaption>
@@ -152,8 +171,8 @@ export function HorizonPlate() {
 function summarize(name: string, sun: number, earth: number, contacts: Contact[]) {
   const events = contacts.map((c) => `${CONTACT_NAME[c.body][c.kind]} ${fmtDayTime(c.atMs)} UTC`).join(", ");
   return (
-    `Horizon panorama for ${name}. The Sun is above the terrain for ${pct(sun)} of the stay ` +
-    `and Earth for ${pct(earth)}.${events ? ` Contacts: ${events}.` : " No rise or set during the stay."}`
+    `Horizon for ${name}. The Sun clears the hills for ${pct(sun)} of the stay, Earth for ${pct(earth)}.` +
+    `${events ? ` ${events}.` : " Neither rises or sets during the stay."}`
   );
 }
 
@@ -166,7 +185,7 @@ function PlateSvg({ plate, summary, dim }: { plate: Plate; summary: string; dim:
       viewBox={`0 0 ${width} ${height}`}
       role="img"
       aria-label={summary}
-      className={`block transition-opacity duration-200 ${dim ? "opacity-50" : ""}`}
+      className={`horizon-rise block transition-opacity duration-200 ${dim ? "opacity-50" : ""}`}
     >
       {/* Grid, drawn first so the terrain covers it below the horizon */}
       <g className="stroke-rule" strokeWidth={1} shapeRendering="crispEdges">
@@ -353,19 +372,19 @@ function Legend() {
           <path d="M1 4h20" className="stroke-sun-ink" strokeWidth={6} />
           <path d="M1 4h20" className="stroke-sun" strokeWidth={4} />
         </svg>
-        Sun above terrain
+        Sun clear of the hills
       </li>
       <li className="inline-flex items-center gap-2">
         <svg width="22" height="8" aria-hidden="true">
           <path d="M1 4h20" className="stroke-earth" strokeWidth={2.5} />
         </svg>
-        Earth above terrain
+        Earth clear of the hills
       </li>
       <li className="inline-flex items-center gap-2">
         <svg width="22" height="8" aria-hidden="true">
           <path d="M1 4h20" className="stroke-umbra" strokeWidth={1.5} strokeDasharray="4 3" />
         </svg>
-        Behind terrain
+        Hidden by the hills
       </li>
       <li className="inline-flex items-center gap-2">
         <svg width="12" height="12" aria-hidden="true">
@@ -378,7 +397,7 @@ function Legend() {
           <rect x="1" y="4" width="20" height="6" className="fill-paper-3" />
           <path d="M1 4.25h20" className="stroke-ink" strokeWidth={1.5} />
         </svg>
-        Terrain and its horizon
+        The ground
       </li>
     </ul>
   );
@@ -401,19 +420,19 @@ function Circumstances({
 }) {
   const s = facts?.stats;
   const rows: [string, string, "sun" | "earth" | null][] = [
-    ["Sun above terrain", s ? pct(s.sunlit) : "–", "sun"],
+    ["Sunlight", s ? pct(s.sunlit) : "–", "sun"],
     ["Earth in view", s ? pct(s.earthVisible) : "–", "earth"],
-    ["Longest dark spell", s ? fmtSpell(s.longestDarkHours) : "–", null],
-    ["Longest without Earth", s ? fmtSpell(s.longestNoCommsHours) : "–", null],
+    ["Longest dark stretch", s ? fmtSpell(s.longestDarkHours) : "–", null],
+    ["Longest time without Earth", s ? fmtSpell(s.longestNoCommsHours) : "–", null],
   ];
   return (
-    <div className="flex flex-col gap-5 border-t border-ink px-4 py-5 sm:grid sm:grid-cols-2 sm:gap-x-8 sm:px-5 lg:flex lg:border-t-0 lg:border-l">
+    <div className="scroll-draw flex flex-col gap-5 border-t border-ink px-4 py-5 sm:grid sm:grid-cols-2 sm:gap-x-8 sm:px-5 lg:flex lg:border-t-0 lg:border-l">
       <div className="flex items-start justify-between gap-4 sm:col-span-2">
         <div>
           <h3 className="text-[1.266rem] leading-tight font-bold text-ink">{name || "\u00a0"}</h3>
           <p className="mt-1 text-[0.889rem] text-ink-2">{coords || "\u00a0"}</p>
           <p className="mt-3 text-[0.889rem] leading-snug">
-            <span className="text-ink-2">Stay, UTC</span>
+            <span className="text-ink-2">Stay</span>
             <span className="block font-semibold text-ink tabular-nums">
               <span className="whitespace-nowrap">{fmtDayTime(startMs)}</span>{" "}
               <span className="font-normal text-ink-2">to</span>{" "}
@@ -442,7 +461,7 @@ function Circumstances({
       </dl>
 
       <div>
-        <h4 className="text-[0.79rem] font-semibold tracking-[0.08em] text-ink-2 uppercase">Rises and sets, UTC</h4>
+        <h4 className="text-[0.79rem] font-semibold tracking-[0.08em] text-ink-2 uppercase">Rises and sets</h4>
         {facts && facts.contacts.length > 0 ? (
           <ol className="mt-2 border-t border-ink">
             {facts.contacts.map((c) => (

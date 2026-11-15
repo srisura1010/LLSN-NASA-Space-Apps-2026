@@ -44,29 +44,29 @@ export function Answers() {
 
   return (
     <div>
-      <p className="max-w-[62ch] text-[1.125rem] leading-[1.55] text-ink-2">
-        For any region and start date, the Navigator answers three planning questions. Here each one is answered live
-        for <span className="font-semibold text-ink">{site?.name}</span> from{" "}
-        <span className="font-semibold whitespace-nowrap text-ink">{fmtDate(startMs)}</span>; change the region or
-        date above and the answers follow.
+      <p className="scroll-draw max-w-[62ch] text-[1.125rem] leading-[1.55] text-ink-2">
+        These update as you change the region or the day. Right now they are for{" "}
+        <span className="font-semibold text-ink">{site?.name}</span>, starting{" "}
+        <span className="font-semibold whitespace-nowrap text-ink">{fmtDate(startMs)}</span>.
       </p>
 
-      <div className="mt-8 border-t border-ink">
+      <div className="scroll-rule mt-8 h-px w-full bg-ink" />
+      <div>
         <Row
           question="Is there sunlight for power?"
-          detail="The share of the stay with any part of the Sun’s disc above the terrain horizon, and the longest dark spell a lander has to get through."
+          detail="How much of the stay the Sun clears the hills, and the longest stretch of dark."
           value={planned ? pct(planned.stats.sunlit) : "–"}
-          notes={planned ? ["of the stay", `Longest dark spell ${fmtSpell(planned.stats.longestDarkHours)}`] : []}
+          notes={planned ? ["of the stay in sunlight", `Longest dark stretch ${fmtSpell(planned.stats.longestDarkHours)}`] : []}
         />
         <Row
-          question="Is Earth in view for direct-to-Earth comms?"
-          detail="The share of the stay with Earth above the terrain, the longest gap without it, and every Earthrise and Earthset."
+          question="Can you call Earth?"
+          detail="How much of the stay Earth clears the hills, and the longest time with no direct radio link."
           value={planned ? pct(planned.stats.earthVisible) : "–"}
           notes={
             planned
               ? [
-                  "of the stay",
-                  `Longest gap ${fmtSpell(planned.stats.longestNoCommsHours)}`,
+                  "of the stay with Earth in view",
+                  `Longest time without Earth ${fmtSpell(planned.stats.longestNoCommsHours)}`,
                   ...earthEvents
                     .slice(0, 2)
                     .map((e) => `${e.kind === "rise" ? "Earthrise" : "Earthset"} ${fmtDayTime(e.atMs)} UTC`),
@@ -75,12 +75,12 @@ export function Answers() {
           }
         />
 
-        <section className="grid gap-x-8 gap-y-5 border-b border-rule py-6 md:grid-cols-[minmax(0,1fr)_13rem]">
+        <section className="scroll-draw grid gap-x-8 gap-y-5 border-b border-rule py-6 md:grid-cols-[minmax(0,1fr)_13rem]">
           <div>
-            <h3 className="text-[1.266rem] leading-snug font-bold text-ink">What does a slip cost?</h3>
+            <h3 className="text-[1.266rem] leading-snug font-bold text-ink">What if you wait two weeks?</h3>
             <p className="mt-2 max-w-[60ch] text-[1rem] leading-[1.6] text-ink-2">
-              The same region, started two weeks {slipWord}. At the pole the Sun circles the whole horizon once every
-              29.5 days, so a two-week slip puts it on the other side of the sky, behind different ridges.
+              Same place, two weeks {slipWord}. The Sun walks around the sky about once a month, so it ends up behind
+              different hills.
             </p>
           </div>
           <div className="md:col-span-2">
@@ -94,15 +94,15 @@ export function Answers() {
               <p className="mt-5 flex flex-col gap-3 text-[1rem] leading-[1.6] text-ink sm:flex-row sm:items-baseline sm:justify-between">
                 <span>
                   Sunlight goes from <strong className="font-semibold">{pct(planned.stats.sunlit)}</strong> to{" "}
-                  <strong className="font-semibold">{pct(slipped.stats.sunlit)}</strong> of the stay, Earth from{" "}
-                  <strong className="font-semibold">{pct(planned.stats.earthVisible)}</strong> to{" "}
+                  <strong className="font-semibold">{pct(slipped.stats.sunlit)}</strong>. Time with Earth in view goes
+                  from <strong className="font-semibold">{pct(planned.stats.earthVisible)}</strong> to{" "}
                   <strong className="font-semibold">{pct(slipped.stats.earthVisible)}</strong>.
                 </span>
                 <Link
                   href={navigatorHref(site.id, slip.ms)}
                   className="inline-flex shrink-0 items-center gap-2 font-semibold text-ink underline decoration-rule decoration-1 underline-offset-[5px] transition-colors duration-150 hover:decoration-ink"
                 >
-                  Open the {fmtDay(slip.ms)} start
+                  Open the {fmtDay(slip.ms)} window
                   <ArrowRight />
                 </Link>
               </p>
@@ -116,7 +116,7 @@ export function Answers() {
 
 function Row({ question, detail, value, notes }: { question: string; detail: string; value: string; notes: string[] }) {
   return (
-    <section className="grid gap-x-8 gap-y-3 border-b border-rule py-6 md:grid-cols-[minmax(0,1fr)_13rem]">
+    <section className="scroll-draw grid gap-x-8 gap-y-3 border-b border-rule py-6 md:grid-cols-[minmax(0,1fr)_13rem]">
       <div>
         <h3 className="text-[1.266rem] leading-snug font-bold text-ink">{question}</h3>
         <p className="mt-2 max-w-[60ch] text-[1rem] leading-[1.6] text-ink-2">{detail}</p>
@@ -194,7 +194,7 @@ function Strip({ flags, kind }: { flags: boolean[] | undefined; kind: "sun" | "e
   const runs = flags ? toRuns(flags) : [];
   const n = flags?.length ?? 1;
   return (
-    <div className="relative h-4 border border-ink bg-paper" aria-hidden="true">
+    <div className="stay-trace relative h-4 border border-ink bg-paper" aria-hidden="true">
       {runs.map((r) => (
         <span
           key={r.from}
@@ -229,7 +229,7 @@ function HourAxis() {
           </span>
         ))}
       </div>
-      <p className="text-[0.79rem] text-ink-2">Hours from the start of the stay</p>
+      <p className="text-[0.79rem] text-ink-2">Hours from the start</p>
     </div>
   );
 }
