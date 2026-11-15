@@ -11,7 +11,7 @@ const publicSans = Public_Sans({
 export const metadata: Metadata = {
   title: "Lunar Landing Site Navigator",
   description:
-    "Compare the Artemis III candidate landing regions by Sun and Earth visibility in 3D.",
+    "Compare the south-pole regions NASA named for Artemis III in 2024 by when the Sun and Earth clear the real terrain horizon.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

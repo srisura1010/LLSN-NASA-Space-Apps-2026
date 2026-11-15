@@ -1,10 +1,18 @@
 import type { Metadata } from "next";
-import Planner from "@/components/Planner";
+import { Suspense } from "react";
+import NavigatorApp, { NavigatorSkeleton } from "@/components/navigator/NavigatorApp";
 
 export const metadata: Metadata = {
-  title: "Tool | Lunar Landing Site Navigator",
+  title: "Navigator | Lunar Landing Site Navigator",
+  description:
+    "Rank the south pole regions NASA named for Artemis III in 2024 by real-terrain sunlight and Earth visibility for any 2027 mission window.",
 };
 
 export default function ToolPage() {
-  return <Planner />;
+  // The app reads its view from the URL, so it renders below a Suspense boundary.
+  return (
+    <Suspense fallback={<NavigatorSkeleton />}>
+      <NavigatorApp />
+    </Suspense>
+  );
 }
