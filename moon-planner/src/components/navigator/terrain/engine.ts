@@ -59,6 +59,10 @@ export class PlateRenderer {
           pixel: data.meta.pixelSize,
           hMax: Math.max(1000, local.maxHeight + 100),
           local: { lat0: local.lat, lon0: local.lon, lonStep: localLonStep(local.lat) },
+          // The local plate's pixels are 240 or 300 m, not 640 m: a finer march keeps
+          // far shadow edges from stepping, and openness keeps about its 600 m to 17 km reach.
+          march: { steps: 160, growth: 0.035 },
+          openStart: 2.5,
         }
       : { half: data.half, pixel: data.meta.pixelSize };
     const { width, height } = data.meta;

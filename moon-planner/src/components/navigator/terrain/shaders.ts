@@ -17,6 +17,10 @@ export type ShaderDefines = {
    * the centre. lonStep is the meridian spacing of its graticule, degrees.
    */
   local?: { lat0: number; lon0: number; lonStep: number };
+  /** Shadow march: sample count and growth of the step with distance. Default 128 and 0.045 (the south polar plate). */
+  march?: { steps: number; growth: number };
+  /** First openness sample, in pixels. Default 1. */
+  openStart?: number;
 };
 
 const polarSky = /* glsl */ `
@@ -80,8 +84,8 @@ void main() {
 
 export const lightFragment = (d: ShaderDefines) => /* glsl */ `
 ${common(d)}
-#define STEPS 128
-#define GROWTH 0.045
+#define STEPS ${d.march?.steps ?? 128}
+#define GROWTH ${(d.march?.growth ?? 0.045).toFixed(4)}
 
 uniform vec3 uSun;
 
@@ -133,7 +137,7 @@ void main() {
     float a = (float(k) + 0.5) * 6.2831853 / float(DIRS);
     vec2 dir = vec2(cos(a), sin(a));
     float best = 0.0;
-    float d = PX;
+    float d = ${(d.openStart ?? 1).toFixed(2)} * PX;
     for (int i = 0; i < STEPS; i++) {
       best = max(best, (heightAt(p + dir * d) - h0) / d);
       d *= 1.45;

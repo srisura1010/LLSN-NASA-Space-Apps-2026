@@ -321,14 +321,15 @@ function AboutPanel({ entries, loading }: Props) {
               terrain uses the same LOLA grids as the nine regions. Anywhere else, Open site level fetches LRO LOLA
               elevations around the point from NASA Moon Trek when you ask: the global 128 pixel per degree mosaic
               (237 m at the equator) between 55° S and 55° N, and the 100 m polar mosaics beyond. They are resampled
-              to a 600 m grid reaching 154 km each way, centred on the point, with a finer 240 m or 120 m grid for the
-              first 15 to 30 km. The horizon is traced on those grids along 720 bearings from a 2 m mast with lunar
-              curvature, the same method as the regions, and the plate&apos;s shadows are traced on the 600 m grid at
-              true scale. The limits: this terrain is three to eight times coarser than the 80 m near field of the
-              regions, so sharp rims and ridges are smoothed and sunrise, sunset and Earth contact times are approximate
-              where the Sun or Earth grazes the horizon; terrain beyond 154 km is not included; and nothing here
+              to a grid reaching 123 km each way, centred on the point: 240 m from the global mosaic (about its own
+              resolution), or 300 m from the polar mosaics with a finer 120 m grid for the first 30 km. The horizon is
+              traced on those grids along 720 bearings from a 2 m mast with lunar curvature, the same method as the
+              regions, and the plate&apos;s shadows are traced on the same 240 m or 300 m grid at
+              true scale. The limits: this terrain is 1.5 to 4 times coarser than the 80 m near field of the
+              regions, so the sharpest rims and ridges are smoothed and sunrise, sunset and Earth contact times are approximate
+              where the Sun or Earth grazes the horizon; terrain beyond 123 km is not included; and nothing here
               is checked against a NASA illumination map. At four region centres the horizon from these grids differs
-              from the regions&apos; own by 0.2° to 0.4° on average and 1.8° at most (scripts/check-global-site.ts).
+              from the regions&apos; own by 0.2° to 0.5° on average and 1.8° at most (scripts/check-global-site.ts).
               If Moon Trek cannot be reached, the point opens on the smooth horizon and says so.
             </p>
           </Section>

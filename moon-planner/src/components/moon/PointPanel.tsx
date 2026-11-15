@@ -247,7 +247,7 @@ export default function PointPanel({
               ? `The site level is not available for this point. ${terrain?.reason ?? ""}`
               : polar
                 ? "Use LOLA terrain opens this point at the site level, measured against the real horizon."
-                : "Open site level fetches the LOLA terrain around this point from NASA Moon Trek (a 600 m grid, 150 km each way) and measures the Sun and Earth against its horizon. The grid is coarse, so times near a grazing Sun are approximate."}
+                : "Open site level fetches the LOLA terrain around this point from NASA Moon Trek (a 240 m or 300 m grid, 123 km each way, 4 to 8 MB) and measures the Sun and Earth against its horizon. The grid smooths the sharpest rims, so times near a grazing Sun are approximate."}
           </p>
         </>
       )}

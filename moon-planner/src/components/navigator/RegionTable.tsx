@@ -367,7 +367,7 @@ export function CustomSiteForm({ state, onSubmit, onRemove, className = "" }: Cu
       <p className="mt-1 max-w-[42ch] text-[0.844rem] leading-snug text-ink-2">
         Any point on the Moon; it takes a few seconds. From 80&deg; S to the pole the horizon comes from the LOLA 80 m
         and 640 m grids and the tracks from JPL Horizons. Elsewhere the terrain is fetched from NASA Moon Trek on a
-        coarser 600 m grid, so times near a grazing Sun are approximate.
+        coarser 240 m or 300 m grid, so times near a grazing Sun are approximate.
       </p>
       <form
         noValidate

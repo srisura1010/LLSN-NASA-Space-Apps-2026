@@ -624,7 +624,7 @@ export default function TerrainPlate({
                 sunBearing={sunBearing}
                 earthBearing={earthBearing}
                 tints={tintHex}
-                half={localMode ? 153600 : 304000}
+                half={localMode ? (localTerrain?.half ?? 122880) : 304000}
                 plain={localMode}
               />
             </div>
@@ -641,7 +641,7 @@ export default function TerrainPlate({
                   : terrain
                     ? "Tracing shadows for the current Sun"
                     : localMode
-                      ? "Fetching the terrain around this point from NASA Moon Trek, about 2 MB"
+                      ? "Fetching the terrain around this point from NASA Moon Trek, 4 to 8 MB"
                       : `South polar heightmap, 3.6 MB${pct !== null ? `, ${pct}%` : ""}`}
               </p>
               <div className="mt-2 h-px w-full bg-rule">

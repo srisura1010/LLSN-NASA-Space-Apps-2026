@@ -6,11 +6,18 @@
 //   lat >= 55° N  LRO_LOLA_DEM_NPole45_100mp_v04   north polar stereographic, 100 m
 //   lat <= 55° S  LRO_LOLA_DEM_SPole45_100mp_v04   south polar stereographic, 100 m
 //
-// Two windows are fetched per point and resampled onto square grids in an
-// azimuthal equidistant projection centred on the point (x east, y north,
-// true distance and bearing from the centre):
-//   plate  512 x 512 px of 600 m  (±153.6 km)   the 3D plate and the far horizon
-//   near   256 x 256 px of 240 m (global) or 120 m (polar)   the first 15-30 km of the horizon
+// The source is fetched at about its own resolution and resampled onto square
+// grids in an azimuthal equidistant projection centred on the point (x east,
+// y north, true distance and bearing from the centre):
+//   plate  1024 x 1024 px of 240 m (global) or 820 x 820 px of 300 m (polar), ±123 km
+//          the 3D plate, its shadows and the horizon
+//   near   512 x 512 px of 120 m (±30.7 km)   polar mosaics only: the first 30 km of the horizon
+// Between 55° S and 55° N the 240 m plate is already the source's resolution
+// (237 m at the equator), so one request serves the plate and the whole
+// horizon, and the plate and the numbers come from the same grid. Beyond
+// 55° the service resamples the 100 m mosaics to the 300 m plate (the plate
+// sits turned in the polar mosaic, so its window is up to twice its area: a
+// 240 m plate was up to 9.3 MB and 16 s) and the near grid keeps 120 m.
 //
 // The horizon uses the method of scripts/process-dem.ts and horizonFromGrid.ts:
 // 720 azimuths, exact elevation angle of every sample on the sphere (lunar
@@ -18,8 +25,8 @@
 // In this projection a path at azimuth A from the centre is the straight
 // line (s sin A, s cos A), so the march needs no per-sample trigonometry.
 //
-// These grids are much coarser than the 80 m near field of the nine regions:
-// rims and ridges are smoothed, so numbers near a grazing Sun are approximate.
+// These grids are 1.5 to 4 times coarser than the 80 m near field of the nine
+// regions: the sharpest rims are smoothed, so numbers near a grazing Sun are approximate.
 //
 // Client-safe: no Node-only imports. Uses fetch, so it also runs under tsx.
 
@@ -43,9 +50,15 @@ export type GlobalDemKind = keyof typeof GLOBAL_DEM;
 
 /** Beyond this latitude the polar stereographic mosaics are used (they reach 45°). */
 export const POLAR_SOURCE_LAT = 55;
-export const PLATE_PX_M = 600;
-export const PLATE_N = 512;
-export const NEAR_N = 256;
+/** The plate grid per source: pixel size (m) and pixels per side; both reach about 123 km each way. */
+export const PLATE_GRID: Record<GlobalDemKind, { px: number; n: number }> = {
+  global: { px: 240, n: 1024 },
+  north: { px: 300, n: 820 },
+  south: { px: 300, n: 820 },
+};
+/** Polar mosaics only: a finer grid around the centre for the near horizon. */
+export const NEAR_N = 512;
+export const NEAR_PX_M = 120;
 export const LOCAL_MAST_M = 2;
 const AZ_STEP_DEG = 0.5;
 
@@ -275,9 +288,9 @@ export type LocalTerrain = {
   lat: number;
   lon: number;
   projection: LocalProjection;
-  /** 512 x 512 heights (m), 600 m pixels, row 0 at the north edge, column 0 at the west edge. */
+  /** Heights (m) on the PLATE_GRID of the source, row 0 at the north edge, column 0 at the west edge. */
   grid: HeightGrid;
-  /** Finer heights around the centre for the near horizon. */
+  /** Heights for the near horizon: a 120 m grid around the centre from the polar mosaics, otherwise the plate grid itself. */
   near: HeightGrid;
   /** Half the plate's side, m. */
   half: number;
@@ -288,12 +301,19 @@ export type LocalTerrain = {
   label: string;
 };
 
+/** Source and grid sizes, for captions: the plate grid, and the finer near grid where there is one. */
+function gridLabel(source: GlobalDemKind): string {
+  return `${GLOBAL_DEM[source].text}, ${PLATE_GRID[source].px} m grid${source === "global" ? "" : `, ${NEAR_PX_M} m near the site`}`;
+}
+
 const terrainCache = new Map<string, Promise<LocalTerrain>>();
 const keyOf = (lat: number, lon: number) => `${lat.toFixed(4)},${lon.toFixed(4)}`;
 
 /**
- * The terrain around (lat, lon): two requests to NASA Moon Trek (about
- * 1.5-3 MB together), cached per point. A failed load is not cached.
+ * The terrain around (lat, lon), cached per point: one request to NASA Moon
+ * Trek between 55° S and 55° N (4.3 MB at the equator, 7.5 MB at 55°; two when
+ * the plate crosses the ±180° meridian), two beyond (4-8 MB together,
+ * depending on how the plate sits in the polar mosaic). A failed load is not cached.
  */
 export function loadLocalTerrain(lat: number, lon: number): Promise<LocalTerrain> {
   const key = keyOf(lat, lon);
@@ -302,14 +322,14 @@ export function loadLocalTerrain(lat: number, lon: number): Promise<LocalTerrain
     p = (async () => {
       const projection = localProjection(lat, lon);
       const source = demKindFor(lat);
-      const nearPx = source === "global" ? 240 : 120;
-      const half = (PLATE_N * PLATE_PX_M) / 2;
+      const plate = PLATE_GRID[source];
+      const half = (plate.n * plate.px) / 2;
       const [plateSrc, nearSrc] = await Promise.all([
-        fetchSource(projection, half, PLATE_PX_M),
-        fetchSource(projection, (NEAR_N * nearPx) / 2, nearPx),
+        fetchSource(projection, half, plate.px),
+        source === "global" ? null : fetchSource(projection, (NEAR_N * NEAR_PX_M) / 2, NEAR_PX_M),
       ]);
-      const grid = resample(projection, plateSrc, PLATE_N, PLATE_PX_M);
-      const near = resample(projection, nearSrc, NEAR_N, nearPx);
+      const grid = resample(projection, plateSrc, plate.n, plate.px);
+      const near = nearSrc ? resample(projection, nearSrc, NEAR_N, NEAR_PX_M) : grid;
       let min = Infinity;
       let max = -Infinity;
       for (let i = 0; i < grid.data.length; i++) {
@@ -331,7 +351,7 @@ export function loadLocalTerrain(lat: number, lon: number): Promise<LocalTerrain
         minHeight: min,
         maxHeight: max,
         source,
-        label: `${GLOBAL_DEM[source].text}, ${PLATE_PX_M} m grid`,
+        label: gridLabel(source),
       };
     })();
     terrainCache.set(key, p);
@@ -422,12 +442,15 @@ export const isGlobalSite = (s: SiteData | null | undefined): s is GlobalSiteDat
   (s as Partial<GlobalSiteData> | null | undefined)?.terrain === "lola-global";
 
 export function globalSiteMethod(t: LocalTerrain): string {
+  const nearText =
+    t.near === t.grid
+      ? ", the source's own resolution"
+      : `, with a ${t.near.pixelSize} m grid for the first ${Math.round(((t.near.width / 2 - 2) * t.near.pixelSize) / 1000)} km`;
   return (
     `Terrain: ${GLOBAL_DEM[t.source].text}, fetched from NASA Moon Trek and resampled to a ${t.grid.pixelSize} m grid ` +
-    `out to ${Math.round(t.half / 1000)} km, with a ${t.near.pixelSize} m grid for the first ` +
-    `${Math.round(((t.near.width / 2 - 2) * t.near.pixelSize) / 1000)} km. The horizon is traced on it along 720 bearings from a 2 m mast, ` +
-    "with lunar curvature. Sun and Earth directions come from the JPL Horizons 2027 vectors and the IAU rotation model. " +
-    "This grid is coarser than the 80 m near field of the nine regions: rims and ridges are smoothed, " +
+    `out to ${Math.round(t.half / 1000)} km${nearText}. The horizon is traced on it along 720 bearings from a 2 m mast, ` +
+    "with lunar curvature; the plate's shadows are traced on the same grid. Sun and Earth directions come from the JPL Horizons 2027 vectors and the IAU rotation model. " +
+    "This grid is coarser than the 80 m near field of the nine regions: the sharpest rims and ridges are smoothed, " +
     "so times near a grazing Sun or Earth are approximate, and terrain beyond the plate is not included."
   );
 }
@@ -442,7 +465,7 @@ export function buildGlobalSite(t: LocalTerrain, system: SystemData, siteId = "c
     lat: t.lat,
     lon: t.lon,
     method: globalSiteMethod(t),
-    terrainLabel: `${GLOBAL_DEM[t.source].text}, ${t.grid.pixelSize} m grid`,
+    terrainLabel: t.label,
     local: t,
   };
 }
