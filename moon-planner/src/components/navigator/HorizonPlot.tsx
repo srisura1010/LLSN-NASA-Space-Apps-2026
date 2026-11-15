@@ -433,6 +433,10 @@ export default function HorizonPlot({
               side="above"
               panelClassName="w-[min(34rem,calc(100vw-2rem))] p-3"
             >
+              <p data-how-to-read className="mb-2 border-b border-rule pb-2 text-[0.844rem] leading-snug text-ink">
+                <span className="font-semibold">How to read this:</span> left to right is compass direction, up is height above
+                level. The grey shape is the terrain; the yellow line is the Sun&apos;s path, the blue line Earth&apos;s.
+              </p>
               <Legend layout={layout} />
             </Popover>
           ) : null}
@@ -619,7 +623,7 @@ function NowReadout({
 
 /**
  * The dock's readout on one line: the time, then each body's bearing, elevation, state and next contact.
- * Narrow screens let it wrap; the dock keeps it to one line where there is room.
+ * Where the line is too short for both bodies it wraps, a whole body to the next line, so no part is clipped.
  */
 function DockReadout({
   id,
@@ -656,7 +660,7 @@ function DockReadout({
     };
   });
   return (
-    <div id={id} className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[0.844rem] text-ink tabular-nums lg:flex-nowrap lg:overflow-hidden">
+    <div id={id} className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[0.844rem] text-ink tabular-nums">
       <span className="flex shrink-0 items-center gap-2">
         {controls}
         {onTogglePlay ? (
@@ -665,19 +669,20 @@ function DockReadout({
             onClick={onTogglePlay}
             aria-pressed={playing}
             title={playing ? "Pause" : "Play the window"}
+            data-play
             className="inline-flex size-7 items-center justify-center border border-ink bg-paper text-ink transition-colors duration-150 hover:bg-paper-3 active:bg-umbra-soft"
           >
             <PlayMark playing={playing} />
             <span className="sr-only">{playing ? "Pause" : "Play the window"}</span>
           </button>
         ) : null}
-        <span className="font-semibold whitespace-nowrap" title={fmtFull(now.ms)}>
+        <span className="font-semibold whitespace-nowrap" title={fmtFull(now.ms)} data-clock>
           {fmtDayTime(now.ms)} UTC
         </span>
         <span className="whitespace-nowrap text-ink-2">{fmtElapsed(now.ms - startMs)}</span>
       </span>
       {bodies.map((b) => (
-        <span key={b.body} className="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap">
+        <span key={b.body} className="flex items-center gap-1.5 whitespace-nowrap">
           <StateSwatch body={b.body} up={b.up} />
           <span className="font-semibold">{b.name}</span>
           <span>
@@ -690,7 +695,7 @@ function DockReadout({
           </span>
           <span className={b.up ? "font-medium" : "font-semibold text-limit"}>{b.status}</span>
           {b.next ? (
-            <span className="truncate text-ink-2" title={b.nextTitle}>
+            <span className="text-ink-2" title={b.nextTitle}>
               · {b.next}
             </span>
           ) : null}

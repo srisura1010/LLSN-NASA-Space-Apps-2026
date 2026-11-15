@@ -16,7 +16,7 @@ import { covers, loadSite, rankSites, sampleAt, type MissionScore, type SiteData
 import { isUp } from "@/lib/contacts";
 import { sites } from "@/lib/sites";
 import { DAY, HOUR, fmtLatLon } from "@/lib/format";
-import { DATA_END_MS } from "@/lib/mission";
+import { DATA_END_MS, DATA_START_MS } from "@/lib/mission";
 import { launchSites } from "@/lib/launchSites";
 import { customHorizonMethod, loadCustomSite, validateSitePoint } from "@/lib/customSite";
 import { SMOOTH_METHOD, buildSmoothSite, isSmoothSite } from "@/lib/anySite";
@@ -36,6 +36,7 @@ import LevelNav, { type Level } from "../levels/LevelNav";
 import { ChevronMark, Drawer, ErrorBoundary, Toast } from "../ui";
 import Rail from "../shell/Rail";
 import Dock from "./Dock";
+import LevelClock, { type ClockRange } from "./LevelClock";
 import { useStored } from "@/state/stored";
 import AppBar, { type Mode } from "../shell/AppBar";
 
@@ -56,6 +57,8 @@ const FALLBACK_SITE = "de-gerlache-2";
 const CUSTOM_MARGIN_MS = 14 * DAY;
 /** Playback runs through the whole window in this many milliseconds. */
 const PLAY_SPAN_MS = 12_000;
+/** Playing through 2027 covers six days each second. */
+const YEAR_PLAY_RATE = (6 * DAY) / 1000;
 
 /** The launch sites in the shape the System view draws: marks plus the allowed azimuth fan. */
 const LAUNCH_MARKS = launchSites.map((s) => ({ id: s.id, name: s.name, group: s.group, lat: s.lat, lon: s.lon, azimuthRanges: s.azimuths.map((r) => [r.min, r.max] as [number, number]) }));
@@ -599,8 +602,37 @@ function Navigator() {
   );
   const systemWindow = useMemo(() => ({ startMs, endMs }), [startMs, endMs]);
 
+  // The one clock's rail at the Moon and System levels covers the mission window or all of 2027.
+  const [clockRange, setClockRange] = useStored<ClockRange>("llsn.clock.range", "window");
+  const yearClock = (view === "moon" || view === "system") && (clockRange === "year" || systemMs !== null);
+  const changeClockRange = useCallback(
+    (r: ClockRange) => {
+      // Back on the window rail, a time outside the window gives way to the window's clock.
+      if (r === "window") setSystemMs(null);
+      setClockRange(r);
+    },
+    [setClockRange, setSystemMs],
+  );
+  // Play through 2027 at six days a second; inside the window it moves the shared clock, outside it the levels' own.
   useEffect(() => {
-    if (!playing) return;
+    if (!playing || !yearClock) return;
+    let raf = 0;
+    let last = performance.now();
+    const tick = (now: number) => {
+      const dt = Math.min(100, now - last);
+      last = now;
+      const s = store.getState();
+      let t = (s.systemMs ?? s.nowMs) + dt * YEAR_PLAY_RATE;
+      if (t > DATA_END_MS - HOUR) t = DATA_START_MS;
+      store.setState(t >= startMs && t <= endMs ? { systemMs: null, nowMs: t } : { systemMs: t });
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [playing, yearClock, startMs, endMs, store]);
+
+  useEffect(() => {
+    if (!playing || yearClock) return;
     let raf = 0;
     let last = performance.now();
     const rate = (endMs - startMs) / PLAY_SPAN_MS;
@@ -615,7 +647,7 @@ function Navigator() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, startMs, endMs, setNowMs]);
+  }, [playing, yearClock, startMs, endMs, setNowMs]);
 
   const togglePlay = useCallback(() => setPlaying((p) => !p), [setPlaying]);
 
@@ -1015,6 +1047,21 @@ function Navigator() {
                 />
               )}
             </div>
+
+            {(view === "moon" || view === "system") && (
+              <LevelClock
+                site={selectedData}
+                siteName={meta.name}
+                nowMs={systemNow}
+                startMs={startMs}
+                endMs={endMs}
+                range={clockRange}
+                onRange={changeClockRange}
+                playing={playing}
+                onTogglePlay={togglePlay}
+                onScrub={scrubSystem}
+              />
+            )}
 
             {view === "navigator" && (
               <Dock panelId="dock-horizon">

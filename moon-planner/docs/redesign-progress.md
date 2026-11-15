@@ -2,7 +2,7 @@
 
 This file and `docs/tool-ui-audit.md` are the starting point for the next session. Section numbers like §3.3 refer
 to the audit. The audit still describes the layout and metrics, but not the Phase 1–2 shell and file moves listed
-below. Status: **Phases 1, 2 and 3 done. Phase 4 not started.** Nothing is committed.
+below. Status: **Phases 1 to 4 done. Phase 5 not started.** Nothing is committed.
 
 ## Phase 1: foundation (done)
 
@@ -140,3 +140,77 @@ below. Status: **Phases 1, 2 and 3 done. Phase 4 not started.** Nothing is commi
    (`terrain/PlateLabels.tsx Indicators`).
 5. In `RegionTable.tsx`, add a score column with a bar, and move the gap warnings to a separate ⚠ marker with a
    title.
+
+## Phase 4 (done)
+
+- **One clock, one Play.** The dock is at all three levels and holds the only Play and clock.
+  - Site: unchanged (`Dock` + `HorizonPlot dock`).
+  - Moon and System: a new `src/components/navigator/LevelClock.tsx` under the viewer. It has the rail, Play, the time
+    and, inside the window, the site's Sun and Earth state. A Segmented control sets the rail's range: "Mission window"
+    (the site's TimelineStrip) or "All of 2027" (`YearSlider.tsx`, now a plain year rail with no Play).
+  - The range is kept in localStorage (`llsn.clock.range`, default window). A time outside the window (a year scrub,
+    or a lift-off from Launch) always shows on the year rail. "Mission window" clears `systemMs`.
+  - Playback lives in `NavigatorApp`. Over the window it runs as before (12 s per window). Over the year it runs at 6
+    days per second: inside the window it moves `nowMs` (with `systemMs` null); outside the window it moves `systemMs`.
+    `useYearPlayback`, the Moon/System Play buttons, their `playing` state and the time in their headers and in the
+    "Time" rows are gone. `systemMs` semantics and the URL (`at=` only inside the window) are unchanged.
+  - Dock readout: at narrow widths it wraps a whole body to a second line instead of clipping "next contact" to "·".
+    All Play buttons carry `data-play` and the clocks `data-clock` (for tests).
+- **Answers in plain words** (`SiteBulletin.tsx`):
+  - `verdict()` (exported) writes a bold sentence under the site name from the stats alone. Rank 1 gives all three
+    facts. Other ranks lead with the weakest weighted part, then any gap over the limit; a dark spell and a comms gap
+    that are both over the limit share one clause. It uses `pct()` and `fmtDuration()`.
+  - "Why it ranks here" moved above the numbers. It is now three labelled bars from `missionScore().parts`, each out
+    of its weight (Sun power 45% in cadmium, Earth in view 30% in cobalt, short longest dark 25% in umbra), the score
+    in the panel note, one line on ties, and the better-start box.
+  - Renamed headings: "Circumstances" became "Over this window" and "Contacts" became "Rises and sets". The Moon and
+    System panels show the state at one moment, so they say "At the time shown" rather than "Over this window".
+    PointPanel had neither heading.
+  - Glosses under "Mean disc power" and "Mean Sun clearance". All rows are dense, and the coordinates and Moon Trek
+    link share one line.
+  - The Fig. 2 Key popover opens with a "How to read this" line.
+- **Moon and System toolbars.**
+  - Their headers are gone (the h2s are sr-only). Their controls float top right over the viewer, as on the terrain
+    plate:
+    - Moon: View from, Pick a point, a Layers popover (Earlier landings, Detail tiles and the tile status) and an
+      About popover (the old caption).
+    - System: Framing, a Scale popover and an About popover (the caption), with a second row per framing. The pair
+      framing has Centre on and Top/Side/Reset. The Earth framing has one grouped `SelectField` (United States, NASA
+      partner agencies, US partner countries) plus "Day side" and "Moon overhead"; this replaces the 16 Face buttons.
+  - Each view keeps a one-line "Drag to turn · scroll to zoom …" hint at the bottom left. ZoomHint sits under the
+    toolbar row. The Moon's "9 candidate regions / site" tag is not drawn in the Earth framing.
+  - The System inspector's long "On Earth" rows no longer overflow: the labels are shorter and the launch-site name
+    went into the note.
+- **Launch → Earth:**
+  - New store field `systemFraming` (not in the URL). SystemView opens in that framing and clears it.
+  - "Show this launch on Earth" sets view `system`, `systemFraming: "earth"`, the launch site and
+    `systemMs = chosen.launchMs` (and pauses). The view opens over the launch site at lift-off, on the year rail.
+- **Region outlines off:** the outlines are hidden through a new `outlines` prop on `terrain/Scene.tsx`, and the
+  regions are still picked by click.
+- **Verified:** tsc, eslint and next build are clean. Playwright (`scratchpad/tools/phase4.cjs`) ran at 1440x900 and
+  1366x768.
+  - There is one Play at each level, and it advances time at each. The year range works, and so does a scrub outside
+    the window. All three System framings work, and the Earth dropdown faces Kourou.
+  - Each verdict matches its table row: rank 1, rank 7 and rank 9.
+  - The wheel zoom chain Site → Moon → System → Moon → Site works.
+  - Launch → "Show this launch on Earth" lands at System, in the Earth framing, with KSC selected and the clock at
+    lift-off.
+  - At 390 px nothing overflows sideways. There were 0 console errors. Screenshots are in scratchpad `shots/phase4/`.
+
+### Unfinished or known issues (Phase 4)
+
+- At 390 px the System/Moon overlay toolbar wraps to two or three rows over the top of the diagram (the Earth framing
+  hides part of Earth). A static toolbar above the canvas on phones is Phase 5.
+- At 1440x900 the bulletin still scrolls for "Rises and sets" and "Checked against NASA"; the verdict, the Why bars
+  and "Over this window" are in the first view.
+- The System toolbar sits over the orbit line near the top edge in some framings (cosmetic).
+- The mouse click on the time rail is still not separately confirmed by a test (keyboard, fill and Play are).
+
+## Where Phase 5 starts
+
+1. Phones: the ranking after the viewer, the modes in a menu, and the Moon/System toolbars as a static row above the
+   canvas below `sm`.
+2. A type scale in place of the arbitrary rem sizes.
+3. Fit the bulletin at 1440x900: collapse "Checked against NASA" into a disclosure, and maybe cap "Rises and sets" with
+   a "show all".
+4. Delete the test Horizons cache files (`data/horizons-cache/*_-80.0010_45.0000_*.json`) before committing.

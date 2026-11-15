@@ -601,7 +601,8 @@ export default function TerrainPlate({
                   key={plateKey}
                   data={terrain}
                   range={range}
-                  regions={layers.regions ? regions : NO_REGIONS}
+                  regions={regions}
+                  outlines={layers.regions}
                   graticule={layers.graticule}
                   selectedIndex={selectedIndex}
                   hoveredIndex={hovered}

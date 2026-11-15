@@ -46,6 +46,8 @@ export type PlanState = {
   /** Outside the mission window, the System and Moon levels keep their own time. */
   systemMs: number | null;
   playing: boolean;
+  /** A framing the System level should open in (then cleared), e.g. "earth" from the Launch mode. */
+  systemFraming: "system" | "pair" | "earth" | null;
   /** The site the user chose; null falls back to the top of the ranking. */
   selectedId: string | null;
   /** Dark spells and comms gaps longer than this many hours are flagged. */
@@ -76,6 +78,7 @@ export function stateFromUrl(u: UrlState): PlanState {
     nowMs: u.startMs + u.atHours * HOUR,
     systemMs: null,
     playing: false,
+    systemFraming: null,
     selectedId: u.site,
     gap: u.gap,
     change: null,

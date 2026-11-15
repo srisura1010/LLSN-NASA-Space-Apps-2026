@@ -15,10 +15,9 @@ import { bodyToLatLon, elevationDeg, moonFrameAt, type LatLon, type MoonFrame } 
 import { sites, type Site } from "@/lib/sites";
 import { EARTH_RADIUS_KM, loadSystem, stateAt, systemEndMs, type SystemData, type SystemState, type Vec3 } from "@/lib/system";
 import { RENDER, TOKENS } from "@/lib/tokens";
-import { fmtFull, fmtInt, fmtLat, fmtLon, fmtSigned } from "@/lib/format";
+import { fmtInt, fmtLat, fmtLon, fmtSigned } from "@/lib/format";
 import { hasWebGL } from "@/lib/webgl";
-import { ErrorBoundary, Row, SectionLabel, Segmented, ToggleButton, buttonClass } from "../ui";
-import YearSlider, { useYearPlayback } from "../system/YearSlider";
+import { ErrorBoundary, Popover, Row, SectionLabel, Segmented, ToggleButton, buttonClass, toggleClass } from "../ui";
 import { ZoomHint } from "../levels/LevelNav";
 import { useZoomGate } from "../levels/useZoomGate";
 import { BearingTag, Bearing, CLUSTER_AT, ClusterMark, Flag, HIT, LABEL_TEXT, LINE_NAMES, LIFT, LineLegend, LabelProjector, OVER, POLE_DIR, RAY, Ray, arcTowards, handoff, onGlobe, toScene, type Label } from "./marks";
@@ -406,10 +405,9 @@ function PolarFallback({ frame, selectedId, onSelect }: { frame: MoonFrame; sele
 function Readout({ frame, state, site }: { frame: MoonFrame; state: SystemState; site: Site | null }) {
   return (
     <div>
-      <SectionLabel>Circumstances</SectionLabel>
+      <SectionLabel>At the time shown</SectionLabel>
       <table className="w-full border-collapse">
         <tbody>
-          <Row label="Time" value={fmtFull(frame.ms)} />
           <Row label="Sub-solar point" value={`${fmtLat(frame.subSolar.lat)}, ${fmtLon(frame.subSolar.lon)}`} note="where the Sun is overhead" />
           <Row
             label="Sub-Earth point"
@@ -589,7 +587,6 @@ export default function MoonView({
       : !tileStatus?.active
         ? "Detail: zoom in for NASA Moon Trek tiles"
         : `Detail: NASA Moon Trek tiles${tileStatus.level ? `, level ${tileStatus.level}` : ""}${tileStatus.loading ? ` · loading ${tileStatus.loading}` : ""}`;
-  const [playing, setPlaying] = useState(false);
   const [gl] = useState(hasWebGL);
   const [fine, setFine] = useState<FineTextures | null>(null);
   const [outlines, setOutlines] = useState<RegionOutline[]>([]);
@@ -646,8 +643,6 @@ export default function MoonView({
       ? { label: "Open System level", onClick: onOpenSystem }
       : null;
 
-  const span = useMemo(() => (data ? { startMs: data.startMs, endMs: systemEndMs(data) } : null), [data]);
-  useYearPlayback(playing, span, ms, onScrub);
 
   const overlay = useRef<HTMLDivElement>(null);
   const near = zoom.near;
@@ -781,30 +776,7 @@ export default function MoonView({
   return (
     <div className={`flex min-h-0 flex-col xl:flex-row ${className}`}>
       <section aria-label="Globe of the Moon" className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-rule px-4 py-2.5">
-          <h2 className="text-[1.068rem] leading-snug font-semibold text-ink">The Moon{frame ? `, ${fmtFull(frame.ms)}` : ""}</h2>
-          <div className="flex flex-wrap gap-2.5">
-            <Segmented
-              label="View from"
-              value={framing.id as FramingId}
-              disabled={!frame}
-              onChange={frameTo}
-              options={[
-                { id: "pole", label: "South pole" },
-                { id: "near", label: "Near side" },
-                { id: "sun", label: "Sun side" },
-              ]}
-            />
-            <ToggleButton on={showLandings} soft onClick={() => setShowLandings((v) => !v)} className="px-3">
-              Earlier landings
-            </ToggleButton>
-            {onPoint && (
-              <ToggleButton on={pickMode} disabled={!frame || !gl} onClick={() => setPickMode((v) => !v)} title="Click the globe to drop a pin and read the Sun and Earth there. Shift-click works at any time." className="px-3">
-                Pick a point
-              </ToggleButton>
-            )}
-          </div>
-        </header>
+        <h2 className="sr-only">The Moon</h2>
 
         <div
           ref={setHost}
@@ -813,7 +785,60 @@ export default function MoonView({
           className={`relative isolate min-h-[24rem] flex-1 overflow-hidden bg-paper ${pickMode ? "cursor-crosshair" : ""}`}
         >
           {levelNav && <div className="pointer-events-none absolute top-2 left-2 z-20">{levelNav}</div>}
-          <ZoomHint text={hintText} progress={progress} action={hintAction} />
+          {/* The view's controls, top right over the globe: framing, pick a point, layers and how to read it. */}
+          <div role="toolbar" aria-label="Moon view" className="absolute top-2 right-2 z-30 flex max-w-[calc(100%-15rem)] flex-wrap justify-end gap-1 max-sm:max-w-[calc(100%-1rem)] max-sm:top-12">
+            <Segmented
+              label="View from"
+              value={framing.id as FramingId}
+              disabled={!frame}
+              onChange={frameTo}
+              className="bg-paper"
+              options={[
+                { id: "pole", label: "South pole" },
+                { id: "near", label: "Near side" },
+                { id: "sun", label: "Sun side" },
+              ]}
+            />
+            {onPoint && (
+              <ToggleButton on={pickMode} disabled={!frame || !gl} onClick={() => setPickMode((v) => !v)} title="Click the globe to drop a pin and read the Sun and Earth there. Shift-click works at any time." className={pickMode ? "" : "bg-paper"}>
+                Pick a point
+              </ToggleButton>
+            )}
+            <Popover label="Layers on the globe" button={<>Layers</>} buttonClassName={`${toggleClass(false, "md")} bg-paper`} panelClassName="w-[17rem] p-2">
+              <fieldset>
+                <legend className="px-1 pb-1.5 text-[0.75rem] font-semibold tracking-[0.08em] text-ink-2 uppercase">Show on the globe</legend>
+                <label className="flex cursor-pointer items-center gap-2 px-1 py-1 text-[0.844rem] text-ink hover:bg-paper-2">
+                  <input type="checkbox" checked={showLandings} onChange={(e) => setShowLandings(e.target.checked)} className="size-4 accent-[var(--color-ink)]" />
+                  Earlier landings
+                </label>
+                {gl && (
+                  <label className="flex cursor-pointer items-center gap-2 px-1 py-1 text-[0.844rem] text-ink hover:bg-paper-2" title="Load sharper surface tiles from NASA Moon Trek when zoomed in; needs a network connection">
+                    <input type="checkbox" checked={detail} onChange={(e) => setDetail(e.target.checked)} className="size-4 accent-[var(--color-ink)]" />
+                    Detail tiles from NASA Moon Trek
+                  </label>
+                )}
+              </fieldset>
+              {gl && (
+                <p data-tile-status className="mt-1 border-t border-rule px-1 pt-1.5 text-[0.75rem] leading-snug text-ink-2 tabular-nums">
+                  {detailText}
+                </p>
+              )}
+            </Popover>
+            <Popover label="About this view" button={<>About</>} title="How to read the Moon view" buttonClassName={`${toggleClass(false, "md")} bg-paper`} panelClassName="w-[min(24rem,calc(100vw-2rem))] p-3">
+              <p className="text-[0.844rem] leading-snug text-ink">
+                Drag to turn the globe, scroll to zoom, shift-click to pick a point. Zooming all the way in opens the site level of the place at the centre of the view (the selected region over the south pole); zooming out opens the System level.
+              </p>
+              <p className="mt-2 text-[0.8rem] leading-snug text-ink-2">
+                The terminator, the lines to the Sun and Earth and the Moon&apos;s orientation are computed for the time shown. Relief shading is exaggerated and no cast shadows are drawn, so use the site level for terrain shadow.
+              </p>
+            </Popover>
+          </div>
+          <p className="pointer-events-none absolute bottom-2 left-2 z-10 border border-rule bg-paper/90 px-2 py-0.5 text-[0.75rem] text-ink-2 max-sm:hidden">
+            Drag to turn · scroll to zoom · shift-click to pick a point
+          </p>
+          <div className="pointer-events-none absolute inset-x-0 top-11 bottom-0 z-20">
+            <ZoomHint text={hintText} progress={progress} action={hintAction} />
+          </div>
           {target && (
             // The spot the hint names: four hairline ticks about the view centre, cased in paper so they read on the night side.
             <svg data-centre-mark aria-hidden="true" viewBox="-14 -14 28 28" className="pointer-events-none absolute top-1/2 left-1/2 z-10 size-7 -translate-x-1/2 -translate-y-1/2">
@@ -822,7 +847,7 @@ export default function MoonView({
             </svg>
           )}
           {pickMode && frame && (
-            <p role="status" className="pointer-events-none absolute top-3 left-3 z-10 border border-ink bg-paper px-2.5 py-1 text-[0.8rem] leading-snug text-ink">
+            <p role="status" className="pointer-events-none absolute bottom-9 left-2 z-10 border border-ink bg-paper px-2.5 py-1 text-[0.8rem] leading-snug text-ink">
               Click the globe to drop a pin. Drag still turns it.
             </p>
           )}
@@ -888,40 +913,6 @@ export default function MoonView({
           )}
         </div>
 
-        <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2 border-t border-rule px-4 py-2">
-          <p className="min-w-[16rem] flex-1 text-[0.8rem] leading-snug text-ink-2">
-            Drag to turn the globe, scroll to zoom, shift-click to pick a point; zooming all the way in opens the site level of the place at the
-            centre of the view (the selected region over the south pole), zooming out opens the System level. The terminator, the lines to the Sun and Earth and the Moon&apos;s orientation are
-            computed for the time shown; relief shading is exaggerated and no cast shadows are drawn, so use the site
-            level for terrain shadow.
-          </p>
-          {gl && (
-            // The status keeps a fixed width, so its changing count never reflows the caption and resizes the globe above it.
-            <div className="flex items-center gap-3">
-              <p data-tile-status className="text-[0.8rem] leading-snug whitespace-nowrap text-ink-2 tabular-nums sm:min-w-[23rem] sm:text-right">
-                {detailText}
-              </p>
-              <ToggleButton on={detail} size="sm" soft onClick={() => setDetail((v) => !v)} title="Load sharper surface tiles from NASA Moon Trek when zoomed in; needs a network connection">
-                Detail tiles
-              </ToggleButton>
-            </div>
-          )}
-        </div>
-
-        {span && onScrub && (
-          <YearSlider
-            startMs={span.startMs}
-            endMs={span.endMs}
-            ms={ms}
-            windowMs={windowMs}
-            playing={playing}
-            onPlay={() => setPlaying((p) => !p)}
-            onScrub={(t) => {
-              setPlaying(false);
-              onScrub(t);
-            }}
-          />
-        )}
       </section>
 
       {inspector === undefined ? (

@@ -29,10 +29,11 @@ import {
   type Vec3,
 } from "@/lib/system";
 import { RENDER, TOKENS } from "@/lib/tokens";
-import { MONTHS, fmtFull, fmtInt, fmtLatLon, fmtSigned } from "@/lib/format";
+import { MONTHS, fmtInt, fmtLatLon, fmtSigned } from "@/lib/format";
 import { hasWebGL } from "@/lib/webgl";
-import { ErrorBoundary, Row, SectionLabel, Segmented, ToggleButton, buttonClass } from "../ui";
-import YearSlider, { useYearPlayback } from "./YearSlider";
+import { ErrorBoundary, Popover, Row, SectionLabel, Segmented, SelectField, ToggleButton, buttonClass, toggleClass } from "../ui";
+import { GROUP_LABEL, type SiteGroup } from "@/lib/launchSites";
+import { usePlanField } from "@/state/plan";
 import { ZoomHint } from "../levels/LevelNav";
 import { useZoomGate } from "../levels/useZoomGate";
 import {
@@ -1007,7 +1008,7 @@ function PlanFallback({ data, state }: { data: SystemData; state: SystemState })
 
 function FaceButton({ on = false, onClick, children }: { on?: boolean; onClick: () => void; children: ReactNode }) {
   return (
-    <ToggleButton on={on} onClick={onClick}>
+    <ToggleButton on={on} onClick={onClick} className={on ? "" : "bg-paper"}>
       {children}
     </ToggleButton>
   );
@@ -1072,10 +1073,9 @@ function Readout({
   const el = (v?: number | null) => (v == null || !Number.isFinite(v) ? "Not available" : fmtSigned(v, 2));
   return (
     <div>
-      <SectionLabel>Circumstances</SectionLabel>
+      <SectionLabel>At the time shown</SectionLabel>
       <table className="w-full border-collapse">
         <tbody>
-          <Row label="Time" value={fmtFull(state.ms)} />
           <Row label="Earth to Sun" value={`${state.sunEarthAu.toFixed(4)} au`} note={`${fmtInt(state.sunEarthKm / 1000)},000 km`} />
           <Row label="Earth to Moon" value={`${fmtInt(state.earthMoonKm)} km`} note={`${(state.earthMoonKm / EARTH_RADIUS_KM).toFixed(1)} Earth radii`} />
           <Row label="Moon illuminated" value={`${(state.illuminated * 100).toFixed(1)} %`} note={`Phase angle ${state.phaseAngleDeg.toFixed(1)}°`} />
@@ -1102,7 +1102,7 @@ function Readout({
             </tbody>
           </table>
           <p className="mt-2 text-[0.8rem] leading-snug text-ink-2">
-            Elevation of each body&apos;s centre above the level horizon at the site. The Navigator tab measures it
+            Elevation of each body&apos;s centre above the level horizon at the site. The site level measures it
             against the terrain.
           </p>
         </>
@@ -1113,11 +1113,11 @@ function Readout({
           <SectionLabel className="mt-6">On Earth</SectionLabel>
           <table className="w-full border-collapse">
             <tbody>
-              <Row label="Sun overhead at" value={fmtPlace(earthFrame.subSolar)} />
-              <Row label="Moon overhead at" value={fmtPlace(earthFrame.subLunar)} />
+              <Row label="Sun overhead" value={fmtPlace(earthFrame.subSolar)} />
+              <Row label="Moon overhead" value={fmtPlace(earthFrame.subLunar)} />
               {launchSite && (
                 <>
-                  <Row label="Launch site" value={launchSite.name} note={fmtPlace(launchSite)} />
+                  <Row label="Launch site" value={fmtPlace(launchSite)} note={launchSite.name} />
                   <Row label="Sun elevation there" value={fmtSigned(elevationDeg(launchSite.lat, launchSite.lon, earthFrame.sunKm, EARTH_RADIUS_KM), 1)} />
                   <Row label="Moon elevation there" value={fmtSigned(elevationDeg(launchSite.lat, launchSite.lon, earthFrame.moonKm, EARTH_RADIUS_KM), 1)} />
                 </>
@@ -1153,11 +1153,9 @@ const FAR: Detail = { rays: false, onBody: false, close: false, step: 12, earth:
 
 export default function SystemView({
   nowMs,
-  onScrub,
   siteName,
   sunElevationDeg,
   earthElevationDeg,
-  windowMs,
   onOpenMoon,
   entry,
   levelNav,
@@ -1171,11 +1169,18 @@ export default function SystemView({
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [scale, setScale] = useState<Scale>("display");
-  const [framing, setFraming] = useState<Framing>(() => (entry === "below" ? { id: "pair", start: "near" } : { id: "system", start: "default" }));
+  // A framing asked for from elsewhere (the Launch mode's "Show this launch on Earth"), used once and cleared.
+  const [askedFraming, setAskedFraming] = usePlanField("systemFraming");
+  const [framing, setFraming] = useState<Framing>(() =>
+    askedFraming ? { id: askedFraming, start: "default" } : entry === "below" ? { id: "pair", start: "near" } : { id: "system", start: "default" },
+  );
+  // The view mounts afresh from the Launch mode, so the initial framing above has used it.
+  useEffect(() => {
+    if (askedFraming) setAskedFraming(null);
+  }, [askedFraming, setAskedFraming]);
   const [focus, setFocus] = useState<FocusState>(() => ({ id: entry === "below" ? "moon" : "both", auto: false }));
   // Set when zooming in on the pair has moved the focus to a body, and shown for a moment as a note.
   const [nudge, setNudge] = useState<Focus | null>(null);
-  const [playing, setPlaying] = useState(false);
   const [gl] = useState(hasWebGL);
   const [textures, setTextures] = useState<Textures | null>(null);
   const [fine, setFine] = useState<FineTextures | null>(null);
@@ -1310,7 +1315,8 @@ export default function SystemView({
       push("moon", { kind: "limb", body: "moon", side: 1 }, 0, <BodyTag text="Moon" speck={false} onPick={onPair ? () => pick("moon") : undefined} />, { free: true });
       if (site) push("site", { kind: "moon", at: onGlobe(site.lat, site.lon) }, 0, <SiteFlag text={site.name} />, { dot: 6 });
       push("cluster", { kind: "moon", at: CLUSTER_AT }, 2, <ClusterMark onOpen={() => onOpenMoon?.()} hint="Open the Moon level to tell them apart." />, { dot: 8 });
-    } else {
+    } else if (framing.id !== "earth") {
+      // In the Earth framing the Moon is far off to one side; its tag could only stand over Earth's disc.
       push("moon", { kind: "limb", body: "moon", side: -1 }, 0, <BodyTag text={onPair ? "Moon" : "Moon · 9 candidate regions"} sub={site?.name} speck={speck.moon} below onPick={onPair ? () => pick("moon") : undefined} />, { free: true });
     }
     if (detail.rays) {
@@ -1458,8 +1464,6 @@ export default function SystemView({
     e.preventDefault();
   };
 
-  const span = useMemo(() => (data ? { startMs: data.startMs, endMs: systemEndMs(data) } : null), [data]);
-  useYearPlayback(playing, span, ms, onScrub);
 
   const earthNote =
     " Earth is NASA's Blue Marble printed as sea, land relief and coastline, turned by Earth's rotation angle for this time, so the lit side and the marks are true. Ecliptic north is up, so Earth's axis leans 23.4°. Launch azimuths are measured clockwise from north.";
@@ -1500,86 +1504,7 @@ export default function SystemView({
   return (
     <div className={`flex min-h-0 flex-col xl:flex-row ${className}`}>
       <section aria-label="Sun, Earth and Moon diagram" className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-rule px-4 py-2.5">
-          <h2 className="text-[1.068rem] leading-snug font-semibold text-ink">
-            The Sun, Earth and Moon{state ? `, ${fmtFull(state.ms)}` : ""}
-          </h2>
-          <div className="flex flex-wrap gap-2.5">
-            <Segmented
-              label="Framing"
-              value={framing.id}
-              onChange={(id) => {
-                setFraming({ id, start: "default" });
-                setFocus({ id: "both", auto: false });
-                // The Earth framing opens over the selected launch site, or with none over the day side.
-                if (id === "earth") setAim((a) => ({ dir: launchSite || !earthFrame ? null : bodyToScene(earthFrame.sunDir), n: a.n + 1 }));
-              }}
-              options={[
-                { id: "system", label: "Sun–Earth–Moon" },
-                { id: "pair", label: "Earth–Moon" },
-                { id: "earth", label: "Earth" },
-              ]}
-            />
-            <Segmented
-              label="Scale"
-              value={scale}
-              onChange={(v) => {
-                setScale(v);
-                // The view opens afresh at the new scale, about the focus it has.
-                setFraming((f) => ({ id: f.id, start: "default" }));
-              }}
-              options={[
-                { id: "display", label: "Display scale" },
-                { id: "true", label: "True scale" },
-              ]}
-            />
-          </div>
-        </header>
-
-        {framing.id === "earth" && earthFrame && (
-          <div className="flex items-start gap-3 border-b border-rule px-4 py-2">
-            <span id="face-label" className="pt-1.5 text-[0.75rem] font-semibold tracking-[0.08em] text-ink uppercase">
-              Face
-            </span>
-            <div role="group" aria-labelledby="face-label" className="flex min-w-0 flex-wrap gap-1.5">
-              {launchSites?.map((s) => (
-                <FaceButton key={s.id} on={s.id === launchId && !aim.dir} onClick={() => chooseSite(s.id)}>
-                  {s.name}
-                </FaceButton>
-              ))}
-              <FaceButton onClick={() => setAim((a) => ({ dir: bodyToScene(earthFrame.sunDir), n: a.n + 1 }))}>Day side</FaceButton>
-              <FaceButton onClick={() => setAim((a) => ({ dir: bodyToScene(earthFrame.moonDir), n: a.n + 1 }))}>Moon overhead</FaceButton>
-            </div>
-          </div>
-        )}
-
-        {framing.id === "pair" && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-rule px-4 py-2">
-            <span className="text-[0.75rem] font-semibold tracking-[0.08em] text-ink uppercase">Centre on</span>
-            <Segmented
-              label="Centre the view on"
-              value={focus.id}
-              onChange={pick}
-              options={[
-                { id: "both", label: "Both" },
-                { id: "earth", label: "Earth" },
-                { id: "moon", label: "Moon" },
-              ]}
-            />
-            <div role="group" aria-label="View presets" className="flex flex-wrap gap-1.5">
-              <FaceButton onClick={() => rig.current?.preset("top")}>Top view</FaceButton>
-              <FaceButton onClick={() => rig.current?.preset("side")}>Side view</FaceButton>
-              <FaceButton
-                onClick={() => {
-                  rig.current?.preset("reset");
-                  pick("both");
-                }}
-              >
-                Reset view
-              </FaceButton>
-            </div>
-          </div>
-        )}
+        <h2 className="sr-only">The Sun, Earth and Moon</h2>
 
         <div
           ref={hostRef}
@@ -1611,7 +1536,115 @@ export default function SystemView({
           className="relative isolate min-h-[22rem] flex-1 overflow-hidden bg-paper focus-visible:outline-2 focus-visible:-outline-offset-2"
         >
           {levelNav && <div className="pointer-events-none absolute top-2 left-2 z-20">{levelNav}</div>}
-          <ZoomHint text={hintText} progress={progress} action={hintAction} />
+          {/* The view's controls, top right over the diagram: framing, scale, the framing's own tools and how to read it. */}
+          <div
+            role="toolbar"
+            aria-label="System view"
+            className="absolute top-2 right-2 z-30 flex max-w-[calc(100%-15rem)] flex-col items-end gap-1 max-sm:top-12 max-sm:max-w-[calc(100%-1rem)]"
+          >
+            <div className="flex flex-wrap justify-end gap-1">
+              <Segmented
+                label="Framing"
+                value={framing.id}
+                className="bg-paper"
+                onChange={(id) => {
+                  setFraming({ id, start: "default" });
+                  setFocus({ id: "both", auto: false });
+                  // The Earth framing opens over the selected launch site, or with none over the day side.
+                  if (id === "earth") setAim((a) => ({ dir: launchSite || !earthFrame ? null : bodyToScene(earthFrame.sunDir), n: a.n + 1 }));
+                }}
+                options={[
+                  { id: "system", label: "Sun–Earth–Moon" },
+                  { id: "pair", label: "Earth–Moon" },
+                  { id: "earth", label: "Earth" },
+                ]}
+              />
+              <Popover label="Scale of the diagram" button={<>Scale</>} buttonClassName={`${toggleClass(false, "md")} bg-paper`} panelClassName="w-[19rem] p-3">
+                <Segmented
+                  label="Scale"
+                  value={scale}
+                  className="w-fit"
+                  onChange={(v) => {
+                    setScale(v);
+                    // The view opens afresh at the new scale, about the focus it has.
+                    setFraming((f) => ({ id: f.id, start: "default" }));
+                  }}
+                  options={[
+                    { id: "display", label: "Display scale" },
+                    { id: "true", label: "True scale" },
+                  ]}
+                />
+                <p className="mt-2 text-[0.8rem] leading-snug text-ink-2">
+                  {scale === "display"
+                    ? "Display scale stretches the bodies and the Earth to Moon distance so all three can be seen at once."
+                    : "True scale keeps real sizes and distances, so the bodies are specks inside the rings that mark them."}
+                </p>
+              </Popover>
+              <Popover label="About this view" button={<>About</>} title="How to read the System view" buttonClassName={`${toggleClass(false, "md")} bg-paper`} panelClassName="w-[min(26rem,calc(100vw-2rem))] p-3">
+                <p className="text-[0.8rem] leading-snug text-ink">{caption}</p>
+              </Popover>
+            </div>
+            {framing.id === "earth" && earthFrame && (
+              <div role="group" aria-label="Face Earth towards" className="flex flex-wrap items-center justify-end gap-1">
+                <SelectField
+                  aria-label="Face a launch site"
+                  value={!aim.dir && launchId ? launchId : ""}
+                  onChange={(e) => e.target.value && chooseSite(e.target.value)}
+                  wrapClassName="w-[15rem]"
+                  className="text-[0.844rem]"
+                >
+                  <option value="">Face a launch site…</option>
+                  {(["us", "nasa-partner", "us-partner"] as SiteGroup[]).map((g) => {
+                    const inGroup = launchSites?.filter((s) => s.group === g) ?? [];
+                    return inGroup.length ? (
+                      <optgroup key={g} label={GROUP_LABEL[g]}>
+                        {inGroup.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : null;
+                  })}
+                </SelectField>
+                <FaceButton onClick={() => setAim((a) => ({ dir: bodyToScene(earthFrame.sunDir), n: a.n + 1 }))}>Day side</FaceButton>
+                <FaceButton onClick={() => setAim((a) => ({ dir: bodyToScene(earthFrame.moonDir), n: a.n + 1 }))}>Moon overhead</FaceButton>
+              </div>
+            )}
+            {framing.id === "pair" && (
+              <div className="flex flex-wrap items-center justify-end gap-1">
+                <Segmented
+                  label="Centre the view on"
+                  value={focus.id}
+                  onChange={pick}
+                  className="bg-paper"
+                  options={[
+                    { id: "both", label: "Both" },
+                    { id: "earth", label: "Earth" },
+                    { id: "moon", label: "Moon" },
+                  ]}
+                />
+                <div role="group" aria-label="View presets" className="flex gap-1">
+                  <FaceButton onClick={() => rig.current?.preset("top")}>Top</FaceButton>
+                  <FaceButton onClick={() => rig.current?.preset("side")}>Side</FaceButton>
+                  <FaceButton
+                    onClick={() => {
+                      rig.current?.preset("reset");
+                      pick("both");
+                    }}
+                  >
+                    Reset
+                  </FaceButton>
+                </div>
+              </div>
+            )}
+          </div>
+          <p className="pointer-events-none absolute bottom-2 left-2 z-10 border border-rule bg-paper/90 px-2 py-0.5 text-[0.75rem] text-ink-2 max-sm:hidden">
+            {framing.id === "pair" ? "Drag to turn · scroll to zoom · click a body to centre on it" : "Drag to turn · scroll to zoom"}
+          </p>
+          <div className="pointer-events-none absolute inset-x-0 top-11 bottom-0 z-20">
+            <ZoomHint text={hintText} progress={progress} action={hintAction} />
+          </div>
           {load.status === "loading" && (
             <p role="status" className="absolute inset-0 grid place-items-center text-[0.844rem] text-ink-2">
               Loading the 2027 ephemeris
@@ -1688,22 +1721,6 @@ export default function SystemView({
           )}
         </div>
 
-        <p className="border-t border-rule px-4 py-2 text-[0.8rem] leading-snug text-ink-2">{caption}</p>
-
-        {data && onScrub && (
-          <YearSlider
-            startMs={data.startMs}
-            endMs={systemEndMs(data)}
-            ms={ms}
-            windowMs={windowMs}
-            playing={playing}
-            onPlay={() => setPlaying((p) => !p)}
-            onScrub={(t) => {
-              setPlaying(false);
-              onScrub(t);
-            }}
-          />
-        )}
       </section>
 
       {inspector === undefined ? (

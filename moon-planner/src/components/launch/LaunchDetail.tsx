@@ -5,7 +5,7 @@
 
 import type { LaunchSite } from "@/lib/launchSites";
 import { formatAzimuthRanges, type LaunchOpportunity } from "@/lib/launchWindow";
-import { setterFor, usePlanStore } from "@/state/plan";
+import { usePlanStore } from "@/state/plan";
 import { Button, ExternalMark } from "../ui";
 import {
   DAY_MS,
@@ -202,7 +202,9 @@ type Props = {
 
 export default function LaunchDetail({ site, list, chosen, transitDays, onChoose, headingId }: Props) {
   const store = usePlanStore();
-  const showOnEarth = () => setterFor(store, "view")("system");
+  // The System level opens in its Earth framing over this launch site, with the clock at lift-off.
+  const showOnEarth = () =>
+    store.setState({ view: "system", systemFraming: "earth", launchSiteId: site.id, ...(chosen ? { systemMs: chosen.launchMs, playing: false } : {}) });
   const url = site.azimuthUrl ?? site.sourceUrl;
   let host = "";
   try {

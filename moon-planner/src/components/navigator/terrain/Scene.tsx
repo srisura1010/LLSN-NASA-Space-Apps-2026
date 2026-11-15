@@ -17,6 +17,8 @@ export type SceneProps = {
   regions: (RegionShape | null)[];
   /** Draw the latitude and longitude lines. */
   graticule?: boolean;
+  /** Draw the region outlines; with them off the regions stay pickable. */
+  outlines?: boolean;
   selectedIndex: number;
   hoveredIndex: number;
   onHover: (index: number) => void;
@@ -38,7 +40,7 @@ export type SceneProps = {
 const K = EXAGGERATION / 1000;
 
 export default function TerrainScene(props: SceneProps) {
-  const { data, range, regions, graticule = true, selectedIndex, hoveredIndex, sun, site, sunBearing, earthBearing, tints, bridge, reducedMotion } = props;
+  const { data, range, regions, graticule = true, outlines = true, selectedIndex, hoveredIndex, sun, site, sunBearing, earthBearing, tints, bridge, reducedMotion } = props;
   const gl = useThree((s) => s.gl);
   const camera = useThree((s) => s.camera) as PerspectiveCamera;
   const size = useThree((s) => s.size);
@@ -65,9 +67,9 @@ export default function TerrainScene(props: SceneProps) {
   }, [renderer, sun, invalidate]);
 
   useEffect(() => {
-    renderer.setRegions(regions);
+    renderer.setRegions(outlines ? regions : regions.map(() => null));
     invalidate();
-  }, [renderer, regions, invalidate]);
+  }, [renderer, regions, outlines, invalidate]);
 
   useEffect(() => {
     renderer.setGraticule(graticule);
