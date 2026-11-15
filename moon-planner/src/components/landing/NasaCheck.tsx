@@ -44,23 +44,26 @@ function agreement(s: BodySummary, ofNasa: boolean): string {
   return `${head}; the largest gap is at ${gap(s.largest, true)}`;
 }
 
-const head = "text-[0.75rem] font-semibold tracking-[0.08em] text-ink-2 uppercase sm:text-[0.79rem]";
-const num = "py-2 pl-2 text-right tabular-nums sm:pl-4";
-const groupStart = "border-l border-rule pl-2.5 sm:pl-4";
+// Tracking and padding tighten on phones so the region names keep the width they need.
+const head =
+  "text-[0.75rem] font-semibold tracking-[0.02em] text-ink-2 uppercase sm:text-[0.79rem] sm:tracking-[0.08em]";
+const num = "py-2 pl-1.5 text-right tabular-nums sm:pl-4";
+const groupStart = "border-l border-rule pl-2 sm:pl-4";
 
 export function NasaCheck() {
   const { sun, earth } = DATA.summary;
   return (
     <>
       <p className="mt-2 max-w-[62ch] text-[1rem] leading-[1.6] text-ink-2">
-        NASA&rsquo;s LOLA illumination maps (Mazarico and others, 2011) give the long-term share of time each point
-        near the pole sees the Sun and sees Earth. Table 1 sets their value at each region centre beside this
-        model&rsquo;s count over every hour of 2027, made from the same files the Navigator uses.
+        NASA&rsquo;s LOLA illumination maps (Mazarico and others, 2011) give the share of time each point near the pole
+        sees the Sun and sees Earth, averaged hour by hour over an 18.6-year lunar cycle. Table 1 sets their value at
+        each region centre beside this model&rsquo;s count over every hour of 2027, made from the same files the
+        Navigator uses.
       </p>
       <p className="mt-3 max-w-[62ch] text-[1rem] leading-[1.6] text-ink-2">
-        For sunlight the model is {agreement(sun, true)}. For Earth it is {agreement(earth, false)}. NASA&rsquo;s maps
-        average many years and are read at the 120 m pixel over each centre; this model counts one year, 2027, from
-        2 m above the centre itself.
+        For sunlight the model is {agreement(sun, true)}. For Earth it is {agreement(earth, false)}. Some gap is
+        expected: NASA&rsquo;s maps are a long-term average read at the 120 m pixel over each centre, and this model
+        counts one year from 2 m above the centre itself.
       </p>
 
       <div className="mt-6 overflow-x-auto" tabIndex={0} role="region" aria-labelledby="nasa-check-caption">
@@ -78,13 +81,13 @@ export function NasaCheck() {
               <th scope="col" rowSpan={2} className={`${head} pt-2.5 pr-2 pb-2 align-bottom sm:pr-4`}>
                 Region
               </th>
-              <th scope="colgroup" colSpan={3} className={`${groupStart} pt-2.5 pb-1 font-semibold`}>
+              <th scope="colgroup" colSpan={3} className={`${groupStart} pt-2.5 pb-1 align-bottom font-semibold`}>
                 <span className="inline-flex items-center gap-2 text-[0.844rem] text-ink sm:text-[0.889rem]">
                   <span aria-hidden="true" className="inline-block h-2 w-3.5 shrink-0 border border-sun-ink bg-sun" />
                   Sun above terrain
                 </span>
               </th>
-              <th scope="colgroup" colSpan={3} className={`${groupStart} pt-2.5 pb-1 font-semibold`}>
+              <th scope="colgroup" colSpan={3} className={`${groupStart} pt-2.5 pb-1 align-bottom font-semibold`}>
                 <span className="inline-flex items-center gap-2 text-[0.844rem] text-ink sm:text-[0.889rem]">
                   <span aria-hidden="true" className="inline-block h-2 w-3.5 shrink-0 bg-earth" />
                   Earth in view
@@ -104,7 +107,7 @@ export function NasaCheck() {
           <tbody>
             {DATA.regions.map((r) => (
               <tr key={r.id} className="border-b border-rule">
-                <th scope="row" className="py-2 pr-2 font-medium sm:pr-4">
+                <th scope="row" className="py-2 pr-2 font-medium text-balance sm:pr-4">
                   {r.name}
                 </th>
                 {[r.sun, r.earth].map((c, i) => (

@@ -130,6 +130,11 @@ export type WindowStats = {
   longestNoCommsHours: number;
   /** Mean solar elevation above the terrain horizon while lit (deg). */
   meanSunClearance: number;
+  /**
+   * Highest elevation of the Sun's centre above the terrain horizon at any
+   * step (deg); negative when the Sun never clears it. Splits equal scores.
+   */
+  maxSunClearance: number;
   darkSpans: Span[];
   noCommsSpans: Span[];
 };
@@ -148,6 +153,7 @@ export function windowStats(site: SiteData, startMs: number, endMs: number): Win
   let earth = 0;
   let both = 0;
   let clearance = 0;
+  let maxClearance = -Infinity;
   const darkSpans: Span[] = [];
   const noCommsSpans: Span[] = [];
   let darkStart = -1;
@@ -155,12 +161,18 @@ export function windowStats(site: SiteData, startMs: number, endMs: number): Win
   const n = Math.max(0, i1 - i0 + 1);
 
   for (let i = i0; i <= i1; i++) {
-    const f = flagsAt(site, i);
     const t = sky.startMs + i * sky.stepMs;
+    // Same rule as flagsAt(), with the Sun's clearance kept for the statistics.
+    const sunClear = sky.sunEl[i] - horizonElevationAt(horizon, sky.sunAz[i]);
+    const f = {
+      sun: discFraction(sunClear, SUN_RADIUS_DEG),
+      earth: sky.earthEl[i] + EARTH_RADIUS_DEG > horizonElevationAt(horizon, sky.earthAz[i]),
+    };
+    if (sunClear > maxClearance) maxClearance = sunClear;
     if (f.sun > 0) {
       lit++;
       power += f.sun;
-      clearance += sky.sunEl[i] - horizonElevationAt(horizon, sky.sunAz[i]);
+      clearance += sunClear;
       if (darkStart >= 0) darkSpans.push({ startMs: darkStart, endMs: t });
       darkStart = -1;
     } else if (darkStart < 0) darkStart = t;
@@ -187,6 +199,7 @@ export function windowStats(site: SiteData, startMs: number, endMs: number): Win
     longestDarkHours: longest(darkSpans),
     longestNoCommsHours: longest(noCommsSpans),
     meanSunClearance: lit ? clearance / lit : 0,
+    maxSunClearance: n ? maxClearance : 0,
     darkSpans,
     noCommsSpans,
   };
@@ -226,11 +239,23 @@ export function scoreWindow(siteId: string, s: WindowStats): MissionScore {
   return { ...s, siteId, score, reasons };
 }
 
+const TIE = 1e-9;
+
+/**
+ * Ranking order, best first: score, then the Sun's highest clearance over
+ * the terrain (a continuous key, so two always-dark or always-lit regions
+ * still separate), then time with Earth in view. 0 only when all three match.
+ */
+export function compareScores(a: MissionScore, b: MissionScore): number {
+  if (Math.abs(a.score - b.score) > TIE) return b.score - a.score;
+  if (Math.abs(a.maxSunClearance - b.maxSunClearance) > TIE) return b.maxSunClearance - a.maxSunClearance;
+  if (Math.abs(a.earthVisible - b.earthVisible) > TIE) return b.earthVisible - a.earthVisible;
+  return 0;
+}
+
 export function rankSites(sites: Map<string, SiteData>, startMs: number, durationHours: number): MissionScore[] {
   const endMs = startMs + durationHours * HOUR;
-  return [...sites.entries()]
-    .map(([id, d]) => scoreWindow(id, windowStats(d, startMs, endMs)))
-    .sort((a, b) => b.score - a.score);
+  return [...sites.entries()].map(([id, d]) => scoreWindow(id, windowStats(d, startMs, endMs))).sort(compareScores);
 }
 
 /** Best start time for a mission of durationHours, searched every stepHours in [fromMs, toMs]. */

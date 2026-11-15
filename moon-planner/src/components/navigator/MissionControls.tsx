@@ -5,6 +5,7 @@ import { bestStart, scoreWindow, windowStats, type MissionScore, type SiteData }
 import { fmtDuration } from "./plot/format";
 import {
   ArrowMark,
+  SelectField,
   covers,
   fieldControl,
   fieldLabel,
@@ -21,7 +22,12 @@ export const DAY = 24 * HOUR;
 /** The precomputed Horizons tracks run hourly through 2027. */
 export const DATA_START_MS = Date.UTC(2027, 0, 1);
 export const DATA_END_MS = Date.UTC(2028, 0, 1);
-export const DEFAULT_START_MS = Date.UTC(2027, 5, 1);
+/**
+ * 14 Nov 2027, 00:00 UTC: near the south pole's high Sun (subsolar point
+ * about 1.5° S), so the nine regions spread from 0% to 100% Sun with no two
+ * scores closer than 0.04. A June start leaves seven regions dark all window.
+ */
+export const DEFAULT_START_MS = Date.UTC(2027, 10, 14);
 export const DEFAULT_HOURS = 156; // 6.5 days
 export const MIN_HOURS = 1;
 export const MAX_HOURS = 60 * 24;
@@ -82,9 +88,26 @@ export function monthLabel(month: number): string {
   return `${MONTHS_LONG[month]} 2027`;
 }
 
+/** The tracks' one year; the start control picks a day and month in it. */
+const DATA_YEAR = new Date(DATA_START_MS).getUTCFullYear();
+
+function daysInMonth(month: number): number {
+  return new Date(Date.UTC(DATA_YEAR, month + 1, 0)).getUTCDate();
+}
+
 function isoDate(ms: number): string {
   const d = new Date(ms);
   return `${d.getUTCFullYear()}-${two(d.getUTCMonth() + 1)}-${two(d.getUTCDate())}`;
+}
+
+/** Day and month (0-11) of a YYYY-MM-DD draft. */
+function dayMonth(date: string): { day: number; month: number } {
+  const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(date);
+  return m ? { day: Number(m[2]), month: Number(m[1]) - 1 } : { day: 1, month: 0 };
+}
+
+function isoOf(day: number, month: number): string {
+  return `${DATA_YEAR}-${two(month + 1)}-${two(Math.min(day, daysInMonth(month)))}`;
 }
 
 function parseStart(date: string, hour: number): number | null {
@@ -269,7 +292,7 @@ export default function MissionControls({ startMs, durationHours, site, siteName
   function check(date: string, hour: number, len: string, u: Unit): { ok: true; start: number; hours: number } | { ok: false; error: FieldError } {
     const start = parseStart(date, hour);
     if (start === null)
-      return { ok: false, error: { field: "start", message: "Enter a start date in 2027, for example 2027-06-01." } };
+      return { ok: false, error: { field: "start", message: "Pick a start day and month in 2027." } };
     if (start < DATA_START_MS || start >= DATA_END_MS)
       return {
         ok: false,
@@ -314,6 +337,11 @@ export default function MissionControls({ startMs, durationHours, site, siteName
     if (!empty || showEmpty) setError(r.error);
   }
 
+  function pickDate(date: string) {
+    setDateDraft(date);
+    edit(date, hourDraft, lenDraft, unit, true);
+  }
+
   function changeUnit(next: Unit) {
     const hours = parseLength(lenDraft, unit);
     const text = hours === null ? lenDraft : lengthText(hours, next);
@@ -355,6 +383,7 @@ export default function MissionControls({ startMs, durationHours, site, siteName
     onApply(startMs + days * DAY, durationHours, "Slip");
   }
 
+  const start = dayMonth(dateDraft);
   const startInvalid = error?.field === "start" || error?.field === "window";
   const lengthInvalid = error?.field === "length" || error?.field === "window";
   const describedBy = [error ? errorId : null, info ? infoId : null].filter(Boolean).join(" ") || undefined;
@@ -372,29 +401,50 @@ export default function MissionControls({ startMs, durationHours, site, siteName
       >
         <fieldset className="min-w-0">
           <legend className={fieldLabel}>Start, UTC</legend>
-          <div className="mt-1 flex">
-            <label htmlFor={`${id}-date`} className="sr-only">
-              Start date, UTC
+          {/* Day, month, year, hour: the order the bulletin prints dates in (14 Nov 2027, 00:00). */}
+          <div className="mt-1 flex items-center">
+            <label htmlFor={`${id}-day`} className="sr-only">
+              Start day
             </label>
-            <input
-              id={`${id}-date`}
-              type="date"
-              min="2027-01-01"
-              max="2027-12-31"
-              value={dateDraft}
+            <SelectField
+              id={`${id}-day`}
+              value={start.day}
               aria-invalid={startInvalid || undefined}
               aria-describedby={describedBy}
-              onChange={(e) => {
-                setDateDraft(e.target.value);
-                edit(e.target.value, hourDraft, lenDraft, unit, false);
-              }}
-              onBlur={() => edit(dateDraft, hourDraft, lenDraft, unit, true)}
-              className={`${fieldControl} w-[9.5rem] tabular-nums`}
-            />
+              onChange={(e) => pickDate(isoOf(Number(e.target.value), start.month))}
+              wrapClassName="w-[3.75rem]"
+              className="tabular-nums"
+            >
+              {Array.from({ length: daysInMonth(start.month) }, (_, i) => i + 1).map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </SelectField>
+            <label htmlFor={`${id}-month`} className="sr-only">
+              Start month, {DATA_YEAR}
+            </label>
+            <SelectField
+              id={`${id}-month`}
+              value={start.month}
+              aria-invalid={startInvalid || undefined}
+              aria-describedby={describedBy}
+              onChange={(e) => pickDate(isoOf(start.day, Number(e.target.value)))}
+              wrapClassName="-ml-px w-[4.5rem]"
+            >
+              {MONTHS.map((m, i) => (
+                <option key={m} value={i}>
+                  {m}
+                </option>
+              ))}
+            </SelectField>
+            <span className="px-2 text-[0.95rem] text-ink tabular-nums" aria-hidden="true">
+              {DATA_YEAR}
+            </span>
             <label htmlFor={`${id}-hour`} className="sr-only">
               Start hour, UTC
             </label>
-            <select
+            <SelectField
               id={`${id}-hour`}
               value={hourDraft}
               aria-invalid={startInvalid || undefined}
@@ -404,14 +454,15 @@ export default function MissionControls({ startMs, durationHours, site, siteName
                 setHourDraft(h);
                 edit(dateDraft, h, lenDraft, unit, false);
               }}
-              className={`${fieldControl} -ml-px w-[5.25rem] tabular-nums`}
+              wrapClassName="w-[5.75rem]"
+              className="tabular-nums"
             >
               {HOURS.map((h) => (
                 <option key={h} value={h}>
                   {two(h)}:00
                 </option>
               ))}
-            </select>
+            </SelectField>
           </div>
         </fieldset>
 
@@ -440,15 +491,15 @@ export default function MissionControls({ startMs, durationHours, site, siteName
             <label htmlFor={`${id}-unit`} className="sr-only">
               Unit
             </label>
-            <select
+            <SelectField
               id={`${id}-unit`}
               value={unit}
               onChange={(e) => changeUnit(e.target.value as Unit)}
-              className={`${fieldControl} -ml-px w-[5.5rem]`}
+              wrapClassName="-ml-px w-[5.5rem]"
             >
               <option value="days">days</option>
               <option value="hours">hours</option>
-            </select>
+            </SelectField>
           </div>
         </fieldset>
 
@@ -457,24 +508,24 @@ export default function MissionControls({ startMs, durationHours, site, siteName
             Find best start in
           </span>
           <div className="mt-1 flex">
-            <label htmlFor={`${id}-month`} className="sr-only">
+            <label htmlFor={`${id}-search`} className="sr-only">
               Month to search
             </label>
-            <select
-              id={`${id}-month`}
+            <SelectField
+              id={`${id}-search`}
               value={month}
               onChange={(e) => {
                 setMonth(Number(e.target.value));
                 setInfo(null);
               }}
-              className={`${fieldControl} w-[9.5rem]`}
+              wrapClassName="w-[10rem]"
             >
               {MONTHS_LONG.map((m, i) => (
                 <option key={m} value={i}>
                   {monthLabel(i)}
                 </option>
               ))}
-            </select>
+            </SelectField>
             <button
               type="button"
               onClick={search}

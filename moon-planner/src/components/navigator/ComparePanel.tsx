@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, type ReactNode } from "react";
-import { rankSites, type MissionScore, type SiteData } from "@/lib/sky";
+import { compareScores, rankSites, type MissionScore, type SiteData } from "@/lib/sky";
 import { fmtDuration } from "./plot/format";
 import TimelineStrip from "./TimelineStrip";
 import { DATA_END_MS, DAY, HOUR, fmtLength, fmtSpan, fmtWhen } from "./MissionControls";
@@ -31,12 +31,16 @@ type Props = {
 const MAX_PICKS = 3;
 const SLIPS = [0, 7, 14];
 
-/** Shared ranks for ties: 1, 2, 3, 3, 5. */
+/**
+ * Ranks in rankSites order (1, 2, 3, 3, 5). Two regions share a rank only
+ * when compareScores finds nothing between them: the same score, the same
+ * peak Sun clearance and the same Earth time.
+ */
 export function tiedRanks(scores: MissionScore[]): Map<string, number> {
   const out = new Map<string, number>();
   scores.forEach((s, i) => {
     const prev = scores[i - 1];
-    out.set(s.siteId, prev && Math.abs(prev.score - s.score) < 1e-9 ? out.get(prev.siteId)! : i + 1);
+    out.set(s.siteId, prev && compareScores(prev, s) === 0 ? out.get(prev.siteId)! : i + 1);
   });
   return out;
 }

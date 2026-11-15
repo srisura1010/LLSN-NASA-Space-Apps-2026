@@ -16,8 +16,9 @@ import {
   type ReactNode,
 } from "react";
 import { Vector3 } from "three";
+import { EARTH_RADIUS_DEG, SUN_RADIUS_DEG, type SiteData } from "@/lib/sky";
 import { formatLatLon, sites } from "@/lib/sites";
-import { latLonToXY } from "@/lib/terrain";
+import { horizonElevationAt, latLonToXY } from "@/lib/terrain";
 import { EXAGGERATION, RELIEF, rgbToHex, scoreTint, TOKENS, type RGB } from "./terrain/constants";
 import { gridHeight, gridRange, loadRegions, loadTerrain, subscribeTerrainProgress, type TerrainData } from "./terrain/data";
 import { bearingAt, bodyVector, exitDistance, LANDMARKS, type RegionShape } from "./terrain/geo";
@@ -25,6 +26,8 @@ import { PlateBridge } from "./terrain/bridge";
 import { MinusIcon, PlusIcon, RecentreIcon } from "./terrain/icons";
 import PlanView from "./terrain/PlanView";
 import { Indicators, LabelLayer, type PlateLabel } from "./terrain/PlateLabels";
+import { RoseDrawer, buildRoseData } from "./terrain/rose";
+import { RoseLayer, ScaleBar } from "./terrain/RoseLayer";
 import TerrainScene from "./terrain/Scene";
 
 export type TerrainPlateProps = {
@@ -41,6 +44,10 @@ export type TerrainPlateProps = {
    * the plate flies to it, flags it and lights the terrain for it.
    */
   customSite?: { lat: number; lon: number } | null;
+  /** The selected site's tracks over the mission window, for its Sun and Earth bearing paths. */
+  track?: { site: SiteData; startMs: number; endMs: number } | null;
+  /** Figure title, shown in the caption bar above the plate with the legend. */
+  caption?: ReactNode;
   className?: string;
 };
 
@@ -102,7 +109,17 @@ class GlBoundary extends Component<{ onError: () => void; children: ReactNode },
 
 // ---------- Component ----------
 
-export default function TerrainPlate({ selectedId, onSelect, sun, earth, regionValues, customSite, className }: TerrainPlateProps) {
+export default function TerrainPlate({
+  selectedId,
+  onSelect,
+  sun,
+  earth,
+  regionValues,
+  customSite,
+  track,
+  caption,
+  className,
+}: TerrainPlateProps) {
   const gl = useWebGL2();
   const [glFailed, setGlFailed] = useState<"lost" | "error" | null>(null);
   const [terrain, setTerrain] = useState<TerrainData | null>(null);
@@ -114,7 +131,13 @@ export default function TerrainPlate({ selectedId, onSelect, sun, earth, regionV
   const [hovered, setHovered] = useState(-1);
   const reducedMotion = useReducedMotion();
   const [bridge] = useState(() => new PlateBridge());
+  const [rose] = useState(() => new RoseDrawer(K));
   const descId = useId();
+
+  useEffect(() => {
+    bridge.setRose(rose);
+    return () => bridge.setRose(null);
+  }, [bridge, rose]);
 
   useEffect(() => {
     let alive = true;
@@ -182,6 +205,38 @@ export default function TerrainPlate({ selectedId, onSelect, sun, earth, regionV
   const sunBearing = useMemo(() => (selected && sunAz !== undefined ? bearingAt(selected.lon, sunAz) : null), [selected, sunAz]);
   const earthBearing = useMemo(() => (selected && earthAz !== undefined ? bearingAt(selected.lon, earthAz) : null), [selected, earthAz]);
 
+  // ---------- Bearing rose ----------
+
+  const roseSite = track?.site ?? null;
+  const roseStart = track?.startMs ?? 0;
+  const roseEnd = track?.endMs ?? 0;
+  const selectedLon = selected?.lon;
+  const roseData = useMemo(
+    () =>
+      site && selectedLon !== undefined
+        ? buildRoseData(roseSite, roseStart, roseEnd, { x: site.x, y: site.y, h: site.h }, selectedLon)
+        : null,
+    [site, selectedLon, roseSite, roseStart, roseEnd],
+  );
+  useEffect(() => {
+    rose.setData(roseData);
+    bridge.invalidate();
+  }, [rose, roseData, bridge]);
+
+  const sunUp =
+    roseSite && sunAz !== undefined && sunEl !== undefined
+      ? sunEl + SUN_RADIUS_DEG > horizonElevationAt(roseSite.horizon, sunAz)
+      : false;
+  const earthEl = earth?.el;
+  const earthUp =
+    roseSite && earthAz !== undefined && earthEl !== undefined
+      ? earthEl + EARTH_RADIUS_DEG > horizonElevationAt(roseSite.horizon, earthAz)
+      : false;
+  useEffect(() => {
+    rose.setNow(sunAz !== undefined && earthAz !== undefined ? { sunAz, earthAz, sunUp, earthUp } : null);
+    bridge.invalidate();
+  }, [rose, bridge, sunAz, earthAz, sunUp, earthUp]);
+
   const tints = useMemo<(RGB | null)[] | null>(() => {
     if (!regionValues) return null;
     return sites.map((s) => (typeof regionValues[s.id] === "number" ? scoreTint(regionValues[s.id]) : null));
@@ -230,7 +285,17 @@ export default function TerrainPlate({ selectedId, onSelect, sun, earth, regionV
         srText: ", selected. Re-centre the view",
       });
     }
-    for (const m of LANDMARKS) out.push({ id: m.id, kind: "mark", anchor: scenePoint(m.x, m.y), priority: 3, text: m.label });
+    for (const m of LANDMARKS) {
+      if (m.id === "pole") out.push({ id: m.id, kind: "pole", anchor: scenePoint(m.x, m.y), priority: 1, text: m.label, detail: "90° S" });
+      else out.push({ id: m.id, kind: "mark", anchor: scenePoint(m.x, m.y), priority: 3, text: m.label });
+    }
+    // Graticule: the latitude circles the plate draws, labelled on the diagonal meridians.
+    for (const lat of [-88, -86, -84, -82]) {
+      for (const lon of [45, 135, -45, -135]) {
+        const q = latLonToXY(lat, lon);
+        out.push({ id: `lat${lat}_${lon}`, kind: "quiet", anchor: scenePoint(q.x, q.y, 1), priority: 5, text: `${-lat}° S` });
+      }
+    }
     const h = terrain.half - 4000;
     const meridians = [
       { id: "m0", text: "0°", x: 0, y: h },
@@ -304,8 +369,50 @@ export default function TerrainPlate({ selectedId, onSelect, sun, earth, regionV
     : "No region selected.";
 
   return (
-    <figure className={`relative flex min-h-[18rem] flex-col overflow-hidden border border-rule bg-paper text-ink ${className ?? ""}`}>
+    <figure className={`relative flex min-h-[18rem] flex-col overflow-hidden bg-paper text-ink ${className ?? ""}`}>
+      <figcaption className="flex flex-wrap items-center justify-between gap-x-5 gap-y-1 border-b border-rule bg-paper px-4 py-1">
+        {caption}
+        <span className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[0.75rem] text-ink-2">
+          {lit ? (
+            <>
+              <span className="flex items-center gap-1.5">
+                <span
+                  aria-hidden
+                  className="block h-2.5 w-4 outline outline-1 -outline-offset-1 outline-rule"
+                  style={{ background: `linear-gradient(90deg, ${rgbToHex(RELIEF.litLo)}, ${rgbToHex(RELIEF.litHi)})` }}
+                />
+                Sunlit
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span aria-hidden className="block h-2.5 w-4" style={{ background: rgbToHex(RELIEF.shadowLo) }} />
+                Shadow
+              </span>
+            </>
+          ) : (
+            <span className="font-semibold text-ink">
+              {sun ? "No site selected: relief only" : "No Sun position for this time: relief only"}
+            </span>
+          )}
+          {regionValues && (
+            <span className="flex items-center gap-1.5">
+              <span aria-hidden className="block h-2.5 w-6" style={{ background: `linear-gradient(90deg, ${TOKENS.umbra}, ${TOKENS.sun})` }} />
+              Score
+            </span>
+          )}
+          {track && (
+            <span className="flex items-center gap-1.5">
+              <svg aria-hidden width="22" height="12" viewBox="0 0 22 12" className="shrink-0">
+                <path d="M1 11.5A10 10 0 0 1 21 11.5" className="fill-none stroke-ink" strokeWidth="1" />
+                <path d="M4.5 11.5A6.5 6.5 0 0 1 17.5 11.5" className="fill-none stroke-sun-ink" strokeWidth="3.5" />
+                <path d="M4.5 11.5A6.5 6.5 0 0 1 17.5 11.5" className="fill-none stroke-sun" strokeWidth="2" />
+              </svg>
+              Bearings, ticked as Fig. 2
+            </span>
+          )}
+        </span>
+      </figcaption>
       <div
+        ref={(el) => bridge.attachStage(el)}
         className="group/stage relative min-h-0 flex-1 overflow-hidden bg-paper outline-none"
         tabIndex={showCanvas ? 0 : -1}
         role="group"
@@ -356,6 +463,7 @@ export default function TerrainPlate({ selectedId, onSelect, sun, earth, regionV
               </Canvas>
             </div>
             <div className={`pointer-events-none absolute inset-0 transition-opacity duration-200 ${ready ? "opacity-100" : "opacity-0"}`}>
+              <RoseLayer drawer={rose} />
               <LabelLayer bridge={bridge} labels={labels} />
               <Indicators bridge={bridge} sun={sun} earth={earth} />
             </div>
@@ -411,6 +519,32 @@ export default function TerrainPlate({ selectedId, onSelect, sun, earth, regionV
           </div>
         )}
 
+        {/* View tools and the plate's scale note, over the plate's lower corners. */}
+        <div className="pointer-events-none absolute inset-x-2 bottom-2 z-10 flex items-end justify-between gap-3">
+          <div ref={(el) => bridge.attachReserved("scale", el)} className="flex flex-wrap items-end gap-x-3 gap-y-1">
+            {showCanvas && <ScaleBar drawer={rose} />}
+            <p className="bg-paper/85 px-1.5 py-0.5 text-[0.702rem] leading-snug text-ink-2">
+              LOLA 640 m grid, relief ×{EXAGGERATION}
+              {lit ? "; shadows traced at true scale" : ""}
+            </p>
+          </div>
+          <span ref={(el) => bridge.attachReserved("tools", el)} className="pointer-events-auto flex" role="toolbar" aria-label="View">
+            <ToolButton label="Zoom out" onClick={() => bridge.zoom(-1)} disabled={!ready || !showCanvas}>
+              <MinusIcon className="h-4 w-4" />
+            </ToolButton>
+            <ToolButton label="Zoom in" onClick={() => bridge.zoom(1)} disabled={!ready || !showCanvas}>
+              <PlusIcon className="h-4 w-4" />
+            </ToolButton>
+            <ToolButton
+              label={selected ? `Re-centre on ${selected.custom ? "the custom site" : selected.name}` : "Show the whole plate"}
+              onClick={recentre}
+              disabled={!ready || !showCanvas}
+            >
+              <RecentreIcon className="h-4 w-4" />
+            </ToolButton>
+          </span>
+        </div>
+
         {/* Focus ring above the canvas, which would otherwise cover an outline. */}
         <div
           aria-hidden
@@ -434,52 +568,6 @@ export default function TerrainPlate({ selectedId, onSelect, sun, earth, regionV
         )}
       </div>
 
-      <figcaption className="border-t border-rule bg-paper px-3 py-1.5 text-[0.79rem] leading-snug text-ink-2">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          {lit ? (
-            <>
-              <span className="flex items-center gap-1.5">
-                <span aria-hidden className="block h-2.5 w-2.5 border border-ink-3" style={{ background: rgbToHex(RELIEF.litHi) }} />
-                Sunlit
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span aria-hidden className="block h-2.5 w-2.5" style={{ background: rgbToHex(RELIEF.shadowLo) }} />
-                Shadow
-              </span>
-            </>
-          ) : (
-            <span className="font-semibold text-ink">
-              {sun ? "No site selected: relief only" : "No Sun position for this time: relief only"}
-            </span>
-          )}
-          {regionValues && (
-            <span className="flex items-center gap-1.5">
-              <span aria-hidden className="block h-2.5 w-8" style={{ background: `linear-gradient(90deg, ${TOKENS.umbra}, ${TOKENS.sun})` }} />
-              Region score, low to high
-            </span>
-          )}
-          <span className="ml-auto flex items-center gap-1" role="toolbar" aria-label="View">
-            <ToolButton label="Zoom out" onClick={() => bridge.zoom(-1)} disabled={!ready || !showCanvas}>
-              <MinusIcon className="h-4 w-4" />
-            </ToolButton>
-            <ToolButton label="Zoom in" onClick={() => bridge.zoom(1)} disabled={!ready || !showCanvas}>
-              <PlusIcon className="h-4 w-4" />
-            </ToolButton>
-            <ToolButton
-              label={selected ? `Re-centre on ${selected.custom ? "the custom site" : selected.name}` : "Show the whole plate"}
-              onClick={recentre}
-              disabled={!ready || !showCanvas}
-            >
-              <RecentreIcon className="h-4 w-4" />
-            </ToolButton>
-          </span>
-        </div>
-        <p className="mt-0.5">
-          LOLA terrain, 640 m grid, relief exaggerated {EXAGGERATION}×.
-          {lit ? " Shadows traced at true scale; site figures use 80 m horizons." : ""}
-        </p>
-      </figcaption>
-
       <p id={descId} className="sr-only">
         {description} Drag to orbit, scroll to zoom. With the view focused, arrow keys orbit, plus and minus zoom, Home
         re-centres.
@@ -496,7 +584,7 @@ function ToolButton({ label, onClick, disabled, children }: { label: string; onC
       disabled={disabled}
       aria-label={label}
       title={label}
-      className="flex h-8 w-8 items-center justify-center border border-rule bg-paper text-ink transition-colors duration-150 hover:border-ink hover:bg-paper-2 active:bg-paper-3 disabled:cursor-default disabled:text-ink-3 disabled:hover:border-rule disabled:hover:bg-paper"
+      className="-ml-px flex h-8 w-8 items-center justify-center border border-ink-3 bg-paper text-ink transition-colors duration-150 first:ml-0 hover:z-10 hover:border-ink hover:bg-paper-2 active:bg-paper-3 disabled:cursor-default disabled:text-ink-3 disabled:hover:border-ink-3 disabled:hover:bg-paper"
     >
       {children}
     </button>

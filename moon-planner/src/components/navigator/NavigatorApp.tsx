@@ -10,16 +10,14 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { loadSite, rankSites, sampleAt, type MissionScore, type SiteData, type SkySample } from "@/lib/sky";
+import { loadSite, rankSites, sampleAt, type MissionScore, type SiteData } from "@/lib/sky";
 import { formatLatLon, sites } from "@/lib/sites";
 import { customHorizonMethod, loadCustomSite } from "@/lib/customSite";
-import { moonTrekUrl } from "@/lib/moontrek";
-import { fmtElapsed } from "./plot/format";
 import HorizonPlot from "./HorizonPlot";
-import TimelineStrip from "./TimelineStrip";
 import RegionTable, { CustomSiteForm, GAP_LIMITS, type CustomSiteState, type RankedRow } from "./RegionTable";
 import MissionControls, {
   ChangeNote,
@@ -33,10 +31,9 @@ import MissionControls, {
   MIN_HOURS,
   fmtLength,
   fmtSpan,
-  fmtWhen,
   type WindowChange,
 } from "./MissionControls";
-import SiteBulletin, { EarthMark, ExternalMark, SunMark, covers, degrees, pct } from "./SiteBulletin";
+import SiteBulletin, { covers } from "./SiteBulletin";
 import ComparePanel, { tiedRanks, type CompareOption } from "./ComparePanel";
 import AboutPanel from "./AboutPanel";
 
@@ -48,8 +45,8 @@ const Controls = memo(MissionControls);
 
 const CUSTOM_ID = "custom";
 const SITE_IDS = new Set(sites.map((s) => s.id));
-/** Top of the ranking for the default window; shown until the ranking is ready. */
-const FALLBACK_SITE = "cabeus-b";
+/** Top of the ranking for the default window (14 Nov 2027); shown until the ranking is ready. */
+const FALLBACK_SITE = "de-gerlache-2";
 const DEFAULT_GAP = 48;
 /** Extra track fetched for a custom site past the window, so one- and two-week slips stay covered. */
 const CUSTOM_MARGIN_MS = 14 * DAY;
@@ -224,115 +221,75 @@ function Tabs({ view, onChange, className = "" }: { view: View; onChange: (v: Vi
   );
 }
 
-function PlayMark({ playing }: { playing: boolean }) {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" className="size-3.5">
-      {playing ? (
-        <path d="M5.25 3.5v9M10.75 3.5v9" stroke="currentColor" strokeWidth="1.5" />
-      ) : (
-        <path d="M4.75 3.25v9.5L12.75 8Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-      )}
-    </svg>
-  );
-}
-
-function sunStatus(s: SkySample): { text: string; tone: string } {
-  if (s.sunFraction >= 1) return { text: "clear", tone: "text-sun-ink" };
-  if (s.sunFraction > 0) return { text: `${pct(s.sunFraction)} of disc`, tone: "text-sun-ink" };
-  return { text: "hidden", tone: "text-umbra" };
-}
-
 type SiteMeta = { id: string; name: string; lat: number; lon: number; custom: boolean };
 
-const PlateCaption = memo(function PlateCaption({
-  meta,
-  sample,
-  nowMs,
+/**
+ * The bulletin's masthead: its name, the issue (the window on show) and the
+ * data it was computed from, with the three views as its sections.
+ */
+const Masthead = memo(function Masthead({
   startMs,
-  playing,
-  onTogglePlay,
-  canPlay,
-  failed,
+  endMs,
+  hours,
+  view,
+  onView,
 }: {
-  meta: SiteMeta;
-  sample: SkySample | null;
-  nowMs: number;
   startMs: number;
-  playing: boolean;
-  onTogglePlay: () => void;
-  canPlay: boolean;
-  failed: boolean;
+  endMs: number;
+  hours: number;
+  view: View;
+  onView: (v: View) => void;
 }) {
-  const sun = sample ? sunStatus(sample) : null;
   return (
-    <div className="flex flex-wrap items-start justify-between gap-x-5 gap-y-2 border-b border-rule bg-paper px-4 py-2.5">
-      <div className="min-w-0">
-        <p className="flex flex-wrap items-baseline gap-x-2.5">
-          <span className="text-[1.068rem] font-semibold leading-tight text-ink">{meta.name}</span>
-          <span className="text-[0.844rem] text-ink-2 tabular-nums">
-            {meta.custom ? "Custom site" : formatLatLon(meta.lat, meta.lon)}
-          </span>
+    <header className="flex flex-col border-b border-ink bg-paper xl:flex-row xl:items-end xl:justify-between xl:gap-8 xl:pl-4">
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-4 gap-y-0.5 px-4 pt-2 pb-1.5 xl:px-0">
+        <h1 className="text-[1rem] leading-tight font-bold tracking-[0.08em] text-ink uppercase">Landing window bulletin</h1>
+        <p className="text-[0.844rem] text-ink tabular-nums">
+          <span className="sr-only">Window </span>
+          {fmtSpan(startMs, endMs)}
+          <span className="text-ink-2">, {fmtLength(hours)}</span>
         </p>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.844rem] tabular-nums">
-          <button
-            type="button"
-            onClick={onTogglePlay}
-            disabled={!canPlay}
-            aria-pressed={playing}
-            className="inline-flex size-7 items-center justify-center border border-ink bg-paper text-ink transition-colors duration-150 hover:bg-paper-3 disabled:border-rule disabled:text-ink-3"
-          >
-            <PlayMark playing={playing} />
-            <span className="sr-only">{playing ? "Pause" : "Play the window"}</span>
-          </button>
-          <span className="font-semibold text-ink">{fmtWhen(nowMs, false)} UTC</span>
-          <span className="text-ink-2">{fmtElapsed(nowMs - startMs)}</span>
-          <a
-            href={moonTrekUrl(meta.lat, meta.lon)}
-            target="_blank"
-            rel="noreferrer"
-            className="ml-2 inline-flex items-center gap-1 font-medium text-earth underline decoration-1 underline-offset-[3px] hover:text-ink"
-          >
-            Open in Moon Trek
-            <ExternalMark className="size-3" />
-            <span className="sr-only"> (opens NASA Moon Trek in a new tab)</span>
-          </a>
-        </div>
+        <p className="text-[0.75rem] text-ink-2">Data: JPL Horizons, hourly for 2027 · LOLA LDEM_80S, 80 m</p>
       </div>
-      <div className="grid grid-cols-[auto_auto_auto_auto] items-center gap-x-3 gap-y-1 pt-0.5 text-[0.844rem] tabular-nums">
-        {sample && sun ? (
-          <>
-            <span className="inline-flex items-center gap-1.5 text-ink-2">
-              <SunMark className="size-3.5" />
-              Sun
-            </span>
-            <span className="text-right text-ink">az {degrees(sample.sunAz)}</span>
-            <span className="text-right text-ink">el {degrees(sample.sunEl, true)}</span>
-            <span className={`font-medium ${sun.tone}`}>{sun.text}</span>
-            <span className="inline-flex items-center gap-1.5 text-ink-2">
-              <EarthMark className="size-3.5" />
-              Earth
-            </span>
-            <span className="text-right text-ink">az {degrees(sample.earthAz)}</span>
-            <span className="text-right text-ink">el {degrees(sample.earthEl, true)}</span>
-            <span className={`font-medium ${sample.earthUp ? "text-earth" : "text-umbra"}`}>
-              {sample.earthUp ? "in view" : "hidden"}
-            </span>
-          </>
-        ) : failed ? (
-          <span className="col-span-4 text-ink-2">No Sun or Earth positions without tracks</span>
-        ) : (
-          <span className="col-span-4 h-10 w-64 bg-paper-3 motion-safe:animate-pulse" aria-hidden="true" />
-        )}
-      </div>
-    </div>
+      <Tabs view={view} onChange={onView} className="border-t border-rule xl:border-t-0" />
+    </header>
   );
 });
 
+/** Fig. 1's title: the plate's number and the site it is centred on. */
+function PlateTitle({ meta }: { meta: SiteMeta }) {
+  return (
+    <span className="text-[0.95rem] font-semibold text-ink">
+      <span className="mr-2 text-[0.75rem] font-bold tracking-[0.1em] uppercase">Fig. 1</span>
+      Terrain at {meta.name}
+      {meta.custom ? <span className="ml-2 text-[0.844rem] font-normal text-ink-2">custom site</span> : null}
+    </span>
+  );
+}
+
+const subscribeResize = (cb: () => void) => {
+  window.addEventListener("resize", cb);
+  return () => window.removeEventListener("resize", cb);
+};
+
+/**
+ * Height of the horizon plot's drawing area. On wide screens the bottom band
+ * has to fit under the plate in one screen, so it follows the window height.
+ */
+function usePlotHeight(): number | undefined {
+  return useSyncExternalStore(
+    subscribeResize,
+    () => (window.innerWidth >= 1280 ? Math.round(Math.min(220, Math.max(140, window.innerHeight * 0.165))) : undefined),
+    () => undefined,
+  );
+}
+
 function BandSkeleton() {
   return (
-    <div aria-hidden="true" className="flex flex-col gap-4">
-      <div className="h-16 bg-paper-2 motion-safe:animate-pulse" />
-      <div className="h-[15rem] bg-paper-2 motion-safe:animate-pulse" />
+    <div aria-hidden="true" className="flex flex-col gap-2">
+      <div className="h-5 w-2/3 bg-paper-2 motion-safe:animate-pulse" />
+      <div className="h-[13rem] bg-paper-2 motion-safe:animate-pulse" />
+      <div className="h-10 bg-paper-2 motion-safe:animate-pulse" />
     </div>
   );
 }
@@ -345,6 +302,10 @@ export function NavigatorSkeleton() {
       <p className="sr-only" role="status">
         Loading the Navigator
       </p>
+      <div className="flex items-baseline gap-4 border-b border-ink bg-paper px-4 pt-3 pb-2.5" aria-hidden="true">
+        <div className="h-4 w-56 bg-paper-3" />
+        <div className="h-3.5 w-80 bg-paper-3" />
+      </div>
       <div className="border-b border-rule bg-paper-2 px-4 py-3">
         <div className="flex flex-wrap gap-5" aria-hidden="true">
           {[15, 10, 15, 11].map((w, i) => (
@@ -791,21 +752,23 @@ export default function NavigatorApp() {
   );
   const methodNote = meta.custom && selectedData ? customHorizonMethod(selectedData.horizon) : undefined;
   const windowLabel = `${fmtSpan(startMs, endMs)}, ${fmtLength(durationHours)}`;
+  const plotHeight = usePlotHeight();
+  // The Sun's and Earth's bearing paths on the plate cover the same window as Fig. 2.
+  const plateTrack = useMemo(() => (selectedData ? { site: selectedData, startMs, endMs } : null), [selectedData, startMs, endMs]);
 
   return (
     <div className="relative flex flex-col xl:h-[calc(100dvh-2.75rem)] xl:min-h-[38rem] xl:overflow-hidden">
-      <h1 className="sr-only">Lunar Landing Site Navigator</h1>
+      <Masthead startMs={startMs} endMs={endMs} hours={durationHours} view={view} onView={setView} />
 
-      <div className="flex flex-col border-b border-rule bg-paper-2 xl:flex-row xl:items-end xl:justify-between xl:gap-8 xl:px-4">
+      <div className="border-b border-rule bg-paper-2">
         <Controls
           startMs={startMs}
           durationHours={durationHours}
           site={selectedData}
           siteName={meta.name}
           onApply={applyWindow}
-          className="px-4 pt-3 pb-3 xl:px-0"
+          className="px-4 pt-2 pb-2.5"
         />
-        <Tabs view={view} onChange={setView} className="border-t border-rule bg-paper xl:border-t-0 xl:bg-transparent" />
       </div>
 
       {view === "navigator" && (
@@ -832,19 +795,9 @@ export default function NavigatorApp() {
             <CustomSiteForm state={customState} onSubmit={addCustom} onRemove={removeCustom} className="border-t border-rule" />
           </div>
 
-          <div className="relative min-w-0 md:col-start-2 xl:overflow-y-auto">
-            <section aria-label={`Terrain plate, ${meta.name}`}>
-              <PlateCaption
-                meta={meta}
-                sample={sample}
-                nowMs={nowMs}
-                startMs={startMs}
-                playing={playing}
-                onTogglePlay={togglePlay}
-                canPlay={!!selectedData}
-                failed={selectedStatus === "error"}
-              />
-              <div className="relative h-[22rem] overflow-hidden bg-paper-2 sm:h-[28rem] xl:h-[clamp(21rem,calc(100dvh-32rem),42rem)]">
+          <div className="relative flex min-w-0 flex-col md:col-start-2 xl:overflow-y-auto">
+            <section aria-label={`Fig. 1, terrain at ${meta.name}`} className="flex flex-col xl:min-h-[17rem] xl:flex-1">
+              <div className="relative h-[24rem] overflow-hidden bg-paper-2 sm:h-[30rem] xl:h-auto xl:flex-1">
                 <PanelBoundary
                   fallback={
                     <PanelProblem>
@@ -860,45 +813,39 @@ export default function NavigatorApp() {
                     earth={earth}
                     regionValues={regionValues}
                     customSite={customPoint}
+                    track={plateTrack}
+                    caption={<PlateTitle meta={meta} />}
                     className="h-full w-full"
                   />
                 </PanelBoundary>
               </div>
             </section>
 
-            <section aria-label={`Timeline and horizon, ${meta.name}`} className="border-t border-rule bg-paper px-4 pt-3 pb-4">
+            <section
+              aria-label={`Fig. 2, horizon and time from ${meta.name}`}
+              className="border-t border-ink bg-paper px-4 pt-1.5 pb-2.5 xl:shrink-0"
+            >
               {selectedData ? (
-                <div className="flex flex-col gap-4">
-                  <PanelBoundary
-                    key={`strip-${effectiveId}`}
-                    fallback={<PanelProblem>The timeline could not be drawn for {meta.name}.</PanelProblem>}
-                  >
-                    <TimelineStrip
-                      site={selectedData}
-                      siteName={meta.name}
-                      startMs={startMs}
-                      endMs={endMs}
-                      nowMs={nowMs}
-                      onScrub={scrub}
-                      className="w-full"
-                    />
-                  </PanelBoundary>
-                  <PanelBoundary
-                    key={`plot-${effectiveId}`}
-                    fallback={<PanelProblem>The horizon plot could not be drawn for {meta.name}.</PanelProblem>}
-                  >
-                    <HorizonPlot
-                      site={selectedData}
-                      siteName={meta.name}
-                      nowMs={nowMs}
-                      startMs={startMs}
-                      endMs={endMs}
-                      className="w-full border-t border-rule pt-3"
-                    />
-                  </PanelBoundary>
-                </div>
+                <PanelBoundary
+                  key={`plot-${effectiveId}`}
+                  fallback={<PanelProblem>The horizon plot could not be drawn for {meta.name}.</PanelProblem>}
+                >
+                  <HorizonPlot
+                    site={selectedData}
+                    siteName={meta.name}
+                    nowMs={nowMs}
+                    startMs={startMs}
+                    endMs={endMs}
+                    figure="Fig. 2"
+                    plotHeight={plotHeight}
+                    onScrub={scrub}
+                    playing={playing}
+                    onTogglePlay={togglePlay}
+                    className="w-full"
+                  />
+                </PanelBoundary>
               ) : selectedStatus === "error" ? (
-                <PanelProblem>No tracks for {meta.name}, so there is no timeline or horizon plot. The bulletin has the details.</PanelProblem>
+                <PanelProblem>No tracks for {meta.name}, so there is no horizon plot or time rail. The bulletin has the details.</PanelProblem>
               ) : (
                 <BandSkeleton />
               )}

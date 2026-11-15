@@ -3,6 +3,8 @@
 // Timeline strip: sunlight and Earth-contact bands over the mission window,
 // with a scrub handle (pointer and keyboard) and countdowns to the next rise
 // or set. Optional compact band pairs compare other sites or slipped starts.
+// The compact form is the scrub rail under the horizon panorama (Fig. 2),
+// which prints its own readout.
 
 import { useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { rangeOf, windowStats, type SiteData } from "@/lib/sky";
@@ -27,6 +29,12 @@ type Props = {
   nowMs: number;
   onScrub: (ms: number) => void;
   compareSites?: CompareSite[];
+  /** Thin ruler and bands, for the rail under the horizon panorama. */
+  compact?: boolean;
+  /** Print the time and countdown readout under the bands (default true). */
+  readout?: boolean;
+  /** Element that describes the slider when the strip prints no readout. */
+  describedBy?: string;
   className?: string;
 };
 
@@ -85,7 +93,19 @@ function rowData(site: SiteData, startMs: number, endMs: number, offsetMs: numbe
   return row;
 }
 
-export default function TimelineStrip({ site, siteName: mainName, startMs, endMs, nowMs, onScrub, compareSites, className }: Props) {
+export default function TimelineStrip({
+  site,
+  siteName: mainName,
+  startMs,
+  endMs,
+  nowMs,
+  onScrub,
+  compareSites,
+  compact = false,
+  readout = true,
+  describedBy,
+  className,
+}: Props) {
   const uid = useId();
   const trackRef = useRef<HTMLDivElement>(null);
   const thumbRef = useRef<HTMLDivElement>(null);
@@ -216,7 +236,7 @@ export default function TimelineStrip({ site, siteName: mainName, startMs, endMs
       >
         <Line>
           <div ref={trackRef}>
-            <Ruler days={ruler.days} minor={ruler.minor} frac={frac} pct={pct} />
+            <Ruler days={ruler.days} minor={ruler.minor} frac={frac} pct={pct} compact={compact} />
           </div>
         </Line>
         {rows.map((row, i) => (
@@ -226,18 +246,18 @@ export default function TimelineStrip({ site, siteName: mainName, startMs, endMs
                 <RowCaption row={row} main={i === 0} startMs={startMs} endMs={endMs} />
               </Line>
             ) : null}
-            <Line label={i === 0 ? "Sun" : undefined}>
-              <Band spans={row.sun} body="sun" offsetMs={row.offsetMs} frac={frac} pct={pct} noData={row.noData} tall={i === 0} />
+            <Line label={i === 0 ? "Sun" : undefined} compact={compact}>
+              <Band spans={row.sun} body="sun" offsetMs={row.offsetMs} frac={frac} pct={pct} noData={row.noData} tall={i === 0 && !compact} rail={i === 0 && compact} />
             </Line>
-            <Line label={i === 0 ? "Earth" : undefined} className={i === 0 ? "mt-0.5" : "mt-px"}>
-              <Band spans={row.earth} body="earth" offsetMs={row.offsetMs} frac={frac} pct={pct} noData={row.noData} tall={i === 0} />
+            <Line label={i === 0 ? "Earth" : undefined} compact={compact} className={i === 0 ? "mt-0.5" : "mt-px"}>
+              <Band spans={row.earth} body="earth" offsetMs={row.offsetMs} frac={frac} pct={pct} noData={row.noData} tall={i === 0 && !compact} rail={i === 0 && compact} />
             </Line>
           </div>
         ))}
 
         {/* Playhead: a line through the bands under a square thumb on the ruler line */}
         <div
-          className="pointer-events-none absolute bottom-0 top-6 w-1 -translate-x-1/2 border-x border-paper bg-ink"
+          className={`pointer-events-none absolute bottom-0 w-1 -translate-x-1/2 border-x border-paper bg-ink ${compact ? "top-5" : "top-6"}`}
           style={{ left: at(frac(shown)) }}
           aria-hidden="true"
         />
@@ -250,14 +270,17 @@ export default function TimelineStrip({ site, siteName: mainName, startMs, endMs
           aria-valuemax={totalHours}
           aria-valuenow={Math.round((shown - startMs) / HOUR_MS)}
           aria-valuetext={valueText}
-          aria-describedby={`${uid}-readout`}
+          aria-describedby={readout ? `${uid}-readout` : describedBy}
           onKeyDown={onKeyDown}
-          className="absolute top-[0.9375rem] z-20 h-2.5 w-2.5 -translate-x-1/2 cursor-grab bg-ink before:absolute before:-inset-[0.4375rem] before:content-[''] active:cursor-grabbing"
+          className={`absolute z-20 h-2.5 w-2.5 -translate-x-1/2 cursor-grab bg-ink before:absolute before:-inset-[0.4375rem] before:content-[''] active:cursor-grabbing ${
+            compact ? "top-[0.6875rem]" : "top-[0.9375rem]"
+          }`}
           style={{ left: at(frac(shown)) }}
         />
       </div>
 
       {/* Readout */}
+      {readout ? (
       <div id={`${uid}-readout`} className="mt-2 flex flex-wrap items-baseline gap-x-6 gap-y-1 text-[0.844rem]">
         <span className="font-semibold tabular-nums">
           {fmtFull(nowMs)}
@@ -282,16 +305,19 @@ export default function TimelineStrip({ site, siteName: mainName, startMs, endMs
           </span>
         </span>
       </div>
+      ) : null}
     </div>
   );
 }
 
 /** One strip row: a right-aligned label in the gutter and the content across the track column. */
-function Line({ label, className, children }: { label?: string; className?: string; children: ReactNode }) {
+function Line({ label, compact, className, children }: { label?: string; compact?: boolean; className?: string; children: ReactNode }) {
   return (
     <div className={`flex gap-2 ${className ?? ""}`}>
       <div
-        className="w-[3.25rem] shrink-0 cursor-default text-right text-[0.75rem] font-semibold uppercase leading-4 tracking-[0.06em] text-ink-2"
+        className={`w-[3.25rem] shrink-0 cursor-default text-right text-[0.75rem] font-semibold uppercase tracking-[0.06em] text-ink-2 ${
+          compact ? "leading-3" : "leading-4"
+        }`}
         aria-hidden="true"
       >
         {label}
@@ -306,14 +332,16 @@ function Ruler({
   minor,
   frac,
   pct,
+  compact,
 }: {
   days: { ms: number; label: string | null }[];
   minor: number[];
   frac: (ms: number) => number;
   pct: (f: number) => string;
+  compact?: boolean;
 }) {
   return (
-    <div className="relative h-6 border-b border-ink" aria-hidden="true">
+    <div className={`relative border-b border-ink ${compact ? "h-5" : "h-6"}`} aria-hidden="true">
       {minor.map((t) => (
         <span key={t} className="absolute bottom-0 h-1 w-px bg-ink-3" style={{ left: pct(frac(t)) }} />
       ))}
@@ -343,6 +371,7 @@ function Band({
   pct,
   noData,
   tall,
+  rail,
   gap,
 }: {
   spans: VisibilitySpan[];
@@ -352,13 +381,15 @@ function Band({
   pct: (f: number) => string;
   noData: { from: number; to: number }[];
   tall: boolean;
+  /** The main row of the compact rail. */
+  rail?: boolean;
   gap?: boolean;
 }) {
   const on = body === "sun" ? "bg-sun" : "bg-earth";
   const off = body === "sun" ? "bg-umbra" : "bg-umbra-soft";
   return (
     <div
-      className={`relative overflow-hidden bg-paper-2 ${tall ? "h-4" : "h-2.5"} ${gap ? (tall ? "mt-0.5" : "mt-px") : ""}`}
+      className={`relative overflow-hidden bg-paper-2 ${tall ? "h-4" : rail ? "h-3" : "h-2.5"} ${gap ? (tall ? "mt-0.5" : "mt-px") : ""}`}
       aria-hidden="true"
     >
       {spans.map((s) => {

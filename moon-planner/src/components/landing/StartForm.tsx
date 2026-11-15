@@ -26,7 +26,7 @@ import {
 const label = "text-[0.79rem] font-semibold uppercase tracking-[0.08em] text-ink-2";
 const control =
   "h-11 w-full cursor-pointer appearance-none rounded-none border border-ink bg-paper pl-3 text-[1rem] font-medium text-ink [color-scheme:light] " +
-  "transition-colors duration-150 hover:bg-paper-3/50 aria-[invalid=true]:shadow-[inset_0_0_0_1px_#121a22]";
+  "transition-colors duration-150 hover:bg-paper-3/50 aria-[invalid=true]:shadow-[inset_0_0_0_1px_var(--color-ink)]";
 const chevron = "pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-ink";
 
 const STAY_DAYS = STAY_HOURS / 24;

@@ -207,11 +207,12 @@ void main() {
   vec3 nTrue = normalize(vec3(-grad, 1.0));
   vec3 nShow = normalize(vec3(-grad * uExag, 1.0));
 
-  // Openness darkens hollows a little, in light and in shadow alike.
+  // Openness darkens hollows a little; less in shadow, which stays one fill.
   float open = smoothstep(0.55, 0.97, texture(uOpen, uv).r);
-  float hollow = mix(0.8, 1.03, open);
 
   vec3 col;
+  // 1 on sunlit ground, 0 in shadow; linework picks ink or paper from it.
+  float lit = 1.0;
   if (uHasSun > 0.5) {
     vec3 L = localSky(p, uSun);
     vec2 h = length(L.xy) > 1e-6 ? normalize(L.xy) : vec2(0.0, 1.0);
@@ -220,15 +221,21 @@ void main() {
     // True incidence on the true-scale slope; below the disc edge it is self-shadow.
     float inc = dot(nTrue, L);
     float facing = clamp((inc + SUN_R) / (2.0 * SUN_R), 0.0, 1.0);
-    float lit = texture(uLight, uv).r * facing;
-    vec3 litCol = mix(uLitLo, uLitHi, form);
-    litCol = mix(litCol, uSunCol, 0.17 * smoothstep(0.06, 0.6, inc));
-    vec3 shCol = mix(uShLo, uShHi, form * form);
-    col = mix(shCol, litCol, lit) * hollow;
+    // Cast shadow as a solid fill: a hard edge where half the Sun's disc is
+    // hidden, anti-aliased over about one screen pixel.
+    float light = texture(uLight, uv).r * facing;
+    float aa = clamp(fwidth(light), 0.02, 0.45);
+    lit = smoothstep(0.5 - aa, 0.5 + aa, light);
+    // Sunlit ground: the paper ramp, by the (exaggerated) slope's incidence on the low Sun, eased with the form light.
+    float shade = 0.65 * smoothstep(0.0, 0.45, dot(nShow, L)) + 0.35 * form;
+    vec3 litCol = mix(uLitLo, uLitHi, shade) * mix(0.96, 1.0, open);
+    vec3 shCol = mix(uShLo, uShHi, form * form) * mix(0.96, 1.0, open);
+    col = mix(shCol, litCol, lit);
   } else {
     float form = clamp(dot(nShow, normalize(vec3(-0.5, 0.5, 0.7071))), 0.0, 1.0);
-    col = mix(uNeuLo, uNeuHi, form) * hollow;
+    col = mix(uNeuLo, uNeuHi, form) * mix(0.8, 1.03, open);
   }
+  vec3 line = mix(uPaper, uInk, lit);
 
   // Graticule: 1 degree of latitude, 30 degrees of longitude.
   float r = length(p);
@@ -240,7 +247,7 @@ void main() {
   vec2 md = vec2(sin(radians(mer)), cos(radians(mer)));
   vec2 mn = vec2(md.y, -md.x);
   float merA = lineMask(abs(dot(p, mn)) * pxPerM(mn, dx, dy), 0.5) * step(0.0, dot(p, md)) * smoothstep(15000.0, 35000.0, r);
-  col = mix(col, uInk, 0.13 * max(ring, merA));
+  col = mix(col, line, mix(0.22, 0.13, lit) * max(ring, merA));
 
   // Region outlines, with a tinted ribbon inside when scores are given.
   for (int i = 0; i < REGIONS; i++) {
@@ -258,11 +265,13 @@ void main() {
     float fi = float(i);
     float sel = 1.0 - step(0.5, abs(fi - uSelected));
     float hov = 1.0 - step(0.5, abs(fi - uHovered));
-    float band = (1.0 - smoothstep(-0.5, 0.5, px)) * smoothstep(-RIBBON - 0.5, -RIBBON + 0.5, px);
+    float rib = RIBBON + 1.5 * sel;
+    float band = (1.0 - smoothstep(-0.5, 0.5, px)) * smoothstep(-rib - 0.5, -rib + 0.5, px);
     col = mix(col, uTint[i].rgb, uTint[i].a * band);
     float hair = mix(0.5, 1.0, hov);
-    col = mix(col, uInk, lineMask(abs(px), mix(hair, 2.0, sel)));
-    col = mix(col, uSunCol, sel * lineMask(abs(px), 0.85));
+    // The selected region: a 2.5 px ink rule with a paper casing outside, legible on light and on shadow.
+    col = mix(col, uPaper, sel * step(0.0, px) * lineMask(px, 3.0));
+    col = mix(col, sel > 0.5 ? uInk : line, lineMask(abs(px), mix(hair, 1.25, sel)));
   }
 
   // Bearings from the selected site toward the Sun and Earth.

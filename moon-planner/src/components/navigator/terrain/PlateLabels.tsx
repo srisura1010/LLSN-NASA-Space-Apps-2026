@@ -43,8 +43,8 @@ export function LabelLayer({ bridge, labels }: { bridge: PlateBridge; labels: Pl
         if (l.kind === "flag") {
           body = (
             <>
-              <span aria-hidden className="absolute -left-[4px] -top-[4px] block h-2 w-2 rounded-full border-[1.5px] border-ink bg-sun" />
-              <span aria-hidden className="absolute bottom-0 left-[-0.5px] block w-px bg-ink" style={{ height: FLAG_STAFF }} />
+              <span aria-hidden className="absolute -left-[5px] -top-[5px] block h-2.5 w-2.5 rounded-full border-[1.5px] border-paper bg-ink" />
+              <span aria-hidden className="absolute bottom-0 left-[-0.5px] block w-px bg-ink" style={{ height: `var(--staff, ${FLAG_STAFF}px)` }} />
               <button
                 ref={setBox}
                 type="button"
@@ -52,7 +52,7 @@ export function LabelLayer({ bridge, labels }: { bridge: PlateBridge; labels: Pl
                 aria-pressed="true"
                 aria-label={l.ariaLabel}
                 className="pointer-events-auto absolute left-[-0.5px] block whitespace-nowrap border border-ink bg-paper px-2 py-1 text-left transition-colors duration-150 group-data-[side=left]:left-auto group-data-[side=left]:right-[-0.5px] hover:bg-paper-2 active:bg-paper-3"
-                style={{ bottom: FLAG_STAFF }}
+                style={{ bottom: `var(--staff, ${FLAG_STAFF}px)` }}
               >
                 <span className="flex items-center gap-1.5 text-[0.79rem] font-semibold uppercase leading-tight tracking-[0.06em] text-ink">
                   <Swatch tint={l.tint} />
@@ -85,6 +85,25 @@ export function LabelLayer({ bridge, labels }: { bridge: PlateBridge; labels: Pl
                 <Swatch tint={l.tint} />
                 {l.text}
               </button>
+            </>
+          );
+        } else if (l.kind === "pole") {
+          // The pole: a surveyor's mark, circle and cross, with its latitude.
+          body = (
+            <>
+              <svg aria-hidden width="19" height="19" viewBox="0 0 19 19" className="absolute -left-[9.5px] -top-[9.5px]">
+                <circle cx="9.5" cy="9.5" r="4.25" className="fill-paper stroke-ink" strokeWidth="1.25" />
+                <path d="M9.5 0.5v6M9.5 12.5v6M0.5 9.5h6M12.5 9.5h6" className="stroke-paper" strokeWidth="3" />
+                <path d="M9.5 0.5v6M9.5 12.5v6M0.5 9.5h6M12.5 9.5h6" className="stroke-ink" strokeWidth="1.25" />
+                <circle cx="9.5" cy="9.5" r="1.1" className="fill-ink" />
+              </svg>
+              <span
+                ref={setBox}
+                className="absolute left-[12px] top-0 -translate-y-1/2 whitespace-nowrap bg-paper/85 px-1 py-px text-[0.702rem] font-semibold uppercase leading-none tracking-[0.08em] text-ink group-data-[side=left]:left-auto group-data-[side=left]:right-[12px]"
+              >
+                {l.text}
+                {l.detail ? <span className="ml-1.5 font-normal tracking-normal text-ink-2 normal-case tabular-nums">{l.detail}</span> : null}
+              </span>
             </>
           );
         } else if (l.kind === "mark") {

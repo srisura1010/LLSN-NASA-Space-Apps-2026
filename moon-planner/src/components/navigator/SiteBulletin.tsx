@@ -1,7 +1,8 @@
 "use client";
 
-import { memo, useMemo, type ReactNode } from "react";
+import { memo, useMemo, type ReactNode, type SelectHTMLAttributes } from "react";
 import { bestStart, rangeOf, sampleAt, type MissionScore, type SiteData } from "@/lib/sky";
+import { moonTrekUrl } from "@/lib/moontrek";
 import { formatLatLon } from "@/lib/sites";
 import { compareWithNasa } from "@/lib/validation";
 import { contactEvents } from "./plot/contacts";
@@ -69,6 +70,30 @@ export const fieldLabel = "block text-[0.75rem] font-semibold uppercase tracking
 export const fieldControl =
   "h-8 rounded-none border border-rule bg-paper px-2 text-[0.95rem] text-ink caret-earth transition-colors duration-150 hover:border-ink-2 aria-invalid:border-ink aria-invalid:shadow-[inset_0_0_0_1px_var(--color-ink)] disabled:cursor-not-allowed disabled:text-ink-3";
 
+/**
+ * A native select in the bulletin style: square, hairline border and a drawn
+ * chevron instead of the browser's. Layout classes (width, joins) go on the
+ * wrapper through wrapClassName; the select fills it.
+ */
+export function SelectField({
+  wrapClassName = "",
+  className = "",
+  children,
+  ...rest
+}: SelectHTMLAttributes<HTMLSelectElement> & { wrapClassName?: string }) {
+  return (
+    <span className={`relative inline-flex ${wrapClassName}`}>
+      <select
+        {...rest}
+        className={`${fieldControl} peer w-full cursor-pointer appearance-none pr-7 [color-scheme:light] ${className}`}
+      >
+        {children}
+      </select>
+      <ChevronMark className="pointer-events-none absolute top-1/2 right-2 size-3.5 -translate-y-1/2 text-ink-2 peer-hover:text-ink peer-disabled:text-ink-3" />
+    </span>
+  );
+}
+
 // ---------- Drawn marks (16 px grid, 1.5 px strokes) ----------
 
 type MarkProps = { className?: string };
@@ -105,6 +130,14 @@ export function ArrowMark({ className = "size-3.5" }: MarkProps) {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" className={`inline-block shrink-0 align-[-0.15em] ${className}`}>
       <path d="M2.5 8h10.5M9.25 4.25 13 8l-3.75 3.75" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+export function ChevronMark({ className = "size-3.5" }: MarkProps) {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" className={`shrink-0 ${className}`}>
+      <path d="M4 6.25 8 10.25l4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" />
     </svg>
   );
 }
@@ -332,6 +365,16 @@ function SiteBulletin({
         <p className="mt-1 text-[0.844rem] text-ink-2">
           {custom ? "Custom site, tracks fetched live from JPL Horizons" : formatLatLon(lat, lon)}
         </p>
+        <a
+          href={moonTrekUrl(lat, lon)}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-0.5 inline-flex items-center gap-1 text-[0.844rem] font-medium text-earth underline decoration-1 underline-offset-[3px] hover:text-ink"
+        >
+          Open in Moon Trek
+          <ExternalMark className="size-3" />
+          <span className="sr-only"> (opens NASA Moon Trek in a new tab)</span>
+        </a>
         <p className="mt-0.5 text-[0.844rem] text-ink-2 tabular-nums">
           Window {dayClock(startMs)} to {dayClock(endMs)} UTC
         </p>
@@ -393,6 +436,7 @@ function SiteBulletin({
                   label="Mean Sun clearance"
                   value={score.sunlit > 0 ? degrees(score.meanSunClearance) : "Never up"}
                 />
+                <Row label="Peak Sun clearance" value={degrees(score.maxSunClearance, true)} />
               </tbody>
             </table>
             {(darkOver || commsOver) && (
@@ -433,6 +477,7 @@ function SiteBulletin({
           <Section title="Why it ranks here">
             <p className="text-[0.844rem] leading-relaxed text-ink-2">
               Score is 45% mean Sun power, 30% time with Earth in view and 25% for keeping the longest dark spell short.
+              Equal scores go to the higher peak Sun clearance, then to more time with Earth in view.
             </p>
             <ul className="mt-2 space-y-1 text-[0.95rem] text-ink">
               {score.reasons.map((r) => (

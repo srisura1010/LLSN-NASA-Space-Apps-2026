@@ -4,9 +4,10 @@
 // writes transforms directly; React only renders the elements.
 
 import { Vector3, type Camera } from "three";
+import type { RoseDrawer } from "./rose";
 
-/** flag: selected region; chip: other regions; mark: landmark with a cross; quiet: centred text. */
-export type LabelKind = "flag" | "chip" | "mark" | "quiet";
+/** flag: selected region; chip: other regions; mark: landmark with a cross; pole: the pole mark; quiet: centred text. */
+export type LabelKind = "flag" | "chip" | "mark" | "pole" | "quiet";
 
 export type LabelSpec = { id: string; kind: LabelKind; anchor: Vector3; priority: number };
 
@@ -41,6 +42,8 @@ export type ViewCommands = {
 };
 
 export const FLAG_STAFF = 28;
+/** Space between the bearing rose's ring and the flag above it. */
+const FLAG_CLEAR = 30;
 
 type Rect = [number, number, number, number];
 
@@ -92,6 +95,12 @@ export class PlateBridge {
   private indicators: Record<IndicatorKey, IndicatorEntry> = { sun: indicator(), earth: indicator() };
   private invalidateFn: () => void = () => {};
   private commands: ViewCommands | null = null;
+  private rose: RoseDrawer | null = null;
+  private stage: HTMLElement | null = null;
+  /** Overlays on the plate (scale note, tools) that labels and indicators keep clear of. */
+  private reserved = new Map<string, HTMLElement | null>();
+  /** Lowest y the indicators may use this frame: above the overlays along the bottom. */
+  private floor = Infinity;
 
   // ---------- Scene hooks ----------
 
@@ -117,6 +126,33 @@ export class PlateBridge {
 
   recentre() {
     this.commands?.recentre();
+  }
+
+  // ---------- Rose and overlays ----------
+
+  setRose(r: RoseDrawer | null) {
+    this.rose = r;
+    this.invalidate();
+  }
+
+  attachStage(el: HTMLElement | null) {
+    this.stage = el;
+  }
+
+  attachReserved(key: string, el: HTMLElement | null) {
+    this.reserved.set(key, el);
+  }
+
+  private reservedRects(): Rect[] {
+    const out: Rect[] = [];
+    if (!this.stage) return out;
+    const s = this.stage.getBoundingClientRect();
+    for (const el of this.reserved.values()) {
+      if (!el || !el.offsetWidth) continue;
+      const r = el.getBoundingClientRect();
+      out.push([r.left - s.left, r.top - s.top, r.right - s.left, r.bottom - s.top]);
+    }
+    return out;
   }
 
   // ---------- Labels ----------
@@ -173,10 +209,19 @@ export class PlateBridge {
 
   // ---------- Per frame ----------
 
-  /** Project every label and indicator; hide what is off screen or would overlap a higher-priority label. */
-  sync(camera: Camera, w: number, h: number) {
+  /**
+   * Project every label and indicator; hide what is off screen or would
+   * overlap a higher-priority label. Order: the plate's reserved corners,
+   * the bearing rose, the selected flag (its staff lifted clear of the
+   * rose), the Sun and Earth indicators, the rose's azimuth labels, then
+   * everything else.
+   */
+  sync(camera: Camera, w: number, h: number, target: Vector3 | null = null) {
     camera.updateMatrixWorld();
-    const placed: Rect[] = [];
+    const placed: Rect[] = this.reservedRects();
+    this.floor = Infinity;
+    for (const r of placed) if (r[3] > h - 60) this.floor = Math.min(this.floor, r[1] - 14);
+    const ring = this.rose ? this.rose.layout(camera, w, h, target) : null;
     const projected = [...this.labels.values()].filter((e) => e.el).map((e) => ({ e, p: project(e.anchor, camera, w, h) }));
     projected.sort((a, b) => a.e.priority - b.e.priority || a.p.depth - b.p.depth);
 
@@ -186,15 +231,21 @@ export class PlateBridge {
         e.w = e.box.offsetWidth;
         e.h = e.box.offsetHeight;
       }
+      // A flag on the rose's centre stands clear of the ring.
+      let staff = FLAG_STAFF;
+      if (e.kind === "flag" && ring && Math.hypot(p.x - ring.cx, p.y - ring.cy) < 3) {
+        staff = Math.max(FLAG_STAFF, Math.round(ring.cy - ring.top + FLAG_CLEAR));
+      }
+      if (e.kind === "flag" && el.style.getPropertyValue("--staff") !== `${staff}px`) el.style.setProperty("--staff", `${staff}px`);
       // Labels sit to the right of their anchor, or to the left when that would run off the view.
       let r: Rect;
       let side: "right" | "left" = "right";
       if (e.kind === "quiet") r = [p.x - e.w / 2, p.y - e.h / 2, p.x + e.w / 2, p.y + e.h / 2];
       else {
-        const top = e.kind === "flag" ? p.y - FLAG_STAFF - e.h : p.y - e.h / 2;
+        const top = e.kind === "flag" ? p.y - staff - e.h : p.y - e.h / 2;
         const bottom = e.kind === "flag" ? p.y + 4 : p.y + e.h / 2;
-        const gap = e.kind === "flag" ? 0 : 7;
-        r = [p.x - 4, top, p.x + gap + e.w, bottom];
+        const gap = e.kind === "flag" ? 0 : e.kind === "pole" ? 12 : 7;
+        r = [p.x - (e.kind === "pole" ? 10 : 4), top, p.x + gap + e.w, bottom];
         if (r[2] > w - 2 && p.x - gap - e.w >= 2) {
           side = "left";
           r = [p.x - gap - e.w, top, p.x + 4, bottom];
@@ -202,10 +253,14 @@ export class PlateBridge {
       }
       const inView = r[0] >= 0 && r[2] <= w && r[1] >= 0 && r[3] <= h;
       const onScreen = p.front && p.x >= 0 && p.x <= w && p.y >= 0 && p.y <= h && (e.kind === "flag" || inView);
-      const show = onScreen && (e.kind === "flag" || !overlaps(r, placed, 4));
+      // Graticule and meridian labels also keep off the bearing rose.
+      const clear = e.kind !== "quiet" || !ring || !overlaps(r, [ring.box], 0);
+      const show = onScreen && clear && (e.kind === "flag" || !overlaps(r, placed, 4));
       if (show && el.dataset.side !== side) el.dataset.side = side;
       if (show) {
-        placed.push(r);
+        // A flag claims its box and its staff, not the open space beside the staff.
+        if (e.kind === "flag") placed.push([r[0], r[1], r[2], p.y - staff], [p.x - 4, p.y - staff, p.x + 4, r[3]]);
+        else placed.push(r);
         if (!e.shown || Math.abs(p.x - e.x) > 0.2 || Math.abs(p.y - e.y) > 0.2) {
           el.style.transform = `translate3d(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px, 0)`;
           e.x = p.x;
@@ -216,10 +271,10 @@ export class PlateBridge {
       e.shown = show;
     };
 
-    // The selected flag first, then the indicators, then everything else.
     projected.filter((q) => q.e.kind === "flag").forEach(place);
     this.placeIndicator(this.indicators.sun, camera, w, h, placed);
     this.placeIndicator(this.indicators.earth, camera, w, h, placed);
+    this.rose?.placeLabels(placed);
     projected.filter((q) => q.e.kind !== "flag").forEach(place);
   }
 
@@ -232,7 +287,7 @@ export class PlateBridge {
     };
     if (!ind.active || w < 60 || h < 60) return hide();
     const inset = 22;
-    const rect: Rect = [inset, inset, w - inset, h - inset];
+    const rect: Rect = [inset, inset, w - inset, Math.max(inset + 20, Math.min(h - inset, this.floor))];
     const s = project(ind.site, camera, w, h);
     const e = project(ind.edge, camera, w, h);
     const n = project(ind.near, camera, w, h);

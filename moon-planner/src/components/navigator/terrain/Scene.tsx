@@ -187,7 +187,7 @@ export default function TerrainScene(props: SceneProps) {
   useFrame(() => rig.step(performance.now()), -3);
   useFrame(() => {
     renderer.beforeRender(gl, camera, rig.controls.target);
-    bridge.sync(camera, size.width, size.height);
+    bridge.sync(camera, size.width, size.height, rig.controls.target);
     if (!firstFrame.current) {
       firstFrame.current = true;
       requestAnimationFrame(() => props.onFirstFrame());

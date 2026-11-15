@@ -50,17 +50,24 @@ export function mixRgb(a: RGB, b: RGB, t: number): RGB {
 const T = {
   paper: hexToRgb(TOKENS.paper),
   paper3: hexToRgb(TOKENS.paper3),
+  ink: hexToRgb(TOKENS.ink),
   umbra: hexToRgb(TOKENS.umbra),
   umbraSoft: hexToRgb(TOKENS.umbraSoft),
   sun: hexToRgb(TOKENS.sun),
 };
 
-/** Relief tones, derived from the tokens. Shadow tones keep >= 3:1 against ink hairlines. */
+/**
+ * Relief tones, derived from the tokens. Sunlit ground is the bulletin's
+ * paper ramp (paper-3 to paper, no sun tint: cadmium marks only the Sun's
+ * path and the score fill). Shadow is umbra slate, near flat so it reads as
+ * one solid fill, with a whisper of relief. Linework over shadow switches
+ * from ink to paper in the shader, so outlines keep their contrast there.
+ */
 export const RELIEF = {
-  litLo: mixRgb(T.paper3, T.umbraSoft, 0.5),
-  litHi: mixRgb(T.paper, T.sun, 0.08),
-  shadowLo: mixRgb(T.umbra, T.umbraSoft, 0.3),
-  shadowHi: mixRgb(T.umbra, T.umbraSoft, 0.78),
+  litLo: T.paper3,
+  litHi: T.paper,
+  shadowLo: mixRgb(T.umbra, T.ink, 0.08),
+  shadowHi: mixRgb(T.umbra, T.umbraSoft, 0.1),
   neutralLo: mixRgb(T.paper3, T.umbraSoft, 0.55),
   neutralHi: T.paper,
 };

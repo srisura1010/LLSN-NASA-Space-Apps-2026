@@ -2,13 +2,28 @@
 
 // Bulletin horizon plot: the site's LOLA terrain horizon as a panorama, with
 // the Sun's and Earth's tracks over the mission window ticked by time, their
-// rise and set contacts against the terrain, and both bodies at nowMs.
+// rise and set contacts against the terrain, and both bodies at nowMs. With
+// onScrub it is the bottom band of the Navigator: a time rail under the
+// panorama, the circumstances at the chosen time, and the tracks themselves
+// can be dragged (mouse and pen) to move the time.
 
-import { useId, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
+import { Fragment, useId, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { EARTH_RADIUS_DEG, SUN_RADIUS_DEG, rangeOf, sampleAt, windowStats, type SiteData } from "@/lib/sky";
 import { horizonElevationAt } from "@/lib/terrain";
-import { bodyOf, contactEvents, type ContactKind } from "./plot/contacts";
-import { HOUR_MS, fmtAz, fmtDay, fmtDayHour, fmtDayTime, fmtFull, fmtSigned, fmtSpan, fmtTime } from "./plot/format";
+import { bodyAt, bodyOf, contactEvents, isUpAt, nextContact, type Body, type ContactKind } from "./plot/contacts";
+import {
+  HOUR_MS,
+  fmtAz,
+  fmtDay,
+  fmtDayHour,
+  fmtDayTime,
+  fmtDuration,
+  fmtElapsed,
+  fmtFull,
+  fmtSigned,
+  fmtSpan,
+  fmtTime,
+} from "./plot/format";
 import { useElementWidth, useTypeMetrics } from "./plot/hooks";
 import {
   measureText,
@@ -34,6 +49,7 @@ import {
   type Frame,
 } from "./plot/scale";
 import { buildTrack, polylineD, type Pt, type Track, type TrackMark } from "./plot/tracks";
+import TimelineStrip from "./TimelineStrip";
 
 type Props = {
   site: SiteData;
@@ -46,9 +62,19 @@ type Props = {
   elevationRange?: [number, number];
   /** Height of the plotting area in px. */
   plotHeight?: number;
+  /** Figure number for the caption, e.g. "Fig. 2". */
+  figure?: string;
+  /** Moves the chosen time; adds the scrub rail and lets the tracks be dragged. */
+  onScrub?: (ms: number) => void;
+  playing?: boolean;
+  onTogglePlay?: () => void;
 };
 
 const MIN_SVG_W = 640;
+/** The rail's label gutter (3.25rem) and gap (0.5rem): the plot frame starts there too, so time and azimuth axes share a left edge. */
+const RAIL_GUTTER_REM = 3.75;
+/** How close (px) a press has to land to a track to grab it. */
+const GRAB_PX = 18;
 const TICK_MINOR = 3;
 const TICK_MAJOR = 5.5;
 const MARGIN_RIGHT = 12;
@@ -86,9 +112,11 @@ type LayoutInput = {
   elMax: number;
   remPx: number;
   fontEpoch: number;
+  /** Smallest left margin, so the frame lines up with the rail below. */
+  minLeft: number;
 };
 
-function computeLayout({ site, t0, t1, svgW, plotH, elMin, elMax, remPx, fontEpoch }: LayoutInput) {
+function computeLayout({ site, t0, t1, svgW, plotH, elMin, elMax, remPx, fontEpoch, minLeft }: LayoutInput) {
   const fs = 0.75 * remPx;
   const fsAxis = 0.75 * remPx;
   const lh = Math.round(fs * 1.3);
@@ -97,7 +125,7 @@ function computeLayout({ site, t0, t1, svgW, plotH, elMin, elMax, remPx, fontEpo
 
   const elTicks = elevationTicks(elMin, elMax);
   const elLabel = (v: number) => (v === 0 ? "0°" : fmtSigned(v, 0));
-  const left = Math.ceil(Math.max(...elTicks.major.map((v) => measure(elLabel(v), fsAxis))) + 14);
+  const left = Math.max(minLeft, Math.ceil(Math.max(...elTicks.major.map((v) => measure(elLabel(v), fsAxis))) + 14));
   const frame: Frame = { left, top: MARGIN_TOP, width: svgW - left - MARGIN_RIGHT, height: plotH, elMin, elMax };
   const plotBottom = MARGIN_TOP + plotH;
   const plotRight = left + frame.width;
@@ -189,7 +217,7 @@ function computeLayout({ site, t0, t1, svgW, plotH, elMin, elMax, remPx, fontEpo
       lines: [line(words, bodyOf(first.kind), true), line(times, "ink")],
       lineHeight: lh,
       priority: 100,
-      anchors: [7, 16, 28, 42].flatMap((r) => around(cx, cy, r)),
+      anchors: [7, 16, 28, 42, 60, 80].flatMap((r) => around(cx, cy, r)),
       target: { x: cx, y: cy },
       required: true,
     });
@@ -237,7 +265,7 @@ function computeLayout({ site, t0, t1, svgW, plotH, elMin, elMax, remPx, fontEpo
     bounds: { x0: left + 2, y0: MARGIN_TOP + 1, x1: plotRight - 2, y1: plotBottom - 2 },
     obstacles,
     regionOf,
-    pad: 1.5,
+    pad: 4,
   };
   let labels: PlacedLabel[] = [];
   for (const sunSide of [0, 1] as const) {
@@ -275,11 +303,23 @@ function computeLayout({ site, t0, t1, svgW, plotH, elMin, elMax, remPx, fontEpo
     downMajor: tickD(tr, false, true),
   });
 
+  // Hourly points on each track, for grabbing a track and dragging it through time.
+  const grab: Record<Body, { x: number; y: number; ms: number }[]> = { sun: [], earth: [] };
+  if (hasWindow) {
+    for (const body of ["sun", "earth"] as const) {
+      for (let t = Math.ceil(t0 / HOUR_MS) * HOUR_MS; t <= t1; t += HOUR_MS) {
+        const p = bodyAt(site, body, t);
+        grab[body].push({ x: xOfAz(frame, p.az), y: yOfEl(frame, p.el), ms: t });
+      }
+    }
+  }
+
   return {
     fs,
     fsAxis,
     lh,
     frame,
+    grab,
     svgW,
     svgH,
     plotBottom,
@@ -314,11 +354,16 @@ export default function HorizonPlot({
   className,
   elevationRange,
   plotHeight,
+  figure,
+  onScrub,
+  playing = false,
+  onTogglePlay,
 }: Props) {
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const scrollRef = useRef<HTMLDivElement>(null);
   const containerW = useElementWidth(scrollRef);
   const { remPx, fontEpoch } = useTypeMetrics();
+  const rail = !!onScrub;
 
   const data = rangeOf(site.sky);
   const t0 = Math.max(startMs, data.startMs);
@@ -326,6 +371,7 @@ export default function HorizonPlot({
   const svgW = containerW === null ? null : Math.max(containerW, MIN_SVG_W);
   const plotH = plotHeight ?? (svgW !== null && svgW < 900 ? 196 : 216);
   const overflow = svgW !== null && containerW !== null && svgW > containerW + 1;
+  const minLeft = rail && !overflow ? Math.round(RAIL_GUTTER_REM * remPx) : 0;
 
   const rangeLo = elevationRange?.[0];
   const rangeHi = elevationRange?.[1];
@@ -336,8 +382,8 @@ export default function HorizonPlot({
 
   const layout = useMemo(
     () =>
-      svgW === null ? null : computeLayout({ site, t0, t1, svgW, plotH, elMin, elMax, remPx, fontEpoch }),
-    [site, t0, t1, svgW, plotH, elMin, elMax, remPx, fontEpoch],
+      svgW === null ? null : computeLayout({ site, t0, t1, svgW, plotH, elMin, elMax, remPx, fontEpoch, minLeft }),
+    [site, t0, t1, svgW, plotH, elMin, elMax, remPx, fontEpoch, minLeft],
   );
 
   // On narrow screens the panorama scrolls; start centred on north, where Earth is.
@@ -349,12 +395,18 @@ export default function HorizonPlot({
 
   const now = sampleAt(site, nowMs);
   const windowText = t1 > t0 ? fmtSpan(t0, t1) : "No Sun and Earth tracks for this window";
+  const readoutId = `${uid}-now`;
+  // In the Navigator's band the window is in the masthead, so the caption carries the plot's notes.
+  const note = rail && layout && t1 > t0 ? plotNote(layout) : windowText;
 
   return (
     <figure className={`m-0 min-w-0 ${className ?? ""}`}>
-      <figcaption className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 pb-2">
-        <span className="text-[0.95rem] font-semibold text-ink">Horizon from {siteName}</span>
-        <span className="text-[0.844rem] text-ink-2">{windowText}</span>
+      <figcaption className={`flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 ${rail ? "pb-1" : "pb-1.5"}`}>
+        <span className="text-[0.95rem] font-semibold text-ink">
+          {figure ? <span className="mr-2 text-[0.75rem] font-bold uppercase tracking-[0.1em]">{figure}</span> : null}
+          Horizon from {siteName}
+        </span>
+        <span className={`text-ink-2 tabular-nums ${rail ? "text-[0.75rem]" : "text-[0.844rem]"}`}>{note}</span>
         {overflow ? <span className="basis-full text-[0.75rem] text-ink-2">Scroll sideways for all 360°</span> : null}
       </figcaption>
 
@@ -367,7 +419,15 @@ export default function HorizonPlot({
           aria-label={overflow ? `Horizon plot for ${siteName}, scrolls sideways` : undefined}
         >
           {layout ? (
-            <PlotSvg layout={layout} uid={uid} site={site} siteName={siteName} nowMs={nowMs} windowText={windowText} />
+            <PlotSvg
+              layout={layout}
+              uid={uid}
+              site={site}
+              siteName={siteName}
+              nowMs={nowMs}
+              windowText={windowText}
+              onScrub={onScrub}
+            />
           ) : (
             <div style={{ height: MARGIN_TOP + plotH + marginBottom(remPx) }} aria-hidden="true" />
           )}
@@ -375,11 +435,158 @@ export default function HorizonPlot({
         {layout && overflow ? <StickyAxis layout={layout} /> : null}
       </div>
 
-      <div className="flex flex-wrap items-start justify-between gap-x-10 gap-y-3 pt-2">
-        {layout ? <Legend layout={layout} /> : null}
-        <Circumstances now={now} />
-      </div>
+      {rail && onScrub ? (
+        <>
+          <div style={{ paddingRight: overflow ? 0 : MARGIN_RIGHT }}>
+            <TimelineStrip
+              site={site}
+              siteName={siteName}
+              startMs={startMs}
+              endMs={endMs}
+              nowMs={nowMs}
+              onScrub={onScrub}
+              compact
+              readout={false}
+              describedBy={readoutId}
+              className="w-full"
+            />
+          </div>
+          <NowReadout
+            id={readoutId}
+            site={site}
+            now={now}
+            startMs={startMs}
+            playing={playing}
+            onTogglePlay={onTogglePlay}
+          />
+          {layout ? <Legend layout={layout} compact /> : null}
+        </>
+      ) : (
+        <div className="flex flex-wrap items-start justify-between gap-x-10 gap-y-3 pt-2">
+          {layout ? <Legend layout={layout} /> : null}
+          <Circumstances now={now} />
+        </div>
+      )}
     </figure>
+  );
+}
+
+function PlayMark({ playing }: { playing: boolean }) {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" className="size-3.5">
+      {playing ? (
+        <path d="M5.25 3.5v9M10.75 3.5v9" stroke="currentColor" strokeWidth="1.5" />
+      ) : (
+        <path d="M4.75 3.25v9.5L12.75 8Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      )}
+    </svg>
+  );
+}
+
+/**
+ * Local circumstances at the chosen time, in the bulletin's table manner:
+ * where each body stands, the terrain under it, whether it is in view and
+ * the next contact.
+ */
+function NowReadout({
+  id,
+  site,
+  now,
+  startMs,
+  playing,
+  onTogglePlay,
+}: {
+  id: string;
+  site: SiteData;
+  now: ReturnType<typeof sampleAt>;
+  startMs: number;
+  playing: boolean;
+  onTogglePlay?: () => void;
+}) {
+  const dataEnd = rangeOf(site.sky).endMs;
+  const rows = (["sun", "earth"] as const).map((body) => {
+    const up = isUpAt(site, body, now.ms);
+    const next = nextContact(site, body, now.ms);
+    const sun = body === "sun";
+    const word = sun ? (up ? "sunset" : "sunrise") : up ? "Earthset" : "Earthrise";
+    const status = sun
+      ? up
+        ? now.sunFraction >= 1
+          ? "Up"
+          : `${Math.max(1, Math.round(now.sunFraction * 100))}% of disc up`
+        : "Behind terrain"
+      : up
+        ? "In view"
+        : "Behind terrain";
+    return {
+      body,
+      name: sun ? "Sun" : "Earth",
+      az: sun ? now.sunAz : now.earthAz,
+      el: sun ? now.sunEl : now.earthEl,
+      terrain: sun ? now.sunHorizon : now.earthHorizon,
+      up,
+      status,
+      next: next
+        ? `${word.charAt(0).toUpperCase()}${word.slice(1)} ${fmtDayTime(next.ms)}, in ${fmtDuration((next.ms - now.ms) / HOUR_MS)}`
+        : `No ${word} before ${fmtDay(dataEnd)} ${new Date(dataEnd).getUTCFullYear()}`,
+    };
+  });
+  return (
+    <div id={id} className="mt-1.5 flex flex-wrap items-start gap-x-8 gap-y-1 text-[0.844rem] text-ink">
+      <p className="flex items-center gap-2 tabular-nums">
+        {onTogglePlay ? (
+          <button
+            type="button"
+            onClick={onTogglePlay}
+            aria-pressed={playing}
+            className="inline-flex size-7 items-center justify-center border border-ink bg-paper text-ink transition-colors duration-150 hover:bg-paper-3 active:bg-umbra-soft"
+          >
+            <PlayMark playing={playing} />
+            <span className="sr-only">{playing ? "Pause" : "Play the window"}</span>
+          </button>
+        ) : null}
+        <span className="font-semibold">{fmtFull(now.ms)}</span>
+        <span className="text-ink-2">{fmtElapsed(now.ms - startMs)}</span>
+      </p>
+      {/* Columns line up from sm; on a phone the status takes its own line under each body. */}
+      <dl className="m-0 grid grid-cols-[repeat(4,auto)] items-baseline gap-x-3.5 gap-y-0.5 tabular-nums sm:grid-cols-[repeat(4,auto)_minmax(0,1fr)]">
+        {rows.map((r) => (
+          <Fragment key={r.body}>
+            <dt className="inline-flex items-center gap-1.5 self-center font-semibold whitespace-nowrap">
+              <StateSwatch body={r.body} up={r.up} />
+              {r.name}
+            </dt>
+            <dd className="contents">
+              <span className="text-right whitespace-nowrap">
+                <span className="text-ink-2">az </span>
+                {fmtAz(r.az)}
+              </span>
+              <span className="text-right whitespace-nowrap">
+                <span className="text-ink-2">el </span>
+                {fmtSigned(r.el, 1)}
+              </span>
+              <span className="text-right whitespace-nowrap">
+                <span className="text-ink-2">terrain </span>
+                {fmtSigned(r.terrain, 1)}
+              </span>
+              <span className="col-span-4 pb-0.5 sm:col-span-1 sm:pb-0">
+                <span className={r.up ? "font-medium" : "font-semibold text-limit"}>{r.status}</span>
+                <span className="text-ink-2"> · {r.next}</span>
+              </span>
+            </dd>
+          </Fragment>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+function StateSwatch({ body, up }: { body: Body; up: boolean }) {
+  const cls = body === "sun" ? (up ? "fill-sun" : "fill-umbra") : up ? "fill-earth" : "fill-umbra-soft";
+  return (
+    <svg width={10} height={10} viewBox="0 0 10 10" className="shrink-0" aria-hidden="true">
+      <rect width={10} height={10} className={cls} />
+    </svg>
   );
 }
 
@@ -390,6 +597,7 @@ function PlotSvg({
   siteName,
   nowMs,
   windowText,
+  onScrub,
 }: {
   layout: Layout;
   uid: string;
@@ -397,8 +605,52 @@ function PlotSvg({
   siteName: string;
   nowMs: number;
   windowText: string;
+  onScrub?: (ms: number) => void;
 }) {
   const f = L.frame;
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [drag, setDrag] = useState<Body | null>(null);
+
+  // Grab a track (mouse or pen; touch keeps scrolling the panorama) and drag it through time.
+  const nearest = (clientX: number, clientY: number, only: Body | null) => {
+    const r = svgRef.current?.getBoundingClientRect();
+    if (!r) return null;
+    const x = clientX - r.left;
+    const y = clientY - r.top;
+    let best: { body: Body; ms: number; d: number } | null = null;
+    for (const body of only ? [only] : (["sun", "earth"] as const)) {
+      for (const p of L.grab[body]) {
+        const d = (p.x - x) ** 2 + (p.y - y) ** 2;
+        if (!best || d < best.d) best = { body, ms: p.ms, d };
+      }
+    }
+    return best;
+  };
+  const onDown = (e: PointerEvent<SVGSVGElement>) => {
+    if (!onScrub || e.pointerType === "touch" || e.button !== 0) return;
+    const hit = nearest(e.clientX, e.clientY, null);
+    if (!hit || hit.d > GRAB_PX * GRAB_PX) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    e.currentTarget.style.cursor = "grabbing";
+    setDrag(hit.body);
+    onScrub(hit.ms);
+  };
+  const onMove = (e: PointerEvent<SVGSVGElement>) => {
+    if (!onScrub || e.pointerType === "touch") return;
+    if (drag) {
+      const hit = nearest(e.clientX, e.clientY, drag);
+      if (hit && hit.ms !== nowMs) onScrub(hit.ms);
+      return;
+    }
+    const hit = nearest(e.clientX, e.clientY, null);
+    e.currentTarget.style.cursor = hit && hit.d <= GRAB_PX * GRAB_PX ? "grab" : "";
+  };
+  const onUp = (e: PointerEvent<SVGSVGElement>) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    if (drag) e.currentTarget.style.cursor = "grab";
+    setDrag(null);
+  };
   const plotClip = `${uid}-plot`;
   const skyClip = `${uid}-sky`;
   const ky = pxPerDegY(f);
@@ -412,12 +664,17 @@ function PlotSvg({
 
   return (
     <svg
+      ref={svgRef}
       width={L.svgW}
       height={L.svgH}
       viewBox={`0 0 ${L.svgW} ${L.svgH}`}
       role="img"
       aria-labelledby={`${uid}-title ${uid}-desc`}
       className="block select-none"
+      onPointerDown={onScrub ? onDown : undefined}
+      onPointerMove={onScrub ? onMove : undefined}
+      onPointerUp={onScrub ? onUp : undefined}
+      onPointerCancel={onScrub ? onUp : undefined}
     >
       <title id={`${uid}-title`}>{`Horizon plot for ${siteName}`}</title>
       <desc id={`${uid}-desc`}>{describe(L, site, nowMs, windowText)}</desc>
@@ -669,15 +926,27 @@ function StickyAxis({ layout: L }: { layout: Layout }) {
   );
 }
 
-function Legend({ layout: L }: { layout: Layout }) {
+/** "Ticks 6 h (Earth 24 h), heavy at 00h UTC · elevation ×5.0". */
+function plotNote(L: Layout): string {
+  const sunH = L.sun.tickHours;
+  const earthH = L.earth.tickHours;
+  const ticks = sunH === earthH ? `Ticks ${sunH} h` : `Ticks ${sunH} h (Earth ${earthH} h)`;
+  const ex = L.exaggeration;
+  return `${ticks}, heavy at 00h UTC · elevation ×${ex >= 10 ? Math.round(ex) : ex.toFixed(1)}`;
+}
+
+function Legend({ layout: L, compact = false }: { layout: Layout; compact?: boolean }) {
   const sunH = L.sun.tickHours;
   const earthH = L.earth.tickHours;
   const ticks = sunH === earthH ? `Ticks every ${sunH} h` : `Ticks every ${sunH} h (Earth ${earthH} h)`;
   const ex = L.exaggeration;
+  const exText = ex >= 10 ? Math.round(ex) : ex.toFixed(1);
   const item = "flex items-center gap-2";
   return (
-    <div className="flex min-w-0 max-w-[52rem] flex-1 flex-col gap-1.5 text-[0.75rem] text-ink-2">
-      <ul className="m-0 flex list-none flex-wrap items-center gap-x-5 gap-y-1.5 p-0">
+    <div
+      className={`flex min-w-0 flex-col gap-1.5 text-[0.75rem] text-ink-2 ${compact ? "mt-1.5 border-t border-rule pt-1.5" : "max-w-[52rem] flex-1"}`}
+    >
+      <ul className={`m-0 flex list-none flex-wrap items-center p-0 ${compact ? "gap-x-4 gap-y-1" : "gap-x-5 gap-y-1.5"}`}>
         <li className={item}>
           <Swatch>
             <path d="M1 6H23" className="stroke-sun-ink" strokeWidth={4} />
@@ -705,7 +974,7 @@ function Legend({ layout: L }: { layout: Layout }) {
             <path d="M0 12V7L6 4L11 7L16 2L24 6V12Z" className="fill-umbra" />
             <path d="M0 7L6 4L11 7L16 2L24 6" className="fill-none stroke-ink" strokeWidth={1} />
           </Swatch>
-          Terrain horizon (LOLA)
+          {compact ? "Terrain horizon" : "Terrain horizon (LOLA)"}
         </li>
         <li className={item}>
           <Swatch>
@@ -721,13 +990,15 @@ function Legend({ layout: L }: { layout: Layout }) {
             <circle cx={17} cy={6} r={5} className="fill-earth-soft stroke-earth" strokeWidth={1.25} />
             <path d="M17 1V11M12 6H22" className="stroke-earth" strokeWidth={1} />
           </Swatch>
-          Sun and Earth at the chosen time
+          {compact ? "Now" : "Sun and Earth at the chosen time"}
         </li>
       </ul>
-      <p className="m-0">
-        {ticks}, heavy at 00h UTC. Elevation stretched {ex >= 10 ? Math.round(ex) : ex.toFixed(1)}×; discs to
-        elevation scale. Azimuth from north; S faces the pole.
-      </p>
+      {compact ? null : (
+        <p className="m-0">
+          {ticks}, heavy at 00h UTC. Elevation stretched {exText}×; discs to elevation scale. Azimuth from north; S faces
+          the pole.
+        </p>
+      )}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { fmtDuration } from "./plot/format";
 import { isCustomSiteSupported } from "@/lib/customSite";
 import {
   AlertMark,
+  SelectField,
   fieldControl,
   fieldLabel,
   pct,
@@ -259,18 +260,19 @@ function RegionTable({
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <label htmlFor={`${id}-limit`} className="flex items-center gap-2">
             Flag gaps longer than
-            <select
+            <SelectField
               id={`${id}-limit`}
               value={limitHours}
               onChange={(e) => onLimitChange(Number(e.target.value))}
-              className={`${fieldControl} w-[5.5rem] text-[0.844rem]`}
+              wrapClassName="w-[5.5rem]"
+              className="text-[0.844rem] tabular-nums"
             >
               {GAP_LIMITS.map((h) => (
                 <option key={h} value={h}>
                   {fmtDuration(h)}
                 </option>
               ))}
-            </select>
+            </SelectField>
           </label>
           <span className="flex items-center gap-1.5">
             <AlertMark className="size-3" />

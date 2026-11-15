@@ -62,7 +62,12 @@ export default function Home() {
       </Section>
 
       <Section id="method" title="How it knows">
-        <dl className="border-t border-ink">
+        <p className="max-w-[62ch] text-[1.125rem] leading-[1.55] text-ink-2">
+          Through 2027 the Sun never climbs more than about 8° above the horizontal at these regions, and Earth never
+          more than about 11°, so a distant ridge decides whether a lander has power and a direct line to Earth. Every
+          figure here is measured against that real terrain horizon, not a smooth sphere.
+        </p>
+        <dl className="mt-8 border-t border-ink">
           <Term name="Sun and Earth">
             JPL Horizons gives the position of the Sun and of Earth in the sky for an observer at each region&rsquo;s
             centre, every hour from 1 Jan 2027 to 1 Jan 2028.
@@ -79,15 +84,7 @@ export default function Home() {
         </dl>
 
         <h3 className="mt-12 text-[1.266rem] leading-snug font-bold text-ink">Checked against NASA</h3>
-        <p className="mt-2 max-w-[62ch] text-[1rem] leading-[1.6] text-ink-2">
-          NASA&rsquo;s LOLA illumination maps (Mazarico and others, 2011) give the long-term share of time each point
-          near the pole sees the Sun. Our year-2027 shares are within a few percentage points of those maps at most
-          regions; one year is not the long-term average, so small differences are expected. The three below are
-          computed in your browser from the same files the Navigator uses.
-        </p>
-        <div className="mt-6">
-          <NasaCheck />
-        </div>
+        <NasaCheck />
 
         <h3 className="mt-12 text-[1.266rem] leading-snug font-bold text-ink">Limits</h3>
         <p className="mt-2 max-w-[62ch] text-[1rem] leading-[1.6] text-ink-2">
@@ -96,22 +93,6 @@ export default function Home() {
           a region&rsquo;s centre; a region spans about 20 km, and elsewhere in it the horizon differs. The terrain
           model reaches 80° S.
         </p>
-      </Section>
-
-      <Section id="audience" title="Who it is for">
-        <dl className="border-t border-ink">
-          <Term name="Mission planners">
-            Rank the nine regions for a start date, read the reasons behind each rank, and check what a slip or the
-            next region over changes.
-          </Term>
-          <Term name="Educators and students">
-            Show why the south pole is hard: at these regions the Sun never climbs more than about 8° above the
-            horizontal, so a distant ridge decides whether a lander has power.
-          </Term>
-          <Term name="Reviewers">
-            Every figure names its source and method, and the model is checked against NASA&rsquo;s published maps.
-          </Term>
-        </dl>
       </Section>
 
       <section aria-labelledby="close-title" className={wrap}>
@@ -127,6 +108,11 @@ export default function Home() {
               <p className="mt-4 max-w-[58ch] text-[1.125rem] leading-[1.55] text-ink-2">
                 The Navigator ranks all nine regions for that start and shows why, with the Sun and Earth over the
                 real terrain.
+              </p>
+              <p className="mt-4 max-w-[62ch] text-[1rem] leading-[1.6] text-ink-2">
+                <span className="font-semibold text-ink">Uses.</span> Mission planning: rank the regions for a start
+                date, then test a slip or the next region over. Teaching: why the south pole is hard. Review: every
+                figure names its source and method.
               </p>
             </div>
           </div>
