@@ -16,6 +16,7 @@ import { ZoomHint } from "../levels/LevelNav";
 import { useZoomGate } from "../levels/useZoomGate";
 import { BearingTag, Bearing, CLUSTER_AT, ClusterMark, Flag, HIT, LABEL_TEXT, LINE_NAMES, LIFT, LineLegend, LabelProjector, OVER, POLE_DIR, RAY, Ray, arcTowards, handoff, onGlobe, toScene, type Label } from "./marks";
 import { MoonGlobe, loadFineTextures, loadTextures, type FineTextures, type Textures } from "./moonMaterial";
+import type { TileStatus } from "./tiles/TileLayer";
 
 export type MoonViewProps = {
   nowMs: number;
@@ -171,6 +172,7 @@ function Scene({
   near,
   site,
   bearingLen,
+  onTiles,
 }: {
   textures: Textures;
   fine: FineTextures | null;
@@ -183,7 +185,10 @@ function Scene({
   near: boolean;
   site: Site | null;
   bearingLen: number;
+  /** Given when detail tiles are on; told what the tile layer is drawing and fetching. */
+  onTiles: ((s: TileStatus) => void) | null;
 }) {
+  const tiles = useMemo(() => (onTiles ? { onStatus: onTiles } : null), [onTiles]);
   const sun = useMemo(() => toScene(frame.sunDir), [frame]);
   const earth = useMemo(() => toScene(frame.earthDir), [frame]);
   const from = useMemo(() => (site ? onGlobe(site.lat, site.lon) : null), [site]);
@@ -192,7 +197,7 @@ function Scene({
       <color attach="background" args={[PAPER]} />
       <Rig framing={framing} onView={onView} />
       <LabelProjector labels={labels} overlay={overlay} />
-      <MoonGlobe textures={textures} fine={fine} sunDir={sun} />
+      <MoonGlobe textures={textures} fine={fine} sunDir={sun} tiles={tiles} />
       <Ray dir={sun} color={SUN} casing={INK} />
       <Ray dir={earth} color={EARTH} casing={PAPER} />
       {near && outlines.map((o) => <Outline key={o.id} points={o.points} selected={o.id === site?.id} />)}
@@ -481,6 +486,16 @@ export default function MoonView({ nowMs, onScrub, selectedId, onSelect, onOpenS
           ? "Keep zooming out to open the System level"
           : null;
   const [showLandings, setShowLandings] = useState(true);
+  // Detail tiles come from NASA Moon Trek as the view closes in; off, the globe is drawn from the bundled maps alone.
+  const [detail, setDetail] = useState(true);
+  const [tileStatus, setTileStatus] = useState<TileStatus | null>(null);
+  const detailText = !detail
+    ? "Detail: bundled maps only"
+    : tileStatus?.unavailable
+      ? "Detail tiles unavailable"
+      : !tileStatus?.active
+        ? "Detail: zoom in for NASA Moon Trek tiles"
+        : `Detail: NASA Moon Trek tiles${tileStatus.level ? `, level ${tileStatus.level}` : ""}${tileStatus.loading ? ` · loading ${tileStatus.loading}` : ""}`;
   const [playing, setPlaying] = useState(false);
   const [gl] = useState(hasWebGL);
   const [fine, setFine] = useState<FineTextures | null>(null);
@@ -665,6 +680,7 @@ export default function MoonView({ nowMs, onScrub, selectedId, onSelect, onOpenS
                   near={near}
                   site={site}
                   bearingLen={bearingLen}
+                  onTiles={detail ? setTileStatus : null}
                 />
               </Canvas>
               <div ref={overlay} className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -678,12 +694,33 @@ export default function MoonView({ nowMs, onScrub, selectedId, onSelect, onOpenS
           )}
         </div>
 
-        <p className="border-t border-rule px-4 py-2 text-[0.8rem] leading-snug text-ink-2">
-          Drag to turn the globe, scroll to zoom; zooming in on the south pole opens the site level, zooming out opens
-          the System level. The terminator, the lines to the Sun and Earth and the Moon&apos;s orientation are computed
-          for the time shown; relief shading is exaggerated and no cast shadows are drawn, so use the site level for
-          terrain shadow.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2 border-t border-rule px-4 py-2">
+          <p className="min-w-[16rem] flex-1 text-[0.8rem] leading-snug text-ink-2">
+            Drag to turn the globe, scroll to zoom; zooming in on the south pole opens the site level, zooming out opens
+            the System level. The terminator, the lines to the Sun and Earth and the Moon&apos;s orientation are
+            computed for the time shown; relief shading is exaggerated and no cast shadows are drawn, so use the site
+            level for terrain shadow.
+          </p>
+          {gl && (
+            // The status keeps a fixed width, so its changing count never reflows the caption and resizes the globe above it.
+            <div className="flex items-center gap-3">
+              <p data-tile-status className="text-[0.8rem] leading-snug whitespace-nowrap text-ink-2 tabular-nums sm:min-w-[23rem] sm:text-right">
+                {detailText}
+              </p>
+              <button
+                type="button"
+                aria-pressed={detail}
+                onClick={() => setDetail((v) => !v)}
+                title="Load sharper surface tiles from NASA Moon Trek when zoomed in; needs a network connection"
+                className={`h-7 border border-ink px-2 text-[0.8rem] whitespace-nowrap transition-colors duration-150 focus-visible:outline-offset-2 ${
+                  detail ? "bg-paper-3 font-semibold text-ink" : "font-medium text-ink hover:bg-paper-3"
+                }`}
+              >
+                Detail tiles
+              </button>
+            </div>
+          )}
+        </div>
 
         {span && onScrub && (
           <YearSlider
@@ -757,8 +794,9 @@ export default function MoonView({ nowMs, onScrub, selectedId, onSelect, onOpenS
         <p className="mt-6 border-t border-rule pt-3 text-[0.8rem] leading-snug text-ink-2">
           Orientation: IAU/WGCCRE rotation model for the Moon, with Earth and Moon positions from NASA/JPL Horizons.
           Surface: NASA SVS CGI Moon Kit colour and elevation maps from Lunar Reconnaissance Orbiter data, printed in
-          grey; region outlines from the USGS. Landing coordinates: NASA NSSDCA and Lunar Reconnaissance Orbiter Camera
-          site reports.
+          grey, with Lunar Reconnaissance Orbiter Camera mosaic tiles from NASA Moon Trek when zoomed in; region
+          outlines from the USGS. Landing coordinates: NASA NSSDCA and Lunar Reconnaissance Orbiter Camera site
+          reports.
         </p>
       </aside>
     </div>

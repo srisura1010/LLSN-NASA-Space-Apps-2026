@@ -297,7 +297,9 @@ function AboutPanel({ entries, loading }: Props) {
               model, over a smooth sphere, agree with the Horizons observer tracks at the nine region centres to
               within 0.01° at every hour of 2027. The surface is the colour and elevation maps of the NASA Scientific
               Visualization Studio CGI Moon Kit, made from Lunar Reconnaissance Orbiter camera and LOLA data, printed
-              in grey with exaggerated relief shading and no cast shadows. Earlier landing sites are marked for
+              in grey with exaggerated relief shading and no cast shadows. Zoomed in, sharper surface detail is loaded
+              for the area in view from NASA Moon Trek map tiles (the LROC wide-angle camera global mosaic, and its
+              south polar mosaic south of 67.5° S); the Detail tiles switch turns this off for offline use. Earlier landing sites are marked for
               context at the coordinates published by NASA&apos;s Space Science Data Coordinated Archive (NSSDCA) and
               the mission teams.
             </p>

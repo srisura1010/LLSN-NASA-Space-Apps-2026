@@ -81,6 +81,28 @@ the United States; Space Apps asks that each source is credited.
   (`public/data/sky/*.json`) to 0.003 degrees at every hour of 2027.
 - **Textures:** the CGI Moon Kit colour and elevation maps listed above,
   printed in grey with relief shading from the slopes of the elevation maps.
+- **Detail tiles (fetched at run time, not stored in the repo):** NASA Moon
+  Trek WMTS, https://trek.nasa.gov/moon/, loaded by
+  `moon-planner/src/components/moon/tiles/` for the area in view when the
+  globe is zoomed in, and printed in the same grey as the bundled maps. Tile
+  grids read from each layer's `WMTSCapabilities.xml` on 2026-11-14; 256 px
+  tiles, `Access-Control-Allow-Origin: *`. The selector and cache are checked
+  by `moon-planner/scripts/check-moon-tiles.ts`
+  (`npx tsx scripts/check-moon-tiles.ts`).
+  - `LRO_WAC_Mosaic_Global_303ppd_v02` (LROC Wide Angle Camera global
+    morphology mosaic, equirectangular, levels 0 to 8; levels 4 to 8 used,
+    north of 67.5 S):
+    `https://trek.nasa.gov/tiles/Moon/EQ/LRO_WAC_Mosaic_Global_303ppd_v02/1.0.0/default/default028mm/{z}/{row}/{col}.jpg`,
+    capabilities at
+    https://trek.nasa.gov/tiles/Moon/EQ/LRO_WAC_Mosaic_Global_303ppd_v02/1.0.0/WMTSCapabilities.xml
+  - `LRO_WAC_Mosaic_SPole60_100m_v02` (LROC WAC south polar mosaic, polar
+    stereographic, 100 m, levels 0 to 5; levels 3 to 5 used, south of
+    67.5 S):
+    `https://trek.nasa.gov/tiles/Moon/SP/LRO_WAC_Mosaic_SPole60_100m_v02/1.0.0/default/default028mm/{z}/{row}/{col}.png`,
+    capabilities at
+    https://trek.nasa.gov/tiles/Moon/SP/LRO_WAC_Mosaic_SPole60_100m_v02/1.0.0/WMTSCapabilities.xml
+  - Credit: NASA/GSFC/Arizona State University (LROC), served by NASA Solar
+    System Treks (NASA/JPL-Caltech).
 - **Region outlines:** `moon-planner/public/data/artemis3-regions.geojson`
   (USGS, listed above), draped on the globe when zoomed in on the south pole.
 - **Earlier landing coordinates** (planetocentric, east-positive, checked
