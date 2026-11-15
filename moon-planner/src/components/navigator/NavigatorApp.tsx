@@ -41,6 +41,7 @@ import MissionControls, {
 import SiteBulletin, { covers } from "./SiteBulletin";
 import ComparePanel, { tiedRanks, type CompareOption } from "./ComparePanel";
 import AboutPanel from "./AboutPanel";
+import LaunchPanel, { type LaunchPick } from "../launch/LaunchPanel";
 import LevelNav, { type Level } from "../levels/LevelNav";
 
 const TerrainPlate = dynamic(() => import("./TerrainPlate"), { ssr: false, loading: () => <PlateLoading /> });
@@ -66,11 +67,12 @@ const PLAY_SPAN_MS = 12_000;
 /** The launch sites in the shape the System view draws: marks plus the allowed azimuth fan. */
 const LAUNCH_MARKS = launchSites.map((s) => ({ id: s.id, name: s.name, group: s.group, lat: s.lat, lon: s.lon, azimuthRanges: s.azimuths.map((r) => [r.min, r.max] as [number, number]) }));
 
-type View = "navigator" | "moon" | "system" | "compare" | "about";
+type View = "navigator" | "moon" | "system" | "launch" | "compare" | "about";
 const TABS: { id: View; label: string }[] = [
   { id: "navigator", label: "Navigator" },
   { id: "moon", label: "Moon" },
   { id: "system", label: "System" },
+  { id: "launch", label: "Launch" },
   { id: "compare", label: "Compare" },
   { id: "about", label: "About & data" },
 ];
@@ -406,8 +408,13 @@ const samePoint = (a: { lat: number; lon: number }, b: { lat: number; lon: numbe
 
 export default function NavigatorApp() {
   const params = useSearchParams();
-  // TODO(launch window, step 3): remove with the ?launchdemo=1 sample transfer below.
-  const [launchDemo] = useState(() => Boolean(params.get("launchdemo")));
+  // Launch from Earth: the chosen launch site and lift-off, shared by the Launch tab and the System view.
+  const [launchSiteId, setLaunchSiteId] = useState<string | null>(null);
+  const [launchPick, setLaunchPick] = useState<LaunchPick | null>(null);
+  const transferArc = useMemo(
+    () => (launchPick ? { launchMs: launchPick.launchMs, arrivalMs: launchPick.arrivalMs, launchSiteId: launchPick.launchSiteId } : null),
+    [launchPick],
+  );
   const pathname = usePathname();
   const query = params.toString();
   const [init] = useState(() => readUrl(new URLSearchParams(query)));
@@ -1184,7 +1191,9 @@ export default function NavigatorApp() {
             entry={arrival}
             levelNav={<LevelNav level="system" onLevel={stepLevel} />}
             launchSites={LAUNCH_MARKS}
-            transferArc={launchDemo ? { launchMs: systemNow, arrivalMs: systemNow + 3.2 * 86_400_000, launchSiteId: "kennedy" } : null}
+            selectedLaunchSiteId={launchSiteId ?? undefined}
+            onSelectLaunchSite={setLaunchSiteId}
+            transferArc={transferArc}
             className="h-full"
           />
         </div>
@@ -1209,6 +1218,20 @@ export default function NavigatorApp() {
             onPointTerrain={pointToTerrain}
             onPointCompare={comparePoint}
             className="h-full"
+          />
+        </div>
+      )}
+
+      {view === "launch" && (
+        <div role="tabpanel" id="view-launch" aria-labelledby="tab-launch" className="relative flex min-h-0 flex-1 flex-col xl:overflow-hidden">
+          <LaunchPanel
+            arrivalMs={startMs}
+            windowHours={durationHours}
+            siteName={meta.name}
+            selectedLaunchSiteId={launchSiteId}
+            onSelectLaunchSite={setLaunchSiteId}
+            onPickOpportunity={setLaunchPick}
+            className="min-h-0 flex-1 overflow-y-auto"
           />
         </div>
       )}
