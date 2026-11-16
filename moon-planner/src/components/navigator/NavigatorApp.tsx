@@ -37,7 +37,10 @@ import { ChevronMark, Drawer, ErrorBoundary, Segmented, Toast } from "../ui";
 import Rail from "../shell/Rail";
 import Dock from "./Dock";
 import LevelClock, { type ClockRange } from "./LevelClock";
-import { useStored, useWideViewport } from "@/state/stored";
+import { useMounted, useStored, useWideViewport, writeStored } from "@/state/stored";
+import Tour from "../tutorial/Tour";
+import TourNote from "../tutorial/TourNote";
+import { TOUR_SEEN_KEY, type TourControls } from "../tutorial/steps";
 import AppBar, { type Mode } from "../shell/AppBar";
 
 type PanelTab = "ranking" | "details" | "horizon";
@@ -708,6 +711,41 @@ function Navigator() {
   // The inspector rail's body at the Moon and System levels; those views draw their side panel into it.
   const [inspectorEl, setInspectorEl] = useState<HTMLDivElement | null>(null);
 
+  // ---- Guided tour ----
+  // `?tour=1` starts it and `?tour=0` hides the first-visit note; both are read once and not written back.
+  const [tourParam] = useState(() => params.get("tour"));
+  const [tourOpen, setTourOpen] = useState(() => tourParam === "1");
+  const [tourSeen] = useStored<boolean>(TOUR_SEEN_KEY, false);
+  const mounted = useMounted();
+  const startTour = useCallback(() => {
+    writeStored(TOUR_SEEN_KEY, "true");
+    setTourOpen(true);
+  }, []);
+  const startTourFromAbout = useCallback(() => {
+    setAboutOpen(false);
+    startTour();
+  }, [setAboutOpen, startTour]);
+  const dismissNote = useCallback(() => writeStored(TOUR_SEEN_KEY, "true"), []);
+  const endTour = useCallback(() => {
+    writeStored(TOUR_SEEN_KEY, "true");
+    setTourOpen(false);
+  }, []);
+  const tourControls = useMemo<TourControls>(
+    () => ({
+      setView: changeView,
+      setRails: (l, r) => {
+        setLeftOpen(l);
+        setRightOpen(r);
+      },
+      setHorizon: (o) => writeStored("llsn.dock.open.v2", JSON.stringify(o)),
+      setPanel: setPanelTab,
+      setWindowOpen,
+      setAboutOpen,
+    }),
+    [changeView, setLeftOpen, setRightOpen, setAboutOpen],
+  );
+  const showTourNote = mounted && !tourSeen && !tourOpen && tourParam !== "0" && tourParam !== "1";
+
   // ---- URL ----
 
   const urlAt = playing ? 0 : Math.round(((nowMs - startMs) / HOUR) * 10) / 10;
@@ -938,6 +976,7 @@ function Navigator() {
         windowOpen={windowOpen}
         onWindowOpen={setWindowOpen}
         onAbout={openAbout}
+        onTutorial={startTour}
         windowControls={(close) => (
           <Controls
             startMs={startMs}
@@ -965,6 +1004,7 @@ function Navigator() {
             id="rail-regions"
             side="left"
             label="Regions"
+            tour="regions"
             open={leftOpen}
             onOpenChange={setLeftOpen}
             widthClass="xl:w-[300px]"
@@ -987,6 +1027,7 @@ function Navigator() {
           <div className={`flex min-h-0 min-w-0 flex-1 flex-col max-xl:order-1 ${fade}`}>
             <div
               data-viewer
+              data-tour="viewer"
               className="relative h-[max(22rem,60svh)] min-h-0 overflow-hidden bg-paper-2 xl:h-auto xl:flex-1"
             >
               {view === "navigator" && (
@@ -1059,6 +1100,7 @@ function Navigator() {
                   className="h-full"
                 />
               )}
+              {showTourNote && <TourNote onStart={startTour} onDismiss={dismissNote} />}
             </div>
 
             {(view === "moon" || view === "system") && (
@@ -1177,11 +1219,15 @@ function Navigator() {
       )}
 
       {view === "launch" && (
-        <div role="tabpanel" id="workspace" aria-labelledby="mode-launch" className="relative flex min-h-0 flex-1 flex-col xl:overflow-hidden">
+        <div role="tabpanel" id="workspace" aria-labelledby="mode-launch" data-tour="launch-panel" className="relative flex min-h-0 flex-1 flex-col xl:overflow-hidden">
           <LaunchPanel
             arrivalMs={startMs}
             windowHours={durationHours}
             siteName={meta.name}
+            landingSite={selectedData}
+            landingSiteId={effectiveId}
+            landingLat={meta.lat}
+            landingLon={meta.lon}
             selectedLaunchSiteId={launchSiteId}
             onSelectLaunchSite={setLaunchSiteId}
             onPickOpportunity={setLaunchPick}
@@ -1194,7 +1240,7 @@ function Navigator() {
       )}
 
       {view === "compare" && (
-        <div role="tabpanel" id="workspace" aria-labelledby="mode-compare" className="relative min-h-0 flex-1 xl:overflow-y-auto">
+        <div role="tabpanel" id="workspace" aria-labelledby="mode-compare" data-tour="compare-panel" className="relative min-h-0 flex-1 xl:overflow-y-auto">
           <ComparePanel
             options={compareOptions}
             picked={comparePicked}
@@ -1224,8 +1270,13 @@ function Navigator() {
             </svg>
           </button>
         </div>
-        <AboutPanel entries={aboutEntries} loading={!rankingReady} />
+        <AboutPanel
+          entries={aboutEntries}
+          loading={!rankingReady}
+          onStartTour={startTourFromAbout}
+        />
       </Drawer>
+      {tourOpen && <Tour open controls={tourControls} wide={wide} onClose={endTour} />}
     </div>
   );
 }

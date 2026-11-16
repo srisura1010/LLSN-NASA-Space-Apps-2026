@@ -793,7 +793,7 @@ export default function MoonView({
               ]}
             />
             {onPoint && (
-              <ToggleButton on={pickMode} disabled={!frame || !gl} onClick={() => setPickMode((v) => !v)} title="Click the globe to drop a pin and read the Sun and Earth there. Shift-click works at any time." className={pickMode ? "" : "bg-paper"}>
+              <ToggleButton data-tour="pick-point" on={pickMode} disabled={!frame || !gl} onClick={() => setPickMode((v) => !v)} title="Click the globe to drop a pin and read the Sun and Earth there. Shift-click works at any time." className={pickMode ? "" : "bg-paper"}>
                 Pick a point
               </ToggleButton>
             )}

@@ -16,6 +16,7 @@ export function Popover({
   buttonClassName = "",
   panelClassName = "",
   title,
+  tourId,
 }: {
   /** Accessible name of the panel. */
   label: string;
@@ -32,6 +33,8 @@ export function Popover({
   panelClassName?: string;
   /** Tooltip on the trigger. */
   title?: string;
+  /** Guided-tour anchor: `data-tour` on the trigger, and `<id>-panel` on the panel. */
+  tourId?: string;
 }) {
   const id = useId();
   const [ownOpen, setOwnOpen] = useState(false);
@@ -83,6 +86,7 @@ export function Popover({
         aria-controls={open ? `${id}-panel` : undefined}
         aria-haspopup="dialog"
         title={title}
+        data-tour={tourId}
         onClick={() => setOpen(!open)}
         className={buttonClassName}
       >
@@ -95,6 +99,7 @@ export function Popover({
           role="dialog"
           aria-label={label}
           tabIndex={-1}
+          data-tour={tourId ? `${tourId}-panel` : undefined}
           className={`absolute z-50 ${side === "above" ? "bottom-full mb-1" : "top-full mt-1"} border border-ink bg-paper shadow-[0_6px_24px_rgb(18_26_34/0.18)] outline-none ${
             align === "end" ? "right-0" : "left-0"
           } ${panelClassName}`}

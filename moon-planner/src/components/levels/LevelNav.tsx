@@ -14,7 +14,7 @@ const LEVELS: { id: Level; label: string }[] = [
 /** System · Moon · Site, the current one pressed. Zooming past a limit does the same by wheel. */
 export default function LevelNav({ level, onLevel, className = "" }: { level: Level; onLevel: (l: Level) => void; className?: string }) {
   return (
-    <nav aria-label="Zoom level" className={`pointer-events-auto ${className}`}>
+    <nav aria-label="Zoom level" data-tour="levels" className={`pointer-events-auto ${className}`}>
       <ol className="flex border border-ink bg-paper shadow-[0_1px_4px_rgb(18_26_34/0.12)]">
         {LEVELS.map((l, k) => {
           const on = l.id === level;

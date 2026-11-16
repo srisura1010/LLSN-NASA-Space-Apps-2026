@@ -231,7 +231,7 @@ function SiteBulletin({
 
   return (
     <div className={`flex flex-col bg-paper ${className}`}>
-      <header className="px-5 pt-4 pb-3">
+      <header data-tour="verdict" className="px-5 pt-4 pb-3">
         <h2 id="bulletin-title" className="text-title font-semibold leading-tight text-ink text-balance">
           {name}
         </h2>

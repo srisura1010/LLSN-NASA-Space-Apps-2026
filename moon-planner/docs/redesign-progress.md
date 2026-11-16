@@ -257,3 +257,29 @@ below. Status: **Phases 1 to 5 done.** Nothing is committed.
   2–3 rows (~125 px) in the Earth–Moon and Earth framings.
 - Viewer toolbar buttons are 32 px (not 44) on phones; Play, modes, chip, info and the panel switch are 44 px.
 - Delete the test Horizons cache files (`data/horizons-cache/*_-80.0010_45.0000_*.json`) before committing.
+
+## Tutorial (guided tour)
+
+- **Files:** `src/components/tutorial/Tour.tsx` (engine: coach-mark card, SVG dim with even-odd cut-outs, ink outline,
+  per-frame target tracking, placement, keyboard, focus), `steps.ts` (the 11 steps, their `prepare` actions,
+  `finishState`, `TOUR_SEEN_KEY`), `TourNote.tsx` (first-visit note). Wired in `NavigatorApp` (`tourOpen`,
+  `tourControls`), `AppBar` (`onTutorial`), `AboutPanel` (`onStartTour` line under the introduction).
+- **Steps:** Welcome (centred) · 3D view · Regions · Mission window (opens the chip's panel from md) · Verdict ·
+  Time/dock · Horizon plot (opens the dock panel; the Horizon tab below xl) · Levels · Moon level (Pick a point) ·
+  Launch mode · Compare and About & data ("Start planning"). Each step's `prepare` sets view, rails, dock panel,
+  stacked panel tab and closes the window popover/About drawer, so Back works from anywhere. Steps with a "Try it"
+  line (3D view, Regions, dock) let clicks through the cut-out; otherwise clicks on the page are swallowed.
+- **Ending or skipping** (Esc, ×, Skip tour, Start planning) leaves Plan / Site, both rails open, the horizon panel
+  open, Ranking tab below xl, popovers and drawer closed; focus goes back to the trigger or the Tutorial button.
+- **Anchors (`data-tour`):** `viewer`, `regions` (left Rail `tour` prop), `window` + `window-panel` (Popover
+  `tourId`), `verdict` (bulletin header), `dock` (rail + readout in HorizonPlot), `horizon` (the plot in HorizonPlot),
+  `levels` (LevelNav), `pick-point` (MoonView), `mode-plan|launch|compare` (tabs), `mode-menu` (phone menu),
+  `tutorial`, `about`, `launch-panel`, `compare-panel`. Groups like `mode-launch|mode-menu` take the first visible.
+- **Storage / URL:** `llsn.tour.seen.v1` (set on start, finish, Not now or close of the note). `?tour=1` starts the
+  tour, `?tour=0` hides the note; both are read once at load and dropped by the URL writer (not in the plan store).
+- **Phones (< 768 px):** the card is a bottom sheet and the page scrolls the target into the space above it. The
+  Tutorial entry is in the "Plan ▾" mode menu below sm, an icon button sm–md, icon + text from md.
+- **Verified** (`scratchpad/tools/tour.cjs`, shots in `shots/tour/`): 1440x900, 1366x768, 390x844 — every step's
+  target present, in view and not covered by the card (on phones the tall Regions list is 31% under the sheet, its
+  top visible), card fully on screen, Back, ← →, Esc, Skip, Tutorial restart, end state, note not back after reload,
+  `?tour=1`, `?tour=0`, no sideways overflow, 0 console errors.

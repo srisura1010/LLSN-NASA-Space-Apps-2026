@@ -444,7 +444,7 @@ export default function HorizonPlot({
         {overflow ? <span className="basis-full text-label text-ink-2">Scroll sideways for all 360°</span> : null}
       </figcaption>
 
-      <div className={`relative ${plotShown ? "" : "hidden"}`}>
+      <div data-tour="horizon" className={`relative ${plotShown ? "" : "hidden"}`}>
         <div
           ref={scrollRef}
           className="overflow-x-auto overscroll-x-contain"
@@ -470,7 +470,7 @@ export default function HorizonPlot({
       </div>
 
       {rail && onScrub ? (
-        <>
+        <div data-tour={dock ? "dock" : undefined}>
           <div style={{ paddingRight: overflow ? 0 : MARGIN_RIGHT }}>
             <TimelineStrip
               site={site}
@@ -508,7 +508,7 @@ export default function HorizonPlot({
               {layout ? <Legend layout={layout} compact /> : null}
             </>
           )}
-        </>
+        </div>
       ) : (
         <div className="flex flex-wrap items-start justify-between gap-x-10 gap-y-3 pt-2">
           {layout ? <Legend layout={layout} /> : null}

@@ -25,6 +25,7 @@ export default function Rail({
   onOpenChange,
   widthClass,
   className = "",
+  tour,
   children,
 }: {
   id: string;
@@ -36,6 +37,8 @@ export default function Rail({
   /** Width when open from xl, e.g. "xl:w-[300px]". */
   widthClass: string;
   className?: string;
+  /** Guided-tour anchor (`data-tour`). */
+  tour?: string;
   children: ReactNode;
 }) {
   // Focus follows the toggle: the button pressed goes away, so its counterpart takes focus.
@@ -60,6 +63,7 @@ export default function Rail({
       className={`relative flex min-h-0 shrink-0 flex-col border-rule ${border} ${open ? widthClass : "xl:w-9"} ${className}`}
       data-rail={side}
       data-open={open ? "true" : "false"}
+      data-tour={tour}
     >
       {open ? (
         <div className="hidden h-9 shrink-0 items-center justify-between border-b border-rule pr-1.5 pl-4 xl:flex">

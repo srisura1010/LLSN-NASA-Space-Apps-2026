@@ -11,6 +11,8 @@ type Entry = { id: string; name: string; site: SiteData | null };
 type Props = {
   entries: Entry[];
   loading: boolean;
+  /** Starts the guided tour (shown as a line under the introduction). */
+  onStartTour?: () => void;
 };
 
 const SECTIONS = [
@@ -204,7 +206,7 @@ function ValidationTable({ entries, loading }: Props) {
   );
 }
 
-function AboutPanel({ entries, loading }: Props) {
+function AboutPanel({ entries, loading, onStartTour }: Props) {
   return (
     <div className="mx-auto w-full max-w-[72rem] px-4 py-6 xl:grid xl:grid-cols-[13rem_minmax(0,1fr)] xl:gap-12 xl:px-8 xl:py-8">
       <nav aria-label="On this page" className="hidden xl:block">
@@ -226,6 +228,15 @@ function AboutPanel({ entries, loading }: Props) {
           landing region see the Sun above its real terrain horizon, for power, and when does it see Earth, for direct
           radio contact? It ranks the regions on that answer and shows what a slip, or the next region over, changes.
         </p>
+        {onStartTour && (
+          <p className="mt-3 text-body leading-relaxed text-ink-2">
+            New to it? The{" "}
+            <button type="button" onClick={onStartTour} data-about-tour className="font-medium text-earth underline decoration-1 underline-offset-[3px] hover:text-ink">
+              one-minute tutorial
+            </button>{" "}
+            walks through each part of the screen; start it again any time from Tutorial in the top bar.
+          </p>
+        )}
 
         <div className="mt-9">
           <Section id="about-regions" title="The nine regions">

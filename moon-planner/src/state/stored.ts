@@ -70,6 +70,17 @@ export function useTallViewport(px: number): boolean {
   );
 }
 
+const noSubscribe = () => () => {};
+
+/** False on the server and during hydration, true once the page runs on the client. */
+export function useMounted(): boolean {
+  return useSyncExternalStore(
+    noSubscribe,
+    () => true,
+    () => false,
+  );
+}
+
 /**
  * True when the window is at least `px` wide. The server (and the first
  * client render) assumes a wide screen, which is the desktop layout.

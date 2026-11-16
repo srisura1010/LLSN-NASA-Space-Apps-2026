@@ -29,6 +29,18 @@ function InfoMark({ className = "size-[1.125rem]" }: { className?: string }) {
   );
 }
 
+/** The tutorial's mark: a route of three stops. */
+function TourMark({ className = "size-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" className={`shrink-0 ${className}`}>
+      <path d="M3.5 12.5 8 4.5l4.5 8" stroke="currentColor" strokeWidth="1.3" strokeDasharray="2 1.6" />
+      <circle cx="3.5" cy="12.5" r="1.75" fill="currentColor" />
+      <circle cx="8" cy="4.5" r="1.75" className="fill-paper" stroke="currentColor" strokeWidth="1.3" />
+      <circle cx="12.5" cy="12.5" r="1.75" className="fill-paper" stroke="currentColor" strokeWidth="1.3" />
+    </svg>
+  );
+}
+
 function ModeTabs({ mode, onMode }: { mode: Mode; onMode: (m: Mode) => void }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const onKey = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {
@@ -52,6 +64,7 @@ function ModeTabs({ mode, onMode }: { mode: Mode; onMode: (m: Mode) => void }) {
             type="button"
             role="tab"
             id={`mode-${m.id}`}
+            data-tour={`mode-${m.id}`}
             aria-selected={on}
             aria-controls={on ? "workspace" : undefined}
             tabIndex={on ? 0 : -1}
@@ -70,12 +83,13 @@ function ModeTabs({ mode, onMode }: { mode: Mode; onMode: (m: Mode) => void }) {
 }
 
 /** Below sm the modes are a menu: one button with the current mode, the three modes in a panel under it. */
-function ModeMenu({ mode, onMode }: { mode: Mode; onMode: (m: Mode) => void }) {
+function ModeMenu({ mode, onMode, onTutorial }: { mode: Mode; onMode: (m: Mode) => void; onTutorial?: () => void }) {
   const current = MODES.find((m) => m.id === mode) ?? MODES[0];
   return (
     <Popover
       label="Mode"
       align="start"
+      tourId="mode-menu"
       title="Change mode: Plan, Launch or Compare"
       buttonClassName="inline-flex h-11 items-center gap-1.5 border border-ink bg-paper px-3 text-body font-semibold text-ink transition-colors duration-150 hover:bg-paper-3 aria-expanded:bg-paper-3"
       button={
@@ -107,6 +121,22 @@ function ModeMenu({ mode, onMode }: { mode: Mode; onMode: (m: Mode) => void }) {
               </button>
             </li>
           ))}
+          {onTutorial && (
+            <li className="mt-1 border-t border-rule pt-1">
+              <button
+                type="button"
+                data-tour="tutorial"
+                onClick={() => {
+                  close();
+                  onTutorial();
+                }}
+                className="flex h-11 w-full items-center gap-2 px-3 text-left text-body font-medium text-ink-2 transition-colors duration-150 hover:bg-paper-3 hover:text-ink"
+              >
+                <TourMark />
+                Tutorial
+              </button>
+            </li>
+          )}
         </ul>
       )}
     </Popover>
@@ -123,6 +153,7 @@ export default function AppBar({
   windowOpen,
   onWindowOpen,
   onAbout,
+  onTutorial,
   leading,
 }: {
   mode: Mode;
@@ -135,6 +166,8 @@ export default function AppBar({
   windowOpen?: boolean;
   onWindowOpen?: (open: boolean) => void;
   onAbout: () => void;
+  /** Starts the guided tour. */
+  onTutorial?: () => void;
   /** Extra buttons before the mode switcher (drawer toggles on narrow screens). */
   leading?: ReactNode;
 }) {
@@ -155,7 +188,7 @@ export default function AppBar({
       </Link>
       {leading}
       <div className="flex items-center sm:hidden">
-        <ModeMenu mode={mode} onMode={onMode} />
+        <ModeMenu mode={mode} onMode={onMode} onTutorial={onTutorial} />
       </div>
       <nav aria-label="Modes" className="hidden items-stretch sm:flex lg:absolute lg:inset-y-0 lg:left-1/2 lg:-translate-x-1/2">
         <ModeTabs mode={mode} onMode={onMode} />
@@ -163,6 +196,7 @@ export default function AppBar({
       <div className="ml-auto flex h-14 shrink-0 items-center gap-1 sm:gap-1.5">
         <Popover
           label="Mission window"
+          tourId="window"
           open={windowOpen}
           onOpenChange={onWindowOpen}
           title={`Mission window: ${fmtSpan(startMs, endMs)}`}
@@ -184,8 +218,21 @@ export default function AppBar({
         >
           {(close) => windowControls(close)}
         </Popover>
+        {onTutorial && (
+          <button
+            type="button"
+            onClick={onTutorial}
+            data-tour="tutorial"
+            title="A one-minute tour of the Navigator"
+            className="hidden h-11 items-center gap-1.5 px-2 text-small font-medium text-ink-2 transition-colors duration-150 hover:bg-paper-3 hover:text-ink sm:inline-flex md:h-9 md:px-2.5"
+          >
+            <TourMark />
+            <span className="max-md:sr-only">Tutorial</span>
+          </button>
+        )}
         <button
           type="button"
+          data-tour="about"
           onClick={onAbout}
           aria-label="About & data"
           title="About & data: how the numbers are made, checked and credited"
