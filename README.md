@@ -43,7 +43,7 @@ Next.js, React, TypeScript, Tailwind CSS, Three.js (React Three Fiber, drei), zu
 
 ## Data sources
 
-All NASA and other sources are listed in [`DATA_SOURCES.md`](DATA_SOURCES.md). The main ones are JPL Horizons, LRO LOLA elevation and illumination data (NASA Goddard PGDA), NASA Moon Trek, the NASA SVS CGI Moon Kit, Blue Marble, and USGS Artemis III region outlines.
+The main sources used are JPL Horizons, LRO LOLA elevation and illumination data (NASA Goddard PGDA), NASA Moon Trek, the NASA SVS CGI Moon Kit, Blue Marble, and USGS Artemis III region outlines.
 
 ## How AI was used
 
