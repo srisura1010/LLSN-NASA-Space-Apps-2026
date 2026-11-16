@@ -31,12 +31,12 @@ export type DockState = { open: boolean; plotHeight: number; controls: ReactNode
 
 export default function Dock({ panelId, children }: { panelId: string; children: (d: DockState) => ReactNode }) {
   const winH = useWindowHeight();
-  const [storedOpen, setOpen] = useStored<boolean | null>("llsn.dock.open.v2", null);
+  const [storedOpen, setOpen] = useStored<boolean | null>("llsn.dock.open.v3", null);
   const [storedH, setStoredH] = useStored<number | null>("llsn.dock.h", null);
   // Below xl the horizon plot is a panel of its own under the dock (the workspace's panel switch),
   // so the dock keeps only the rail and the readout there.
   const wide = useWideViewport(1280);
-  const open = wide && (storedOpen ?? false);
+  const open = wide && (storedOpen ?? true);
   const maxH = Math.max(MIN_H + 40, Math.round(winH * 0.42));
   const defaultH = Math.round(Math.min(200, Math.max(124, winH * 0.165)));
   const clamp = useCallback((h: number) => Math.round(Math.min(maxH, Math.max(MIN_H, h))), [maxH]);

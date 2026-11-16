@@ -202,7 +202,7 @@ the United States; Space Apps asks that each source is credited.
   horizon with the polar mosaics.
 - **Check (2026-11-15):** horizon from these grids against
   `public/data/horizon/<id>.json` at Malapert, Haworth, Nobile 1 and Mouton
-  plateau: mean absolute difference 0.17 to 0.41 degrees, largest 1.79
+  plateau: mean absolute difference 0.22 to 0.45 degrees, largest 1.79
   degrees. Global and polar mosaics agree to 2 m (55 N) and 18 m (55 S) mean
   on the 600 m grid.
 - **Citation:** Smith, D. E., et al. (2010), "The Lunar Orbiter Laser

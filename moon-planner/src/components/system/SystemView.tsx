@@ -1529,7 +1529,7 @@ export default function SystemView({
                   { id: "earth", label: "Earth" },
                 ]}
               />
-              <Popover label="Scale of the diagram" button={<>Scale</>} buttonClassName={`${toggleClass(false, "md")} bg-paper`} panelClassName="w-[19rem] p-3">
+              <Popover label="Scale of the diagram" button={<>Scale</>} buttonClassName={`${toggleClass(false, "md")} bg-paper`} panelClassName="w-[19rem] p-3 max-md:fixed max-md:inset-x-2 max-md:top-[8.75rem] max-md:bottom-auto max-md:w-auto max-md:max-h-[70svh] max-md:overflow-y-auto">
                 <Segmented
                   label="Scale"
                   value={scale}
@@ -1550,7 +1550,7 @@ export default function SystemView({
                     : "True scale keeps real sizes and distances, so the bodies are specks inside the rings that mark them."}
                 </p>
               </Popover>
-              <Popover label="About this view" button={<>About</>} title="How to read the System view" buttonClassName={`${toggleClass(false, "md")} bg-paper`} panelClassName="w-[min(26rem,calc(100vw-2rem))] p-3">
+              <Popover label="About this view" button={<>About</>} title="How to read the System view" buttonClassName={`${toggleClass(false, "md")} bg-paper`} panelClassName="w-[min(26rem,calc(100vw-2rem))] p-3 max-md:fixed max-md:inset-x-2 max-md:top-[8.75rem] max-md:bottom-auto max-md:w-auto max-md:max-h-[70svh] max-md:overflow-y-auto">
                 <p className="text-small leading-snug text-ink">{caption}</p>
               </Popover>
             </div>

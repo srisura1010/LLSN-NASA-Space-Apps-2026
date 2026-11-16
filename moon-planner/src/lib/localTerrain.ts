@@ -324,10 +324,18 @@ export function loadLocalTerrain(lat: number, lon: number): Promise<LocalTerrain
       const source = demKindFor(lat);
       const plate = PLATE_GRID[source];
       const half = (plate.n * plate.px) / 2;
+      // Moon Trek can accept a request and then stall; give up so the smooth-horizon fallback can take over.
+      const signal = AbortSignal.timeout(25_000);
       const [plateSrc, nearSrc] = await Promise.all([
-        fetchSource(projection, half, plate.px),
-        source === "global" ? null : fetchSource(projection, (NEAR_N * NEAR_PX_M) / 2, NEAR_PX_M),
-      ]);
+        fetchSource(projection, half, plate.px, signal),
+        source === "global" ? null : fetchSource(projection, (NEAR_N * NEAR_PX_M) / 2, NEAR_PX_M, signal),
+      ]).catch((e: unknown) => {
+        const name = e instanceof Error ? e.name : "";
+        if (name === "TimeoutError" || name === "AbortError") {
+          throw new Error("NASA Moon Trek took too long to send the terrain. Try again in a minute.");
+        }
+        throw e;
+      });
       const grid = resample(projection, plateSrc, plate.n, plate.px);
       const near = nearSrc ? resample(projection, nearSrc, NEAR_N, NEAR_PX_M) : grid;
       let min = Infinity;

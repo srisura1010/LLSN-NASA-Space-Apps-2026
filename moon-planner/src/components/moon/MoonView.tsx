@@ -797,7 +797,7 @@ export default function MoonView({
                 Pick a point
               </ToggleButton>
             )}
-            <Popover label="Layers on the globe" button={<>Layers</>} buttonClassName={`${toggleClass(false, "md")} bg-paper`} panelClassName="w-[17rem] p-2">
+            <Popover label="Layers on the globe" button={<>Layers</>} buttonClassName={`${toggleClass(false, "md")} bg-paper`} panelClassName="w-[17rem] p-2 max-md:fixed max-md:inset-x-2 max-md:top-[8.75rem] max-md:bottom-auto max-md:w-auto max-md:max-h-[70svh] max-md:overflow-y-auto">
               <fieldset>
                 <legend className="px-1 pb-1.5 text-label font-semibold tracking-[0.08em] text-ink-2 uppercase">Show on the globe</legend>
                 <label className="flex cursor-pointer items-center gap-2 px-1 py-1 text-body text-ink hover:bg-paper-2">
@@ -817,7 +817,7 @@ export default function MoonView({
                 </p>
               )}
             </Popover>
-            <Popover label="About this view" button={<>About</>} title="How to read the Moon view" buttonClassName={`${toggleClass(false, "md")} bg-paper`} panelClassName="w-[min(24rem,calc(100vw-2rem))] p-3">
+            <Popover label="About this view" button={<>About</>} title="How to read the Moon view" buttonClassName={`${toggleClass(false, "md")} bg-paper`} panelClassName="w-[min(24rem,calc(100vw-2rem))] p-3 max-md:fixed max-md:inset-x-2 max-md:top-[8.75rem] max-md:bottom-auto max-md:w-auto max-md:max-h-[70svh] max-md:overflow-y-auto">
               <p className="text-body leading-snug text-ink">
                 Drag to turn the globe, scroll to zoom, shift-click to pick a point. Zooming all the way in opens the site level of the place at the centre of the view (the selected region over the south pole); zooming out opens the System level.
               </p>

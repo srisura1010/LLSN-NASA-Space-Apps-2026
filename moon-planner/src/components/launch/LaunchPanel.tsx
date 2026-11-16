@@ -279,7 +279,7 @@ function shortReason(o: LaunchOpportunity, site: LaunchSite): string | null {
   if (o.rating === "good") return null;
   if (o.rating === "blocked") return plainReason(o, site);
   return Math.abs(site.lat) > 52
-    ? `Latitude ${Math.abs(site.lat).toFixed(0)}° forces a ${o.inclinationDeg.toFixed(0)}° orbit.`
+    ? `Latitude ${Math.abs(site.lat).toFixed(0)}° forces ${/^8/.test(o.inclinationDeg.toFixed(0)) ? "an" : "a"} ${o.inclinationDeg.toFixed(0)}° orbit.`
     : `Allowed headings point off due east: a ${o.inclinationDeg.toFixed(0)}° orbit.`;
 }
 
@@ -637,7 +637,7 @@ export default function LaunchPanel({
               <path d="M2 6.25 4.75 9 10 3.25" className="stroke-paper" strokeWidth="1.75" />
             </svg>
           </span>
-          Usable only
+          Can launch only
         </label>
         {results && (
           <p role="status" className="ml-auto pb-1 text-body text-ink-2 tabular-nums">

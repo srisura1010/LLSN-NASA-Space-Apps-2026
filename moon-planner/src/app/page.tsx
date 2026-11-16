@@ -33,12 +33,14 @@ export default function Home() {
               power, and when Earth is in view for a radio call.
             </p>
             <div className="hero-draw mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
-              <a
+              {/* Through the router, and without a history entry, so Back from the tool returns here in one step. */}
+              <Link
                 href="#start"
+                replace
                 className="inline-flex h-11 items-center border border-[#f3f0e8] px-5 text-[1rem] font-semibold text-[#f3f0e8] transition-colors duration-150 hover:bg-[#f3f0e8] hover:text-ink"
               >
                 Choose a region
-              </a>
+              </Link>
               <Link
                 href="/tool"
                 className="inline-flex h-11 items-center text-[1rem] font-semibold text-[#f3f0e8] underline decoration-white/40 decoration-1 underline-offset-[5px] transition-colors duration-150 hover:decoration-[#f3f0e8]"
@@ -47,6 +49,9 @@ export default function Home() {
               </Link>
             </div>
           </div>
+          <p className="pointer-events-none absolute right-4 bottom-3 z-10 bg-black/70 px-2 py-1 text-[0.75rem] font-semibold tracking-[0.04em] text-[#f3f0e8] sm:right-8 lg:right-12">
+            Background image: AI-generated (ChatGPT)
+          </p>
         </header>
       </div>
 
@@ -144,7 +149,7 @@ export default function Home() {
             <a className={textLink} href="https://svs.gsfc.nasa.gov/4720">
               NASA SVS CGI Moon Kit
             </a>
-            . Earth pictures: NASA Blue Marble.
+            . Earth pictures: NASA Blue Marble. Terrain and detail tiles for other sites: NASA Moon Trek. The picture behind this page’s heading is AI-generated (ChatGPT) and is not NASA imagery.
           </p>
           <p className="mt-2">
             Built for the NASA Space Apps Challenge 2026. Not a NASA product. How the team used AI is written up in the

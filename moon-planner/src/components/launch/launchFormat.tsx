@@ -39,7 +39,7 @@ export function fmtOffset(hours: number): string {
 
 export { fmtDeg } from "@/lib/format";
 
-export const STATUS_LABEL: Record<Rating, string> = { good: "Usable", costly: "Usable at a cost", blocked: "Blocked" };
+export const STATUS_LABEL: Record<Rating, string> = { good: "Can launch", costly: "Can launch, at a cost", blocked: "Blocked" };
 
 /** The reason for a costly or blocked rating in a short plain sentence; null when usable. */
 export function plainReason(o: LaunchOpportunity, site: LaunchSite): string | null {
@@ -50,7 +50,7 @@ export function plainReason(o: LaunchOpportunity, site: LaunchSite): string | nu
   if (o.rating === "costly") {
     const gain = `keeps ${Math.round(o.rotationBoostMs)} of 465 m/s from Earth's spin`;
     return Math.abs(site.lat) > COSTLY_INCLINATION_DEG
-      ? `Latitude ${Math.abs(site.lat).toFixed(0)}° forces a ${o.inclinationDeg.toFixed(0)}° orbit; ${gain}.`
+      ? `Latitude ${Math.abs(site.lat).toFixed(0)}° forces ${/^8/.test(o.inclinationDeg.toFixed(0)) ? "an" : "a"} ${o.inclinationDeg.toFixed(0)}° orbit; ${gain}.`
       : `Allowed headings point away from due east, giving a ${o.inclinationDeg.toFixed(0)}° orbit; ${gain}.`;
   }
   return null;

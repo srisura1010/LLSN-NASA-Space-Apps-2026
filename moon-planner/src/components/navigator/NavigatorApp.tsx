@@ -711,8 +711,8 @@ function Navigator() {
 
   // ---- Workspace layout (kept per viewer in localStorage) ----
   const planView = view === "navigator" || view === "moon" || view === "system";
-  const [leftOpen, setLeftOpen] = useStored("llsn.rail.left.v2", false);
-  const [rightOpen, setRightOpen] = useStored("llsn.rail.right.v2", false);
+  const [leftOpen, setLeftOpen] = useStored("llsn.rail.left.v3", true);
+  const [rightOpen, setRightOpen] = useStored("llsn.rail.right.v3", true);
   // Below xl the rails are not beside the viewer: they stack under it and the dock, one at a time,
   // chosen by a switch (with the horizon plot as a third panel at the site level).
   const wide = useWideViewport(1280);
@@ -746,7 +746,7 @@ function Navigator() {
         setLeftOpen(l);
         setRightOpen(r);
       },
-      setHorizon: (o) => writeStored("llsn.dock.open.v2", JSON.stringify(o)),
+      setHorizon: (o) => writeStored("llsn.dock.open.v3", JSON.stringify(o)),
       setPanel: setPanelTab,
       setWindowOpen,
       setAboutOpen,
