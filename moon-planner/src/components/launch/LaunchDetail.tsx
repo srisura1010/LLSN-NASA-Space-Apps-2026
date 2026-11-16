@@ -5,8 +5,12 @@
 
 import type { LaunchSite } from "@/lib/launchSites";
 import { formatAzimuthRanges, type LaunchOpportunity } from "@/lib/launchWindow";
-import { usePlanStore } from "@/state/plan";
-import { Button, ExternalMark } from "../ui";
+import { orbitLine, type LandingConditions } from "@/lib/launchLanding";
+import { fmtDuration, fmtSpell, pct } from "@/lib/format";
+import type { SiteData } from "@/lib/sky";
+import { usePlan, usePlanStore } from "@/state/plan";
+import { AlertMark, Button, ExternalMark } from "../ui";
+import { LandingMarks, StayStrip, orbitLabel } from "./landingMarks";
 import {
   DAY_MS,
   HOUR_MS,
@@ -158,7 +162,7 @@ function AzimuthDial({ site, azimuthDeg, blocked }: { site: LaunchSite; azimuthD
 
 // ---------- Mission timeline ----------
 
-function MissionSteps({ o, transitDays }: { o: LaunchOpportunity; transitDays: number }) {
+function MissionSteps({ o, transitDays, orbitHours, siteName }: { o: LaunchOpportunity; transitDays: number; orbitHours: number; siteName: string }) {
   const lat = `${Math.abs(o.tliLat).toFixed(0)}° ${o.tliLat >= 0 ? "N" : "S"}`;
   const lon = `${Math.abs(o.tliLon).toFixed(0)}° ${o.tliLon >= 0 ? "E" : "W"}`;
   const steps = [
@@ -166,10 +170,16 @@ function MissionSteps({ o, transitDays }: { o: LaunchOpportunity; transitDays: n
     { label: "Parking orbit", value: fmtMinutes(o.coastMin), note: "Climb, then coast in low orbit at 185 km" },
     { label: "Burn for the Moon", value: fmtDateTime(o.tliMs, false), note: `Engine burn over ${lat}, ${lon}` },
     { label: "Transfer", value: `${transitDays} days`, note: "Coasting, engines off" },
-    { label: "Arrival", value: fmtDateTime(o.arrivalMs, false), note: `${fmtOffset(o.arrivalOffsetHours)} against the landing start` },
+    { label: "Arrive at the Moon", value: fmtDateTime(o.arrivalMs, false), note: "Brake into lunar orbit" },
+    { label: "In lunar orbit", value: orbitLabel(orbitHours), note: orbitHours > 0 ? "Check out, then descend" : "Straight down, no time in orbit" },
+    {
+      label: `Landing at ${siteName}`,
+      value: fmtDateTime(o.arrivalMs + orbitHours * HOUR_MS, false),
+      note: `${fmtOffset(o.arrivalOffsetHours)} against the planned landing`,
+    },
   ];
   return (
-    <ol className="grid grid-cols-1 @3xl:grid-cols-5">
+    <ol className="grid grid-cols-1 @3xl:grid-cols-4 @3xl:gap-y-4 @6xl:grid-cols-7">
       {steps.map((s, i) => (
         <li
           key={s.label}
@@ -189,6 +199,82 @@ function MissionSteps({ o, transitDays }: { o: LaunchOpportunity; transitDays: n
   );
 }
 
+// ---------- Landing ----------
+
+function LandingBlock({
+  c,
+  site,
+  siteName,
+  landingLat,
+  windowHours,
+}: {
+  c: LandingConditions | null;
+  site: SiteData | null;
+  siteName: string;
+  landingLat?: number;
+  windowHours: number;
+}) {
+  const gap = usePlan((s) => s.gap);
+  const orbit = landingLat !== undefined && Number.isFinite(landingLat) ? orbitLine(siteName, landingLat) : null;
+  const rows = c
+    ? [
+        { label: "Sun up", value: pct(c.stay.sunlit), loss: false },
+        { label: "Earth in view", value: pct(c.stay.earthVisible), loss: false },
+        { label: "Longest dark", value: fmtSpell(c.stay.longestDarkHours), loss: c.stay.longestDarkHours > gap },
+        { label: "Longest without Earth", value: fmtSpell(c.stay.longestNoCommsHours), loss: c.stay.longestNoCommsHours > gap },
+      ]
+    : [];
+  return (
+    <div className="mt-6 border-t border-rule pt-4">
+      <h4 className="text-lead font-semibold text-ink">Landing at {siteName}</h4>
+      {!site ? (
+        <p className="mt-1 text-body text-ink-2">The Sun and Earth tracks for {siteName} are not loaded yet.</p>
+      ) : !c ? (
+        <p className="mt-1 text-body text-ink-2">The stay after this landing runs past the 2027 data, so conditions at {siteName} are not worked out.</p>
+      ) : (
+        <div className="mt-2 grid gap-x-8 gap-y-4 @4xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
+          <div className="min-w-0">
+            <p className="text-lead text-ink tabular-nums">
+              <span className="font-semibold">{fmtDateTime(c.landingMs)} UTC</span>
+              <LandingMarks c={c} className="ml-3 align-[-0.1em]" />
+            </p>
+            <p className="mt-1 max-w-[65ch] text-body text-pretty text-ink-2">{c.reason}</p>
+            <table className="mt-3 w-full max-w-sm text-body tabular-nums">
+              <caption className={`text-left ${capsLabel}`}>The {fmtDuration(windowHours)} stay from landing</caption>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.label} className="border-b border-rule">
+                    <th scope="row" className="py-1 pr-3 text-left font-normal text-ink-2">
+                      {r.label}
+                    </th>
+                    <td className={`py-1 text-right font-semibold ${r.loss ? "text-limit" : "text-ink"}`}>
+                      {r.loss && <AlertMark className="mr-1 inline size-3 align-[-0.1em]" />}
+                      {r.value}
+                      {r.loss && <span className="sr-only"> (longer than the {fmtDuration(gap)} gap limit)</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="min-w-0">
+            <p className={capsLabel}>Sun and Earth over the stay, UTC</p>
+            <div className="mt-2">
+              <StayStrip site={site} startMs={c.landingMs} endMs={c.stayEndMs} />
+            </div>
+          </div>
+        </div>
+      )}
+      {orbit && (
+        <p className="mt-3 max-w-[75ch] text-body text-pretty text-ink-2 tabular-nums">
+          {orbit.text}
+          {orbit.pass && ` ${orbit.pass}`}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ---------- Detail ----------
 
 type Props = {
@@ -196,11 +282,31 @@ type Props = {
   list: LaunchOpportunity[];
   chosen: LaunchOpportunity | null;
   transitDays: number;
+  orbitHours: number;
+  windowHours: number;
+  plannedLandingMs: number;
+  siteName: string;
+  landingLat?: number;
+  landingSite: SiteData | null;
+  landingFor: (o: LaunchOpportunity) => LandingConditions | null;
   onChoose: (o: LaunchOpportunity) => void;
   headingId: string;
 };
 
-export default function LaunchDetail({ site, list, chosen, transitDays, onChoose, headingId }: Props) {
+export default function LaunchDetail({
+  site,
+  list,
+  chosen,
+  transitDays,
+  orbitHours,
+  windowHours,
+  siteName,
+  landingLat,
+  landingSite,
+  landingFor,
+  onChoose,
+  headingId,
+}: Props) {
   const store = usePlanStore();
   // The System level opens in its Earth framing over this launch site, with the clock at lift-off.
   const showOnEarth = () =>
@@ -230,6 +336,7 @@ export default function LaunchDetail({ site, list, chosen, transitDays, onChoose
                 {list.map((o) => {
                   const on = sameOpp(o, chosen);
                   const span = fmtWindowSpan(o);
+                  const land = landingFor(o);
                   return (
                     <li key={`${o.sweep}-${o.launchMs}`} className="border-b border-rule">
                       <button
@@ -246,7 +353,14 @@ export default function LaunchDetail({ site, list, chosen, transitDays, onChoose
                           {span ? `Window ${span}, ${fmtMinutes(o.windowMinutes)}` : `No window: ${plainReason(o, site)}`}
                         </span>
                         <span className="col-start-2 text-ink-2 @2xl:col-start-auto">
-                          {fmtDeg(o.azimuthDeg)} heading, {fmtDeg(o.inclinationDeg)} orbit, arrives {fmtOffset(o.arrivalOffsetHours)}
+                          {fmtDeg(o.azimuthDeg)} heading, {fmtDeg(o.inclinationDeg)} orbit, lands {fmtOffset(o.arrivalOffsetHours)}
+                          {land && (
+                            <>
+                              {" · "}
+                              <LandingMarks c={land} className="align-[-0.1em]" />
+                              {" · "}Sun up {pct(land.stay.sunlit)} of stay
+                            </>
+                          )}
                         </span>
                         <Status rating={o.rating} className="col-start-2 @2xl:col-start-auto @2xl:justify-self-end" />
                       </button>
@@ -298,8 +412,9 @@ export default function LaunchDetail({ site, list, chosen, transitDays, onChoose
           </h4>
           {chosen.rating !== "good" && <p className="mt-1 max-w-[70ch] text-body text-pretty text-ink-2">{plainReason(chosen, site)}</p>}
           <div className="mt-4 pl-1 @3xl:pl-0">
-            <MissionSteps o={chosen} transitDays={transitDays} />
+            <MissionSteps o={chosen} transitDays={transitDays} orbitHours={orbitHours} siteName={siteName} />
           </div>
+          <LandingBlock c={landingFor(chosen)} site={landingSite} siteName={siteName} landingLat={landingLat} windowHours={windowHours} />
           <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2">
             <Button variant="primary" onClick={showOnEarth}>
               Show this launch on Earth

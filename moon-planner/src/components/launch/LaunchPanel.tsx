@@ -17,8 +17,15 @@ import {
   type Rating,
 } from "@/lib/launchWindow";
 import { loadSystem, systemEndMs, type SystemData } from "@/lib/system";
+import { loadSite, type SiteData } from "@/lib/sky";
+import { sites as landingRegions } from "@/lib/sites";
+import { compareLandings, landingConditions, scorePoints, type LandingConditions } from "@/lib/launchLanding";
+import { HOUR_MS, fmtDuration, pct } from "@/lib/format";
+import { setterFor, usePlanStore } from "@/state/plan";
+import { useStored } from "@/state/stored";
 import { AlertMark, ChevronMark, SelectField, fieldLabel, buttonClass } from "../ui";
 import LaunchDetail from "./LaunchDetail";
+import { LandingCell, LandingMarks, ORBIT_OPTIONS } from "./landingMarks";
 import { DAY_MS, Status, capsLabel, fmtDate, fmtDateTime, fmtDeg, fmtMinutes, fmtOffset, fmtWindowSpan, plainReason } from "./launchFormat";
 
 export type LaunchPick = { launchSiteId: string; launchMs: number; arrivalMs: number };
@@ -29,6 +36,13 @@ export type LaunchPanelProps = {
   /** Length of the landing window, hours (shown in the window chip, not here). */
   windowHours: number;
   siteName: string;
+  /** The landing site's Sun and Earth tracks with its terrain horizon, once loaded; null while loading or missing. */
+  landingSite?: SiteData | null;
+  /** The landing site's id in the plan: a region id, or "custom". */
+  landingSiteId?: string;
+  /** The landing site's position, degrees (east-positive longitude). */
+  landingLat?: number;
+  landingLon?: number;
   /** Controlled selection; leave undefined to let the panel keep its own. */
   selectedLaunchSiteId?: string | null;
   onSelectLaunchSite?: (id: string) => void;
@@ -60,6 +74,9 @@ const SLIPS = [
 const RATING_ORDER: Record<Rating, number> = { good: 0, costly: 1, blocked: 2 };
 
 type SiteResult = { site: LaunchSite; list: LaunchOpportunity[]; best: LaunchOpportunity | null };
+/** A site's result with the landing site's conditions for its chosen opportunity. */
+type Ranked = SiteResult & { landing: LandingConditions | null };
+type LandingFor = (o: LaunchOpportunity) => LandingConditions | null;
 
 /** The search reads the Moon up to about two days either side of the arrival. */
 const inData = (system: SystemData, arrivalMs: number) => arrivalMs - 2 * DAY_MS >= system.startMs && arrivalMs + 2 * DAY_MS <= systemEndMs(system);
@@ -83,16 +100,42 @@ function solve(system: SystemData, arrivalMs: number, transitDays: number): Site
   return out;
 }
 
-const rank = (a: SiteResult, b: SiteResult) => {
+/** Launch rating first, then the landing (quality, then stay score), then nearness to the planned landing. */
+const compareOpp = (a: LaunchOpportunity, b: LaunchOpportunity, la: LandingConditions | null, lb: LandingConditions | null) =>
+  RATING_ORDER[a.rating] - RATING_ORDER[b.rating] || compareLandings(la, lb) || Math.abs(a.arrivalOffsetHours) - Math.abs(b.arrivalOffsetHours);
+
+/** The opportunity that represents a site, by the same order the rows use. */
+function pickBest(list: LaunchOpportunity[], landingFor: LandingFor): LaunchOpportunity | null {
+  if (list.length === 0) return null;
+  return [...list].sort((a, b) => compareOpp(a, b, landingFor(a), landingFor(b)))[0];
+}
+
+function rankWith(r: SiteResult, landingFor: LandingFor): Ranked {
+  const best = pickBest(r.list, landingFor);
+  return { ...r, best, landing: best ? landingFor(best) : null };
+}
+
+/** Landing conditions per opportunity (landing = Moon arrival + orbit time), memoised. */
+function makeLandingFor(site: SiteData | null, orbitMs: number, stayHours: number): LandingFor {
+  if (!site) return () => null;
+  const memo = new Map<number, LandingConditions | null>();
+  return (o) => {
+    const ms = o.arrivalMs + orbitMs;
+    if (!memo.has(ms)) memo.set(ms, landingConditions(site, ms, stayHours));
+    return memo.get(ms)!;
+  };
+}
+
+const rank = (a: Ranked, b: Ranked) => {
   if (!a.best || !b.best) return Number(!a.best) - Number(!b.best);
-  return RATING_ORDER[a.best.rating] - RATING_ORDER[b.best.rating] || Math.abs(a.best.arrivalOffsetHours) - Math.abs(b.best.arrivalOffsetHours);
+  return compareOpp(a.best, b.best, a.landing, b.landing);
 };
 
 const usable = (r: SiteResult) => r.best !== null && r.best.rating !== "blocked";
 
 const TABLE_COLS =
-  "@6xl:grid-cols-[1.25rem_minmax(0,1.7fr)_8.25rem_11.75rem_4rem_4.75rem_5rem_5.5rem_minmax(0,1.2fr)] @6xl:gap-x-3";
-const SLIP_COLS = "@4xl:grid-cols-[7.5rem_9.5rem_8rem_4.5rem_5rem_minmax(0,1fr)_minmax(0,1.1fr)] @4xl:gap-x-3";
+  "@6xl:grid-cols-[1.25rem_minmax(0,1.5fr)_8.25rem_10.5rem_4rem_4.75rem_4.5rem_5.25rem_9rem_minmax(0,1.3fr)] @6xl:gap-x-3";
+const SLIP_COLS = "@5xl:grid-cols-[7.5rem_9.5rem_8rem_4.5rem_5rem_minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1.2fr)] @5xl:gap-x-3";
 
 /** A value with a label that shows in the stacked layout and is read out in the table layout. */
 function Cell({ label, children, wide, className = "" }: { label: string; children: React.ReactNode; wide: string; className?: string }) {
@@ -147,7 +190,11 @@ function Notice({ children, action }: { children: React.ReactNode; action?: Reac
 
 export default function LaunchPanel({
   arrivalMs,
+  windowHours,
   siteName,
+  landingSite = null,
+  landingSiteId,
+  landingLat,
   selectedLaunchSiteId,
   onSelectLaunchSite,
   onPickOpportunity,
@@ -157,6 +204,25 @@ export default function LaunchPanel({
   className = "",
 }: LaunchPanelProps) {
   const id = useId();
+  const store = usePlanStore();
+  const setLandingId = setterFor(store, "selectedId");
+  const [orbitHours, setOrbitHours] = useStored("llsn.launch.orbitHours", 24);
+  const orbitMs = orbitHours * HOUR_MS;
+  /** The Moon arrival the search aims for: the planned landing less the time in lunar orbit. */
+  const moonArrivalMs = arrivalMs - orbitMs;
+  const regionIds = useMemo(() => new Set(landingRegions.map((r) => r.id)), []);
+  // The landing tracks arrive as a prop; for a region, ask the shared loader too, only to tell "loading" from "failed".
+  const [landingFailed, setLandingFailed] = useState<string | null>(null);
+  useEffect(() => {
+    if (landingSite || !landingSiteId || !regionIds.has(landingSiteId)) return;
+    let live = true;
+    loadSite(landingSiteId).catch(() => live && setLandingFailed(landingSiteId));
+    return () => {
+      live = false;
+    };
+  }, [landingSite, landingSiteId, regionIds]);
+  const landingError = !landingSite && landingFailed !== null && landingFailed === landingSiteId;
+  const landingFor = useMemo(() => makeLandingFor(landingSite, orbitMs, windowHours), [landingSite, orbitMs, windowHours]);
   const [system, setSystem] = useState<SystemData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -187,10 +253,17 @@ export default function LaunchPanel({
 
   const selectedId = selectedLaunchSiteId !== undefined ? selectedLaunchSiteId : ownSelected;
 
-  const results = useMemo(() => (system ? solve(system, arrivalMs, transitDays) : null), [system, arrivalMs, transitDays]);
+  const solved = useMemo(() => (system ? solve(system, moonArrivalMs, transitDays) : null), [system, moonArrivalMs, transitDays]);
+  const results = useMemo(() => solved?.map((r) => rankWith(r, landingFor)) ?? null, [solved, landingFor]);
   const slips = useMemo(
-    () => (system ? SLIPS.map((s) => ({ ...s, arrivalMs: arrivalMs + s.ms, results: s.ms === 0 ? results : solve(system, arrivalMs + s.ms, transitDays) })) : []),
-    [system, arrivalMs, transitDays, results],
+    () =>
+      system
+        ? SLIPS.map((s) => {
+            const raw = s.ms === 0 ? solved : solve(system, moonArrivalMs + s.ms, transitDays);
+            return { ...s, arrivalMs: arrivalMs + s.ms, results: raw?.map((r) => rankWith(r, landingFor)) ?? null };
+          })
+        : [],
+    [system, arrivalMs, moonArrivalMs, transitDays, solved, landingFor],
   );
 
   const inGroup = (r: SiteResult) => group === "all" || r.site.group === group;
@@ -248,7 +321,10 @@ export default function LaunchPanel({
     const all = s.results?.filter(inGroup) ?? null;
     return {
       ...s,
-      best: (focus && s.results?.find((r) => r.site.id === focus.site.id)?.best) ?? null,
+      ...(() => {
+        const hit = focus ? s.results?.find((r) => r.site.id === focus.site.id) : undefined;
+        return { best: hit?.best ?? null, landing: hit?.landing ?? null };
+      })(),
       usable: all ? all.filter(usable).length : null,
       good: all ? all.filter((r) => r.best?.rating === "good").length : null,
       total: all?.length ?? 0,
@@ -267,9 +343,15 @@ export default function LaunchPanel({
           Launch from Earth
         </h2>
         <p className="mt-1.5 max-w-[75ch] text-lead text-pretty text-ink-2 tabular-nums">
-          When to lift off, and from where, to reach <span className="font-semibold text-ink">{siteName}</span> at the start of the
-          mission window set in the window chip above, with the whole window on the surface to follow.
+          When to lift off, and from where, to land at <span className="font-semibold text-ink">{siteName}</span> at the start of the
+          landing window: <span className="font-semibold text-ink">{fmtDateTime(arrivalMs)} UTC</span>, with {fmtDuration(windowHours)} on the
+          surface to follow. Each row also shows the Sun and Earth at {siteName} when that launch would land.
         </p>
+        {landingError && (
+          <p role="alert" className="mt-1.5 max-w-[75ch] text-body text-pretty text-ink">
+            The Sun and Earth tracks for {siteName} did not load, so the launch plan below leaves out conditions at the landing site.
+          </p>
+        )}
         <p className="mt-1.5 max-w-[75ch] text-body text-pretty text-ink-2">
           In the table, <span className="font-semibold text-ink">azimuth</span> is the compass direction of launch (90° is due east),{" "}
           <span className="font-semibold text-ink">inclination</span> is the tilt of the orbit against the equator, and{" "}
@@ -279,6 +361,43 @@ export default function LaunchPanel({
       </header>
 
       <div className="flex flex-wrap items-end gap-x-5 gap-y-3 border-t border-rule px-4 py-3">
+        <div className="max-w-full">
+          <label htmlFor={`${id}-landing`} className={fieldLabel}>
+            Landing at
+          </label>
+          <SelectField
+            id={`${id}-landing`}
+            value={landingSiteId && regionIds.has(landingSiteId) ? landingSiteId : "__current"}
+            onChange={(e) => e.target.value !== "__current" && setLandingId(e.target.value)}
+            wrapClassName="mt-1 w-[14.5rem] max-w-full"
+          >
+            {!(landingSiteId && regionIds.has(landingSiteId)) && <option value="__current">{siteName}</option>}
+            {landingRegions.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </SelectField>
+        </div>
+        <div>
+          <label htmlFor={`${id}-orbit`} className={fieldLabel}>
+            Time in lunar orbit before landing
+          </label>
+          <SelectField
+            id={`${id}-orbit`}
+            value={orbitHours}
+            onChange={(e) => setOrbitHours(Number(e.target.value))}
+            aria-describedby={`${id}-orbit-note`}
+            wrapClassName="mt-1 w-[7rem]"
+            className="tabular-nums"
+          >
+            {ORBIT_OPTIONS.map((o) => (
+              <option key={o.hours} value={o.hours}>
+                {o.label}
+              </option>
+            ))}
+          </SelectField>
+        </div>
         <div>
           <label htmlFor={`${id}-transit`} className={fieldLabel}>
             Transfer time
@@ -323,9 +442,13 @@ export default function LaunchPanel({
             <span className="font-semibold text-ink">
               {usableCount} of {listed.length}
             </span>{" "}
-            listed sites can launch for this arrival
+            listed sites can launch for this landing
           </p>
         )}
+        <p id={`${id}-orbit-note`} className="basis-full text-body text-pretty text-ink-2">
+          Time in lunar orbit is the time to brake into orbit, check out and descend; Apollo and recent landers took about a day or more. Lift-off
+          moves earlier by the same amount.
+        </p>
       </div>
 
       {/* ---------- Ranked table ---------- */}
@@ -340,7 +463,8 @@ export default function LaunchPanel({
         <span className="text-right">Azimuth</span>
         <span className="text-right">Inclination</span>
         <span className="text-right leading-tight">Rotation gain</span>
-        <span className="text-right">Arrival</span>
+        <span className="text-right">Landing</span>
+        <span className="leading-tight">At {siteName} on landing</span>
         <span>Status</span>
       </div>
       <div className="border-t border-ink @6xl:border-t-0">
@@ -394,13 +518,14 @@ export default function LaunchPanel({
                 </button>
               </div>
             )}
-            <ol aria-label="Launch sites, usable first, then by how close the arrival is to the one asked for. Select one for its details.">
+            <ol aria-label={`Launch sites, usable first, then by conditions at ${siteName} on landing, then by how close the landing is to the one planned. Select one for its details.`}>
               {rows.map((r, i) => {
                 const o = r.best;
                 const on = r.site.id === selectedId;
                 const open = on && !collapsed;
                 const span = o ? fmtWindowSpan(o) : null;
                 const reason = o ? shortReason(o, r.site) : null;
+                const land = r.landing;
                 return (
                   <li key={r.site.id} id={`${id}-item-${r.site.id}`} className="scroll-my-2 border-b border-rule">
                     <button
@@ -447,12 +572,24 @@ export default function LaunchPanel({
                           <Cell label="Rotation gain" wide="@6xl:sr-only" className="@6xl:text-right">
                             {Math.round(o.rotationBoostMs)} m/s
                           </Cell>
-                          <Cell label="Arrival" wide="@6xl:sr-only" className="@6xl:text-right">
+                          <Cell label="Landing" wide="@6xl:sr-only" className="@6xl:text-right">
                             {fmtOffset(o.arrivalOffsetHours)}
+                          </Cell>
+                          <Cell label={`At ${siteName} on landing`} wide="@6xl:sr-only" className="col-span-full @xl:col-span-1">
+                            {land ? (
+                              <LandingCell c={land} />
+                            ) : landingSite ? (
+                              <span className="text-body text-ink-2">Stay runs past the 2027 data</span>
+                            ) : landingError ? (
+                              <span className="text-body text-ink-2">Not available</span>
+                            ) : (
+                              <span className="text-body text-ink-3">Loading {siteName}…</span>
+                            )}
                           </Cell>
                           <span className="col-span-full min-w-0 @6xl:col-span-1 @6xl:pr-7">
                             <Status rating={o.rating} />
                             {reason && <span className="block text-body text-pretty text-ink-2">{reason}</span>}
+                            {land && <span className="block text-body text-pretty text-ink-2">{land.reason}</span>}
                           </span>
                         </>
                       ) : (
@@ -466,6 +603,13 @@ export default function LaunchPanel({
                         list={r.list}
                         chosen={chosen}
                         transitDays={transitDays}
+                        orbitHours={orbitHours}
+                        windowHours={windowHours}
+                        plannedLandingMs={arrivalMs}
+                        siteName={siteName}
+                        landingLat={landingLat}
+                        landingSite={landingSite}
+                        landingFor={landingFor}
                         headingId={`${id}-row-${r.site.id}`}
                         onChoose={(c) => setPicked({ siteId: r.site.id, sweep: c.sweep, launchMs: c.launchMs })}
                       />
@@ -485,7 +629,7 @@ export default function LaunchPanel({
             If the landing slips
           </h3>
           <p className="mt-1 max-w-[75ch] text-lead text-pretty text-ink-2">
-            The same search, run again for a later arrival, from <span className="font-semibold text-ink">{focus.site.name}</span>
+            The same search, run again for a later landing, from <span className="font-semibold text-ink">{focus.site.name}</span>
             {selected ? "" : " (the top-ranked site; select another to follow it)"}.{" "}
             {slipLoss ? (
               <span className="font-semibold text-limit">
@@ -499,7 +643,7 @@ export default function LaunchPanel({
               </span>
             )}
           </p>
-          <div aria-hidden="true" className={`mt-3 hidden items-end border-b border-ink pb-1.5 @4xl:grid ${SLIP_COLS} ${capsLabel}`}>
+          <div aria-hidden="true" className={`mt-3 hidden items-end border-b border-ink pb-1.5 @5xl:grid ${SLIP_COLS} ${capsLabel}`}>
             <span>Landing starts</span>
             <span>Lift-off, UTC</span>
             <span>Time of day</span>
@@ -507,40 +651,57 @@ export default function LaunchPanel({
             <span className="text-right">Inclination</span>
             <span>Status</span>
             <span>Listed sites usable</span>
+            <span>At {siteName} on landing</span>
           </div>
-          <ul className="mt-3 border-t border-ink @4xl:mt-0 @4xl:border-t-0">
+          <ul className="mt-3 border-t border-ink @5xl:mt-0 @5xl:border-t-0">
             {slipRows.map((s) => (
-              <li key={s.label} className={`grid grid-cols-2 items-start gap-x-4 gap-y-2 border-b border-rule py-2.5 text-lead tabular-nums @xl:grid-cols-3 @4xl:gap-y-0 ${SLIP_COLS}`}>
-                <span className="col-span-full @4xl:col-span-1">
+              <li key={s.label} className={`grid grid-cols-2 items-start gap-x-4 gap-y-2 border-b border-rule py-2.5 text-lead tabular-nums @xl:grid-cols-3 @5xl:gap-y-0 ${SLIP_COLS}`}>
+                <span className="col-span-full @5xl:col-span-1">
                   <span className="font-semibold text-ink">{s.label}</span>
-                  <span className="ml-2 text-body text-ink-2 @4xl:ml-0 @4xl:block">{fmtDate(s.arrivalMs)}</span>
+                  <span className="ml-2 text-body text-ink-2 @5xl:ml-0 @5xl:block">{fmtDate(s.arrivalMs)}</span>
                 </span>
                 {s.results === null ? (
-                  <span className="col-span-full text-ink-2 @4xl:col-[2/-1]">Outside the 2027 ephemeris, so not worked out.</span>
+                  <span className="col-span-full text-ink-2 @5xl:col-[2/-1]">Outside the 2027 ephemeris, so not worked out.</span>
                 ) : !s.best ? (
-                  <span className="col-span-full text-ink-2 @4xl:col-[2/-1]">No opportunity inside the search span.</span>
+                  <span className="col-span-full text-ink-2 @5xl:col-[2/-1]">No opportunity inside the search span.</span>
                 ) : (
                   <>
-                    <Cell label="Lift-off, UTC" wide="@4xl:sr-only">
+                    <Cell label="Lift-off, UTC" wide="@5xl:sr-only">
                       <span className="font-semibold text-ink">{fmtDateTime(s.best.launchMs, false)}</span>
                     </Cell>
-                    <Cell label="Time of day" wide="@4xl:sr-only">
+                    <Cell label="Time of day" wide="@5xl:sr-only">
                       <span className="text-ink-2">{s.ms === 0 ? "Plan" : clockShift(planBest.launchMs, s.best.launchMs)}</span>
                     </Cell>
-                    <Cell label="Azimuth" wide="@4xl:sr-only" className="@4xl:text-right">
+                    <Cell label="Azimuth" wide="@5xl:sr-only" className="@5xl:text-right">
                       {fmtDeg(s.best.azimuthDeg)}
                     </Cell>
-                    <Cell label="Inclination" wide="@4xl:sr-only" className="@4xl:text-right">
+                    <Cell label="Inclination" wide="@5xl:sr-only" className="@5xl:text-right">
                       {fmtDeg(s.best.inclinationDeg)}
                     </Cell>
                     <span className="min-w-0">
                       <Status rating={s.best.rating} />
                     </span>
-                    <Cell label="Listed sites usable" wide="@4xl:sr-only" className="col-span-full @xl:col-span-1">
+                    <Cell label="Listed sites usable" wide="@5xl:sr-only" className="col-span-full @xl:col-span-1">
                       <span className="font-semibold text-ink">
                         {s.usable} of {s.total}
                       </span>
                       <span className="text-body text-ink-2"> ({s.good} without a cost)</span>
+                    </Cell>
+                    <Cell label={`At ${siteName} on landing`} wide="@5xl:sr-only" className="col-span-full @xl:col-span-1">
+                      {s.landing ? (
+                        <>
+                          <LandingMarks c={s.landing} className="flex" />
+                          <span className="block text-body text-ink-2">
+                            Sun up {pct(s.landing.stay.sunlit)} of stay · score {scorePoints(s.landing)}
+                          </span>
+                        </>
+                      ) : landingSite ? (
+                        <span className="text-body text-ink-2">Stay runs past the 2027 data</span>
+                      ) : landingError ? (
+                        <span className="text-body text-ink-2">Not available</span>
+                      ) : (
+                        <span className="text-body text-ink-3">Loading {siteName}…</span>
+                      )}
                     </Cell>
                   </>
                 )}
@@ -561,8 +722,10 @@ export default function LaunchPanel({
         <p className="mt-1 max-w-[80ch] text-body text-pretty text-ink-2">
           Simplified geometry: the spacecraft leaves in the flat plane that holds Earth&rsquo;s centre, the launch site at lift-off and the Moon at arrival.
           A launch window is the time the compass direction it needs (the azimuth) stays inside the directions the site allows. Checked against Apollo 11,
-          the estimate comes within about 20 minutes and 2°. The Moon&rsquo;s gravity, the energy of the departure burn, braking into lunar orbit, mid-flight
-          turns (doglegs), weather and range scheduling are left out. Direction limits marked approximate are estimated from geography or commonly quoted
+          the estimate comes within about 20 minutes and 2°. The Moon&rsquo;s gravity, the energy of the departure burn, mid-flight turns (doglegs), weather and
+          range scheduling are left out. Braking into lunar orbit and the descent are not calculated either: the time in lunar orbit is an assumption
+          you set, and each landing time is the Moon arrival plus that time. Conditions at the landing site come from the same Sun and Earth tracks
+          and terrain horizon as the Navigator. Direction limits marked approximate are estimated from geography or commonly quoted
           figures; they are not range-safety data.
         </p>
         <details className="group mt-2">
