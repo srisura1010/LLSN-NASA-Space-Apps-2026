@@ -966,7 +966,7 @@ function Navigator() {
 
   return (
     <div className="relative flex flex-col xl:h-dvh xl:min-h-[38rem] xl:overflow-hidden">
-      <h1 className="sr-only">Lunar Landing Site Navigator</h1>
+      <h1 className="sr-only">Artemis Assist</h1>
       <AppBar
         mode={mode}
         onMode={changeMode}

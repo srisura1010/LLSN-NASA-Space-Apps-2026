@@ -32,7 +32,7 @@ export default function Navbar() {
           overMoon ? "text-[#f3f0e8]" : "text-ink"
         }`}
       >
-        Lunar Landing Site Navigator
+        Artemis Assist
       </Link>
       <nav aria-label="Site">
         <ul className="flex items-center gap-1">

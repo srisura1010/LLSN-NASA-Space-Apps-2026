@@ -10,7 +10,7 @@ const publicSans = Public_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Lunar Landing Site Navigator",
+  title: "Artemis Assist",
   description:
     "Compare the south-pole regions NASA named for Artemis III in 2024 by when the Sun and Earth clear the real terrain horizon.",
 };

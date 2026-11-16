@@ -1,6 +1,6 @@
 # Data sources
 
-Every NASA and USGS dataset used by Moon Planner, where it lives in this repo,
+Every NASA and USGS dataset used by Artemis Assist, where it lives in this repo,
 and the credit line to show with it. NASA and USGS data are public domain in
 the United States; Space Apps asks that each source is credited.
 

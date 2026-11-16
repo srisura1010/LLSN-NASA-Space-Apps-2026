@@ -14,7 +14,7 @@ web
 
 ## Product Purpose
 
-Lunar Landing Site Navigator (working name, inferred as final) turns JPL Horizons ephemeris and LOLA topography into a fast answer: for a candidate region and a mission window, when is the Sun above the real terrain horizon (power) and when is Earth above it (direct-to-Earth comms). Success is a planner picking a region and start date and getting a ranked, explained landing window in seconds.
+Artemis Assist turns JPL Horizons ephemeris and LOLA topography into a fast answer: for a candidate region and a mission window, when is the Sun above the real terrain horizon (power) and when is Earth above it (direct-to-Earth comms). Success is a planner picking a region and start date and getting a ranked, explained landing window in seconds.
 
 ## Positioning
 

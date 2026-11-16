@@ -176,15 +176,15 @@ export default function AppBar({
       <Link
         href="/"
         className="flex h-14 min-w-0 shrink-0 items-center gap-2 text-lead font-bold tracking-[-0.01em] text-ink focus-visible:outline-offset-[-2px]"
-        title="Lunar Landing Site Navigator: home"
+        title="Artemis Assist: home"
       >
         <svg viewBox="0 0 20 20" aria-hidden="true" className="size-5 shrink-0">
           <circle cx="10" cy="10" r="8.25" className="fill-paper stroke-ink" strokeWidth="1.5" />
           <path d="M10 1.75a8.25 8.25 0 0 1 0 16.5Z" className="fill-umbra" />
           <circle cx="10" cy="10" r="8.25" className="fill-none stroke-ink" strokeWidth="1.5" />
         </svg>
-        <span className="hidden truncate lg:inline">Lunar Landing Site Navigator</span>
-        <span className="sr-only lg:hidden">Lunar Landing Site Navigator</span>
+        <span className="hidden truncate lg:inline">Artemis Assist</span>
+        <span className="sr-only lg:hidden">Artemis Assist</span>
       </Link>
       {leading}
       <div className="flex items-center sm:hidden">

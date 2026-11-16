@@ -1,6 +1,6 @@
 # moon-planner
 
-The web app for the Lunar Landing Site Navigator (NASA Space Apps 2026). Pick a
+Artemis Assist: the web app for the Lunar Landing Site Navigator challenge (NASA Space Apps 2026). Pick a
 region near the lunar south pole and a mission window, and it ranks the nine
 Artemis III candidate regions by when each one sees the Sun (power) and Earth
 (direct radio contact) above its real terrain horizon. It shows the answer on a

@@ -9,7 +9,7 @@ import { NasaCheck } from "@/components/landing/NasaCheck";
 import { StartForm } from "@/components/landing/StartForm";
 
 export const metadata: Metadata = {
-  title: "Lunar Landing Site Navigator",
+  title: "Artemis Assist",
   description:
     "Pick a south-pole region and a date in 2027. See when the Sun is up for power, and when Earth is in view for a radio link.",
 };
