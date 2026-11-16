@@ -406,9 +406,11 @@ function AboutPanel({ entries, loading, onStartTour }: Props) {
 
           <Section id="about-ai" title="How AI was used">
             <p>
-              The team used Claude, an AI assistant (Super Intelligence, in the Space Apps rules), to help write and
-              review code and research notes. All data comes from the NASA and USGS sources listed above, and every number
-              on screen is computed from them.
+              The team used AI tools, which the Space Apps rules call Super Intelligence. Claude (Anthropic) helped write
+              and review the application code, the data scripts, the interface text and the documentation, and helped
+              research data sources. The Moon picture behind the landing page was generated with ChatGPT (OpenAI) and is
+              labelled on the page. No other AI-generated images, audio or video are used. All data comes from the NASA
+              and USGS sources listed above, and every number on screen is computed from them.
             </p>
           </Section>
         </div>

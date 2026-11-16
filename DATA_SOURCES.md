@@ -299,5 +299,8 @@ the United States; Space Apps asks that each source is credited.
 
 - **File:** `moon-planner/public/landing/moon.jpg` (the Moon behind the
   landing page heading, `src/components/landing/MoonSky.tsx`).
-- **Source:** not yet recorded. To be confirmed by the team before
-  submission.
+- **Source:** generated with ChatGPT (OpenAI) by a team member. It is not NASA imagery. The landing page labels it "Background image: AI-generated (ChatGPT)", and the AI-use notes in the About panel and the READMEs say the same.
+
+## Software
+
+Built with Next.js, React, three.js with react-three-fiber and drei, zustand, Tailwind CSS and geotiff (data scripts), run with tsx. The typeface is Public Sans (SIL Open Font License), loaded through next/font. Needs Node 20.9 or newer.

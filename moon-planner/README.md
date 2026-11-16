@@ -61,3 +61,11 @@ rebuild the data.
   NASA Blue Marble Next Generation.
 
 Full list with files, URLs and credit lines: [`../DATA_SOURCES.md`](../DATA_SOURCES.md).
+
+## How AI was used
+
+The Space Apps rules call AI tools Super Intelligence. The team used Claude (Anthropic), through Claude Code, to help write and review the application code, the data-processing scripts, the interface text and this documentation, and to help research data sources. The Moon picture behind the landing page heading (`moon-planner/public/landing/moon.jpg`) was generated with ChatGPT (OpenAI). It is labelled as AI-generated on the page and is not NASA imagery. No other AI-generated images, audio or video are used. All data comes from the NASA and USGS sources listed in `DATA_SOURCES.md`, and every number on screen is computed from them.
+
+## Software
+
+Built with Next.js, React, three.js with react-three-fiber and drei, zustand, Tailwind CSS and geotiff (data scripts), run with tsx. The typeface is Public Sans (SIL Open Font License), loaded through next/font. Needs Node 20.9 or newer.
