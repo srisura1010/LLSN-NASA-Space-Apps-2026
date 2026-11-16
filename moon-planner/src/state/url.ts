@@ -9,6 +9,7 @@ import { POINT_SITE_ID } from "@/lib/anySite";
 import { HOUR } from "@/lib/format";
 import { DEFAULT_TRANSIT_DAYS, TRANSIT_DAY_OPTIONS } from "@/lib/launchWindow";
 import { launchSites } from "@/lib/launchSites";
+import { CUSTOM_LAUNCH_ID } from "@/lib/customLaunchSite";
 import { sites } from "@/lib/sites";
 
 /**
@@ -26,7 +27,8 @@ export const POINT_ID = POINT_SITE_ID;
 export const POLAR_CUSTOM_LAT = -80;
 
 const SITE_IDS = new Set(sites.map((s) => s.id));
-const LAUNCH_IDS = new Set(launchSites.map((s) => s.id));
+/** The listed launch sites, plus the user's own (kept in localStorage; the Launch mode ignores it when none is stored). */
+const LAUNCH_IDS = new Set([...launchSites.map((s) => s.id), CUSTOM_LAUNCH_ID]);
 
 export type LatLon = { lat: number; lon: number };
 export type LaunchPick = { launchSiteId: string; launchMs: number; arrivalMs: number };

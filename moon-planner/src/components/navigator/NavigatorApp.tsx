@@ -17,7 +17,7 @@ import { isUp } from "@/lib/contacts";
 import { sites } from "@/lib/sites";
 import { DAY, HOUR, fmtLatLon } from "@/lib/format";
 import { DATA_END_MS, DATA_START_MS } from "@/lib/mission";
-import { launchSites } from "@/lib/launchSites";
+import { launchSites, type LaunchSite } from "@/lib/launchSites";
 import { customHorizonMethod, loadCustomSite, validateSitePoint } from "@/lib/customSite";
 import { SMOOTH_METHOD, buildSmoothSite, isSmoothSite } from "@/lib/anySite";
 import { buildGlobalSite, isGlobalSite, loadLocalTerrain } from "@/lib/localTerrain";
@@ -32,6 +32,7 @@ import SiteBulletin from "./SiteBulletin";
 import ComparePanel, { tiedRanks, type CompareOption } from "./ComparePanel";
 import AboutPanel from "./AboutPanel";
 import LaunchPanel from "../launch/LaunchPanel";
+import { useCustomLaunch } from "../launch/CustomLaunchForm";
 import LevelNav, { type Level } from "../levels/LevelNav";
 import { ChevronMark, Drawer, ErrorBoundary, Segmented, Toast } from "../ui";
 import Rail from "../shell/Rail";
@@ -71,7 +72,8 @@ const PLAY_SPAN_MS = 12_000;
 const YEAR_PLAY_RATE = (6 * DAY) / 1000;
 
 /** The launch sites in the shape the System view draws: marks plus the allowed azimuth fan. */
-const LAUNCH_MARKS = launchSites.map((s) => ({ id: s.id, name: s.name, group: s.group, lat: s.lat, lon: s.lon, azimuthRanges: s.azimuths.map((r) => [r.min, r.max] as [number, number]) }));
+const toMark = (s: LaunchSite, name = s.name) => ({ id: s.id, name, group: s.group, lat: s.lat, lon: s.lon, azimuthRanges: s.azimuths.map((r) => [r.min, r.max] as [number, number]) });
+const LAUNCH_MARKS = launchSites.map((s) => toMark(s));
 
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -246,6 +248,13 @@ function Navigator() {
   const [launchSiteId, setLaunchSiteId] = usePlanField("launchSiteId");
   const [launchPick, setLaunchPick] = usePlanField("launchPick");
   const [transitDays, setTransitDays] = usePlanField("transitDays");
+  // The user's own launch site from the Launch mode (localStorage), marked on Earth with the listed ones.
+  const customLaunchSite = useCustomLaunch().site;
+  const launchMarks = useMemo(() => {
+    if (!customLaunchSite) return LAUNCH_MARKS;
+    const name = /custom/i.test(customLaunchSite.name) ? customLaunchSite.name : `${customLaunchSite.name} (custom)`;
+    return [...LAUNCH_MARKS, toMark(customLaunchSite, name)];
+  }, [customLaunchSite]);
   const transferArc = useMemo(
     () => (launchPick ? { launchMs: launchPick.launchMs, arrivalMs: launchPick.arrivalMs, launchSiteId: launchPick.launchSiteId } : null),
     [launchPick],
@@ -1070,7 +1079,7 @@ function Navigator() {
                   onOpenMoon={zoomToMoon}
                   entry={arrival}
                   levelNav={<LevelNav level="system" onLevel={stepLevel} />}
-                  launchSites={LAUNCH_MARKS}
+                  launchSites={launchMarks}
                   selectedLaunchSiteId={launchSiteId ?? undefined}
                   onSelectLaunchSite={setLaunchSiteId}
                   transferArc={transferArc}

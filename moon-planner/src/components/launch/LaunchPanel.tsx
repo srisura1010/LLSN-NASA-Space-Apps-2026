@@ -20,11 +20,15 @@ import { loadSystem, systemEndMs, type SystemData } from "@/lib/system";
 import { loadSite, type SiteData } from "@/lib/sky";
 import { sites as landingRegions } from "@/lib/sites";
 import { compareLandings, landingConditions, scorePoints, type LandingConditions } from "@/lib/launchLanding";
-import { HOUR_MS, fmtDuration, pct } from "@/lib/format";
-import { setterFor, usePlanStore } from "@/state/plan";
+import { HOUR_MS, fmtDuration, fmtLatLon, pct } from "@/lib/format";
+import { parseCoordinate } from "@/lib/anySite";
+import { validateSitePoint } from "@/lib/customSite";
+import { CUSTOM_LAUNCH_ID, isCustomLaunch, type CustomLaunchSpec } from "@/lib/customLaunchSite";
+import { setterFor, usePlan, usePlanStore } from "@/state/plan";
 import { useStored } from "@/state/stored";
-import { AlertMark, ChevronMark, SelectField, fieldLabel, buttonClass } from "../ui";
+import { AlertMark, ChevronMark, SelectField, fieldControl, fieldLabel, buttonClass } from "../ui";
 import LaunchDetail from "./LaunchDetail";
+import { CustomLaunchForm, useCustomLaunch } from "./CustomLaunchForm";
 import { LandingCell, LandingMarks, ORBIT_OPTIONS } from "./landingMarks";
 import { DAY_MS, Status, capsLabel, fmtDate, fmtDateTime, fmtDeg, fmtMinutes, fmtOffset, fmtWindowSpan, plainReason } from "./launchFormat";
 
@@ -45,7 +49,7 @@ export type LaunchPanelProps = {
   landingLon?: number;
   /** Controlled selection; leave undefined to let the panel keep its own. */
   selectedLaunchSiteId?: string | null;
-  onSelectLaunchSite?: (id: string) => void;
+  onSelectLaunchSite?: (id: string | null) => void;
   /** Called whenever the chosen lift-off changes (site, opportunity, transfer time or arrival); null when there is none. */
   onPickOpportunity?: (o: LaunchPick | null) => void;
   /** A lift-off chosen earlier (from the URL), selected again when its site's list contains it. */
@@ -56,13 +60,18 @@ export type LaunchPanelProps = {
   className?: string;
 };
 
-type GroupFilter = "all" | SiteGroup;
+type GroupFilter = "all" | SiteGroup | "custom";
 const GROUP_OPTIONS: { value: GroupFilter; label: string }[] = [
   { value: "all", label: "All sites" },
   { value: "us", label: GROUP_LABEL.us },
   { value: "nasa-partner", label: GROUP_LABEL["nasa-partner"] },
   { value: "us-partner", label: GROUP_LABEL["us-partner"] },
 ];
+/** Offered only while the user has a launch site of their own. */
+const CUSTOM_OPTION: { value: GroupFilter; label: string } = { value: "custom", label: "Custom" };
+
+/** The "Custom" tag on the user's own launch site. */
+const customTag = "ml-1.5 border border-ink-2 px-1 align-[0.1em] text-label font-semibold tracking-[0.06em] text-ink-2 uppercase";
 
 const SLIPS = [
   { label: "As planned", ms: 0 },
@@ -98,6 +107,125 @@ function solve(system: SystemData, arrivalMs: number, transitDays: number): Site
       });
   bySystem.set(key, out);
   return out;
+}
+
+const customCache = new WeakMap<SystemData, Map<string, SiteResult>>();
+
+/** solve() plus the user's own launch site, ranked with the others. */
+function solveWith(system: SystemData, arrivalMs: number, transitDays: number, custom: LaunchSite | null): SiteResult[] | null {
+  const base = solve(system, arrivalMs, transitDays);
+  if (!base || !custom) return base;
+  let bySystem = customCache.get(system);
+  if (!bySystem) customCache.set(system, (bySystem = new Map()));
+  const key = `${arrivalMs}|${transitDays}|${custom.name}|${custom.lat}|${custom.lon}|${JSON.stringify(custom.azimuths)}`;
+  let hit = bySystem.get(key);
+  if (!hit) {
+    if (bySystem.size > 64) bySystem.clear();
+    const list = launchOpportunities(custom, arrivalMs, { system, transitDays });
+    hit = { site: custom, list, best: bestOpportunity(list) };
+    bySystem.set(key, hit);
+  }
+  return [...base, hit];
+}
+
+/** "Custom landing site…" in the Landing at picker: latitude and longitude, checked by the Navigator's rule. */
+function CustomLandingFields({
+  onSubmit,
+  onCancel,
+  problem,
+  setProblem,
+}: {
+  onSubmit: (lat: number, lon: number) => void;
+  onCancel: () => void;
+  problem: string | null;
+  setProblem: (p: string | null) => void;
+}) {
+  const id = useId();
+  const [latText, setLatText] = useState("");
+  const [lonText, setLonText] = useState("");
+  const [bad, setBad] = useState<"lat" | "lon" | null>(null);
+  const errorId = `${id}-error`;
+  const fail = (field: "lat" | "lon", message: string) => {
+    setBad(field);
+    setProblem(message);
+  };
+  const submit = () => {
+    const a = parseCoordinate(latText, "lat");
+    if (!a.ok) return fail("lat", a.message);
+    const b = parseCoordinate(lonText, "lon");
+    if (!b.ok) return fail("lon", b.message);
+    const v = validateSitePoint(a.value, b.value);
+    if (!v.ok) return fail(v.field, v.reason);
+    setBad(null);
+    onSubmit(v.lat, v.lon);
+  };
+  const box = `${fieldControl} mt-1 w-[6.5rem] tabular-nums placeholder:text-ink-2`;
+  return (
+    <form
+      noValidate
+      aria-label="Custom landing site"
+      className="min-w-0 basis-full border-l-2 border-ink pl-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit();
+      }}
+    >
+      <p className="max-w-[70ch] text-body text-pretty text-ink-2">
+        Any point on the Moon up to 0.1° from either pole. It loads the same way as the Navigator&rsquo;s custom site and takes a few seconds.
+      </p>
+      <div className="mt-2 flex flex-wrap items-end gap-2">
+        <div>
+          <label htmlFor={`${id}-lat`} className={fieldLabel}>
+            Latitude
+          </label>
+          <input
+            id={`${id}-lat`}
+            type="text"
+            inputMode="decimal"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="43.31 S"
+            value={latText}
+            onChange={(e) => setLatText(e.target.value)}
+            aria-invalid={(!!problem && bad === "lat") || undefined}
+            aria-describedby={problem ? errorId : undefined}
+            className={box}
+          />
+        </div>
+        <div>
+          <label htmlFor={`${id}-lon`} className={fieldLabel}>
+            Longitude
+          </label>
+          <input
+            id={`${id}-lon`}
+            type="text"
+            inputMode="decimal"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="11.36 W"
+            value={lonText}
+            onChange={(e) => setLonText(e.target.value)}
+            aria-invalid={(!!problem && bad === "lon") || undefined}
+            aria-describedby={problem ? errorId : undefined}
+            className={box}
+          />
+        </div>
+        <button type="submit" className={buttonClass.primary}>
+          Land here
+        </button>
+        <button type="button" className={buttonClass.secondary} onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+      <div aria-live="polite">
+        {problem && (
+          <p id={errorId} className="mt-2 max-w-[60ch] text-body leading-snug font-medium text-ink">
+            {problem}
+          </p>
+        )}
+      </div>
+    </form>
+  );
 }
 
 /** Launch rating first, then the landing (quality, then stay score), then nearness to the planned landing. */
@@ -221,7 +349,33 @@ export default function LaunchPanel({
       live = false;
     };
   }, [landingSite, landingSiteId, regionIds]);
-  const landingError = !landingSite && landingFailed !== null && landingFailed === landingSiteId;
+  // A custom landing site loads through the Navigator's store; its status tells "failed" and its smooth-horizon fallback.
+  const customStatus = usePlan((s) => s.custom?.status);
+  const customMessage = usePlan((s) => s.custom?.message);
+  const customTerrainError = usePlan((s) => s.custom?.terrainError);
+  const point = usePlan((s) => s.point);
+  const onCustomLanding = landingSiteId === "custom";
+  const landingError = !landingSite && ((landingFailed !== null && landingFailed === landingSiteId) || (onCustomLanding && customStatus === "error"));
+  const [landingFormOpen, setLandingFormOpen] = useState(false);
+  const [landingProblem, setLandingProblem] = useState<string | null>(null);
+  /** The Navigator's custom-site path: set the site and its load request; NavigatorApp loads it and the landing column follows. */
+  const addCustomLanding = (lat: number, lon: number) => {
+    const v = validateSitePoint(lat, lon);
+    if (!v.ok) {
+      setLandingProblem(v.reason);
+      setLandingFormOpen(true);
+      return;
+    }
+    const { startMs, durationHours } = store.getState();
+    setLandingProblem(null);
+    setLandingFormOpen(false);
+    store.setState({
+      custom: { lat: v.lat, lon: v.lon, status: "loading" },
+      selectedId: "custom",
+      customReq: { lat: v.lat, lon: v.lon, fromMs: startMs, toMs: startMs + durationHours * HOUR_MS },
+    });
+  };
+  const customLaunch = useCustomLaunch();
   const landingFor = useMemo(() => makeLandingFor(landingSite, orbitMs, windowHours), [landingSite, orbitMs, windowHours]);
   const [system, setSystem] = useState<SystemData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -253,20 +407,23 @@ export default function LaunchPanel({
 
   const selectedId = selectedLaunchSiteId !== undefined ? selectedLaunchSiteId : ownSelected;
 
-  const solved = useMemo(() => (system ? solve(system, moonArrivalMs, transitDays) : null), [system, moonArrivalMs, transitDays]);
+  const extra = customLaunch.site;
+  const solved = useMemo(() => (system ? solveWith(system, moonArrivalMs, transitDays, extra) : null), [system, moonArrivalMs, transitDays, extra]);
   const results = useMemo(() => solved?.map((r) => rankWith(r, landingFor)) ?? null, [solved, landingFor]);
   const slips = useMemo(
     () =>
       system
         ? SLIPS.map((s) => {
-            const raw = s.ms === 0 ? solved : solve(system, moonArrivalMs + s.ms, transitDays);
+            const raw = s.ms === 0 ? solved : solveWith(system, moonArrivalMs + s.ms, transitDays, extra);
             return { ...s, arrivalMs: arrivalMs + s.ms, results: raw?.map((r) => rankWith(r, landingFor)) ?? null };
           })
         : [],
-    [system, arrivalMs, moonArrivalMs, transitDays, solved, landingFor],
+    [system, arrivalMs, moonArrivalMs, transitDays, solved, landingFor, extra],
   );
 
-  const inGroup = (r: SiteResult) => group === "all" || r.site.group === group;
+  const shownGroup: GroupFilter = group === "custom" && !extra ? "all" : group;
+  const inGroup = (r: SiteResult) =>
+    shownGroup === "all" || (shownGroup === "custom" ? isCustomLaunch(r.site) : !isCustomLaunch(r.site) && r.site.group === shownGroup);
   const listed = (results ?? []).filter(inGroup).sort(rank);
   const rows = usableOnly ? listed.filter(usable) : listed;
   const usableCount = listed.filter(usable).length;
@@ -314,6 +471,26 @@ export default function LaunchPanel({
     onSelectLaunchSite?.(siteId);
   };
 
+  const saveCustomLaunch = (spec: CustomLaunchSpec) => {
+    customLaunch.setSpec(spec);
+    if (group !== "all" && group !== "custom") setGroup("all");
+    setUsableOnly(false);
+    revealRef.current = CUSTOM_LAUNCH_ID;
+    setCollapsed(false);
+    setPicked(null);
+    setOwnSelected(CUSTOM_LAUNCH_ID);
+    onSelectLaunchSite?.(CUSTOM_LAUNCH_ID);
+  };
+  const removeCustomLaunch = () => {
+    customLaunch.setSpec(null);
+    if (group === "custom") setGroup("all");
+    if (selectedId === CUSTOM_LAUNCH_ID) {
+      setPicked(null);
+      setOwnSelected(null);
+      onSelectLaunchSite?.(null);
+    }
+  };
+
   // Slip analysis follows the selected site, or the top-ranked one.
   const focus = selected ?? listed[0] ?? null;
   const planBest = focus?.best ?? null;
@@ -350,6 +527,12 @@ export default function LaunchPanel({
         {landingError && (
           <p role="alert" className="mt-1.5 max-w-[75ch] text-body text-pretty text-ink">
             The Sun and Earth tracks for {siteName} did not load, so the launch plan below leaves out conditions at the landing site.
+            {onCustomLanding && customMessage ? ` ${customMessage}` : ""}
+          </p>
+        )}
+        {onCustomLanding && landingSite && customTerrainError !== undefined && (
+          <p className="mt-1.5 max-w-[75ch] text-body text-pretty text-ink-2">
+            The terrain around {siteName} did not load, so its landing conditions use a smooth horizon: hills and crater rims are not included.
           </p>
         )}
         <p className="mt-1.5 max-w-[75ch] text-body text-pretty text-ink-2">
@@ -367,8 +550,14 @@ export default function LaunchPanel({
           </label>
           <SelectField
             id={`${id}-landing`}
-            value={landingSiteId && regionIds.has(landingSiteId) ? landingSiteId : "__current"}
-            onChange={(e) => e.target.value !== "__current" && setLandingId(e.target.value)}
+            value={landingFormOpen ? "__new" : landingSiteId && regionIds.has(landingSiteId) ? landingSiteId : "__current"}
+            onChange={(e) => {
+              const v = e.target.value;
+              setLandingProblem(null);
+              setLandingFormOpen(v === "__new");
+              if (v === "__point" && point) addCustomLanding(point.lat, point.lon);
+              else if (v !== "__current" && v !== "__new") setLandingId(v);
+            }}
             wrapClassName="mt-1 w-[14.5rem] max-w-full"
           >
             {!(landingSiteId && regionIds.has(landingSiteId)) && <option value="__current">{siteName}</option>}
@@ -377,8 +566,21 @@ export default function LaunchPanel({
                 {r.name}
               </option>
             ))}
+            {point && <option value="__point">Picked point {fmtLatLon(point.lat, point.lon)}</option>}
+            <option value="__new">Custom landing site…</option>
           </SelectField>
         </div>
+        {landingFormOpen && (
+          <CustomLandingFields
+            onSubmit={addCustomLanding}
+            problem={landingProblem}
+            setProblem={setLandingProblem}
+            onCancel={() => {
+              setLandingFormOpen(false);
+              setLandingProblem(null);
+            }}
+          />
+        )}
         <div>
           <label htmlFor={`${id}-orbit`} className={fieldLabel}>
             Time in lunar orbit before landing
@@ -420,8 +622,8 @@ export default function LaunchPanel({
           <label htmlFor={`${id}-group`} className={fieldLabel}>
             Launch sites
           </label>
-          <SelectField id={`${id}-group`} value={group} onChange={(e) => setGroup(e.target.value as GroupFilter)} wrapClassName="mt-1 w-[15.5rem] max-w-full">
-            {GROUP_OPTIONS.map((g) => (
+          <SelectField id={`${id}-group`} value={shownGroup} onChange={(e) => setGroup(e.target.value as GroupFilter)} wrapClassName="mt-1 w-[15.5rem] max-w-full">
+            {(extra ? [...GROUP_OPTIONS, CUSTOM_OPTION] : GROUP_OPTIONS).map((g) => (
               <option key={g.value} value={g.value}>
                 {g.label}
               </option>
@@ -450,6 +652,7 @@ export default function LaunchPanel({
           moves earlier by the same amount.
         </p>
       </div>
+      <CustomLaunchForm spec={customLaunch.spec} onSave={saveCustomLaunch} onRemove={removeCustomLaunch} />
 
       {/* ---------- Ranked table ---------- */}
       <div
@@ -543,7 +746,10 @@ export default function LaunchPanel({
                         {i + 1}
                       </span>
                       <span className="col-span-full min-w-0 @6xl:col-span-1">
-                        <span className={`block leading-snug text-balance text-ink ${on ? "font-semibold" : "font-medium"}`}>{r.site.name}</span>
+                        <span className={`block leading-snug text-balance text-ink ${on ? "font-semibold" : "font-medium"}`}>
+                          {r.site.name}
+                          {isCustomLaunch(r.site) && <span className={customTag}>Custom</span>}
+                        </span>
                         <span className="block text-body text-ink-2">
                           {r.site.country} · {r.site.operator}
                         </span>

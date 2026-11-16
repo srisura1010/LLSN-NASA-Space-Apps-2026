@@ -132,14 +132,18 @@ function AzimuthDial({ site, azimuthDeg, blocked }: { site: LaunchSite; azimuthD
   };
   return (
     <svg viewBox="0 0 80 80" aria-hidden="true" className="size-24 shrink-0">
-      {site.azimuths.map((r) => (
-        <path
-          key={r.min}
-          d={`M40 40 L${pt(r.min, R)} A${R} ${R} 0 ${r.max - r.min > 180 ? 1 : 0} 1 ${pt(r.max, R)} Z`}
-          className="fill-earth-soft stroke-earth"
-          strokeWidth="1"
-        />
-      ))}
+      {site.azimuths.map((r) =>
+        r.max - r.min >= 360 ? (
+          <circle key={r.min} cx="40" cy="40" r={R} className="fill-earth-soft stroke-earth" strokeWidth="1" />
+        ) : (
+          <path
+            key={r.min}
+            d={`M40 40 L${pt(r.min, R)} A${R} ${R} 0 ${r.max - r.min > 180 ? 1 : 0} 1 ${pt(r.max, R)} Z`}
+            className="fill-earth-soft stroke-earth"
+            strokeWidth="1"
+          />
+        ),
+      )}
       <circle cx="40" cy="40" r={R} fill="none" className="stroke-ink" strokeWidth="1" />
       {[0, 90, 180, 270].map((d) => (
         <path key={d} d={`M${pt(d, R)} L${pt(d, R + 3)}`} className="stroke-ink" strokeWidth="1" />
@@ -384,18 +388,20 @@ export default function LaunchDetail({
                 </span>
               </p>
               <p className="mt-1 text-pretty">{site.azimuthNote}</p>
-              <p className="mt-1.5">
-                <a
-                  href={url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 font-medium text-earth underline decoration-1 underline-offset-[3px] hover:text-ink"
-                >
-                  {site.azimuthUrl ? "Source" : "Site operator"}: {host}
-                  <ExternalMark className="size-3" />
-                  <span className="sr-only"> (opens in a new tab)</span>
-                </a>
-              </p>
+              {url && (
+                <p className="mt-1.5">
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 font-medium text-earth underline decoration-1 underline-offset-[3px] hover:text-ink"
+                  >
+                    {site.azimuthUrl ? "Source" : "Site operator"}: {host}
+                    <ExternalMark className="size-3" />
+                    <span className="sr-only"> (opens in a new tab)</span>
+                  </a>
+                </p>
+              )}
               <p className="mt-1.5 tabular-nums">
                 Site at {Math.abs(site.lat).toFixed(2)}° {site.lat >= 0 ? "N" : "S"}, {Math.abs(site.lon).toFixed(2)}° {site.lon >= 0 ? "E" : "W"}. The line on
                 the dial is the heading of the chosen lift-off.
